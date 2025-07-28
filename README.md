@@ -14,8 +14,6 @@ OpusClip is undeniably powerful. It's an AI video clipping tool that can turn lo
 - Automated captions with 97%+ accuracy
 - Virality scoring to predict viral potential
 - Multi-language support (20+ languages)
-- Social media scheduling
-- AI B-roll generation
 - Brand templates and customization
 
 **But here's the catch:**
