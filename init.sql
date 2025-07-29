@@ -33,6 +33,13 @@ CREATE TABLE tasks (
     user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     source_id VARCHAR(36) REFERENCES sources(id) ON DELETE SET NULL,
     generated_clips_ids VARCHAR(36)[], -- Array of clip IDs
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+
+    -- Font customization fields
+    font_family VARCHAR(100) DEFAULT 'TikTokSans-Regular',
+    font_size INTEGER DEFAULT 24,
+    font_color VARCHAR(7) DEFAULT '#FFFFFF', -- Hex color code
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -95,6 +102,7 @@ CREATE TABLE verification (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_tasks_user_id ON tasks(user_id);
 CREATE INDEX idx_tasks_source_id ON tasks(source_id);
+CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_created_at ON tasks(created_at);
 CREATE INDEX idx_sources_created_at ON sources(created_at);
 CREATE INDEX idx_generated_clips_task_id ON generated_clips(task_id);

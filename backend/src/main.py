@@ -87,6 +87,12 @@ async def start_task(request: Request):
   raw_source = data.get("source")
   user_id = headers.get("user_id")
 
+  # Get font customization options from request
+  font_options = data.get("font_options", {})
+  font_family = font_options.get("font_family", "TikTokSans-Regular")
+  font_size = font_options.get("font_size", 24)
+  font_color = font_options.get("font_color", "#FFFFFF")
+
   logger.info(f"📝 Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}")
 
   if not raw_source or not raw_source.get("url"):
@@ -141,6 +147,9 @@ async def start_task(request: Request):
             user_id=user_id,
             source_id=source.id,
             generated_clips_ids=None,
+            font_family=font_family,
+            font_size=font_size,
+            font_color=font_color,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -192,12 +201,13 @@ async def start_task(request: Request):
             ]
             logger.info(f"✅ Created {len(relevant_segments_json)} segment records")
 
-            # Create clips from relevant segments
-            logger.info("🎬 Starting video clip generation")
+            # Create clips from relevant segments with transitions and custom fonts
+            logger.info("🎬 Starting video clip generation with transitions")
             clips_output_dir = Path(config.temp_dir) / "clips"
             logger.info(f"📁 Output directory: {clips_output_dir}")
-            clips_info = create_clips_from_segments(video_path, relevant_segments_json, clips_output_dir)
-            logger.info(f"✅ Generated {len(clips_info)} video clips")
+            logger.info(f"🎨 Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}")
+            clips_info = create_clips_with_transitions(video_path, relevant_segments_json, clips_output_dir, font_family, font_size, font_color)
+            logger.info(f"✅ Generated {len(clips_info)} video clips with transitions")
 
             # Save clips to database
             logger.info("💾 Saving clips to database")
@@ -255,6 +265,12 @@ async def start_task_with_progress(request: Request):
     raw_source = data.get("source")
     user_id = headers.get("user_id")
 
+    # Get font customization options from request
+    font_options = data.get("font_options", {})
+    font_family = font_options.get("font_family", "TikTokSans-Regular")
+    font_size = font_options.get("font_size", 24)
+    font_color = font_options.get("font_color", "#FFFFFF")
+
     logger.info(f"📝 Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}")
 
     if not raw_source or not raw_source.get("url"):
@@ -297,6 +313,9 @@ async def start_task_with_progress(request: Request):
             source_id=source.id,
             generated_clips_ids=None,
             status="processing",
+            font_family=font_family,
+            font_size=font_size,
+            font_color=font_color,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -305,7 +324,7 @@ async def start_task_with_progress(request: Request):
         await db.commit()
 
         # Start processing in background
-        asyncio.create_task(process_video_task(task.id, raw_source, user_id))
+        asyncio.create_task(process_video_task(task.id, raw_source, user_id, font_family, font_size, font_color))
 
         return {"task_id": task.id, "message": "Task started successfully"}
 
@@ -318,7 +337,7 @@ async def update_task_status(task_id: str, status: str):
         )
         await db.commit()
 
-async def process_video_task(task_id: str, raw_source: dict, user_id: str):
+async def process_video_task(task_id: str, raw_source: dict, user_id: str, font_family: str = "TikTokSans-Regular", font_size: int = 24, font_color: str = "#FFFFFF"):
     """Background task to process video and update task status"""
 
     try:
@@ -372,10 +391,11 @@ async def process_video_task(task_id: str, raw_source: dict, user_id: str):
                 for segment in relevant_parts.most_relevant_segments
             ]
 
-            logger.info(f"📊 Task {task_id}: Creating {len(relevant_segments_json)} video clips...")
+            logger.info(f"📊 Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions...")
             clips_output_dir = Path(config.temp_dir) / "clips"
-            clips_info = create_clips_from_segments(video_path, relevant_segments_json, clips_output_dir)
-            logger.info(f"✅ Generated {len(clips_info)} video clips")
+            logger.info(f"🎨 Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}")
+            clips_info = create_clips_with_transitions(video_path, relevant_segments_json, clips_output_dir, font_family, font_size, font_color)
+            logger.info(f"✅ Generated {len(clips_info)} video clips with transitions")
 
             logger.info(f"📊 Task {task_id}: Saving clips to database...")
             async with AsyncSessionLocal() as db:
@@ -509,6 +529,53 @@ async def get_task_details(task_id: str, db: AsyncSession = Depends(get_db)):
 
   except Exception as e:
     raise HTTPException(status_code=500, detail=f"Error retrieving task: {str(e)}")
+
+@app.get("/fonts")
+async def get_available_fonts():
+    """Get list of available fonts"""
+    try:
+        fonts_dir = Path(__file__).parent.parent / "fonts"
+        if not fonts_dir.exists():
+            return {"fonts": [], "message": "Fonts directory not found"}
+
+        font_files = []
+        for font_file in fonts_dir.glob("*.ttf"):
+            font_name = font_file.stem  # Get filename without extension
+            font_files.append({
+                "name": font_name,
+                "display_name": font_name.replace("-", " ").replace("_", " ").title(),
+                "file_path": str(font_file)
+            })
+
+        logger.info(f"Found {len(font_files)} available fonts")
+        return {"fonts": font_files}
+
+    except Exception as e:
+        logger.error(f"Error retrieving fonts: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving fonts: {str(e)}")
+
+@app.get("/transitions")
+async def get_available_transitions():
+    """Get list of available transition effects"""
+    try:
+        from .video_utils import get_available_transitions
+        transitions = get_available_transitions()
+
+        transition_info = []
+        for transition_path in transitions:
+            transition_file = Path(transition_path)
+            transition_info.append({
+                "name": transition_file.stem,
+                "display_name": transition_file.stem.replace("_", " ").replace("-", " ").title(),
+                "file_path": transition_path
+            })
+
+        logger.info(f"Found {len(transition_info)} available transitions")
+        return {"transitions": transition_info}
+
+    except Exception as e:
+        logger.error(f"Error retrieving transitions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving transitions: {str(e)}")
 
 # endpoint to upload a video
 @app.post("/upload")

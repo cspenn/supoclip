@@ -37,6 +37,9 @@ interface TaskDetails {
   clips_count: number;
   created_at: string;
   updated_at: string;
+  font_family?: string;
+  font_size?: number;
+  font_color?: string;
 }
 
 export default function TaskPage() {
@@ -273,6 +276,35 @@ export default function TaskPage() {
           </Card>
         ) : (
           <div className="grid gap-6">
+            {/* Font Settings Display */}
+            {task && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-black mb-3 flex items-center gap-2">
+                  <span className="w-4 h-4">🎨</span>
+                  Font Settings
+                </h3>
+                <div className="grid grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <span className="text-gray-500">Font:</span>
+                    <p className="font-medium">{task.font_family || 'Default'}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Size:</span>
+                    <p className="font-medium">{task.font_size || 24}px</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Color:</span>
+                    <div className="flex items-center gap-1">
+                      <div
+                        className="w-3 h-3 rounded border"
+                        style={{ backgroundColor: task.font_color || '#FFFFFF' }}
+                      ></div>
+                      <p className="font-medium">{task.font_color || '#FFFFFF'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {clips.map((clip) => (
               <Card key={clip.id} className="overflow-hidden">
                 <CardContent className="p-0">

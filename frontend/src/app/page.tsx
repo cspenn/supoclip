@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -9,9 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
-import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush } from "lucide-react";
 
 interface ProcessingStatus {
   step: string;
@@ -33,7 +34,31 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { data: session, isPending } = useSession();
 
+  // Font customization states
+  const [fontFamily, setFontFamily] = useState("TikTokSans-Regular");
+  const [fontSize, setFontSize] = useState(24);
+  const [fontColor, setFontColor] = useState("#FFFFFF");
+  const [availableFonts, setAvailableFonts] = useState<Array<{ name: string, display_name: string }>>([]);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  // Load available fonts on component mount
+  useEffect(() => {
+    const loadFonts = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/fonts`);
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableFonts(data.fonts || []);
+        }
+      } catch (error) {
+        console.error('Failed to load fonts:', error);
+      }
+    };
+
+    loadFonts();
+  }, [apiUrl]);
 
   // Always treat file input as uncontrolled, and store file in a ref
   const fileRef = useRef<File | null>(null);
@@ -110,6 +135,11 @@ export default function Home() {
           source: {
             url: videoUrl,
             title: null
+          },
+          font_options: {
+            font_family: fontFamily,
+            font_size: fontSize,
+            font_color: fontColor
           }
         }),
       });
@@ -247,7 +277,7 @@ export default function Home() {
               Video Processing
             </h2>
             <p className="text-gray-600">
-              Submit a YouTube URL or upload a video for automated clip generation
+              Submit a YouTube URL or upload a video for automated clip generation with customizable fonts
             </p>
           </div>
 
@@ -326,6 +356,124 @@ export default function Home() {
                 )}
               </div>
             )}
+
+            {/* Font Customization Section */}
+            <div className="space-y-4 border rounded-lg p-4 bg-gray-50">
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+              >
+                <div className="flex items-center gap-2">
+                  <Paintbrush className="w-4 h-4" />
+                  <h3 className="text-sm font-medium text-black">Font & Style Options</h3>
+                </div>
+                <button type="button" className="text-xs text-gray-500">
+                  {showAdvancedOptions ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              {showAdvancedOptions && (
+                <div className="space-y-4 pt-2">
+                  {/* Font Family Selector */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-black flex items-center gap-2">
+                      <Type className="w-4 h-4" />
+                      Font Family
+                    </label>
+                    <Select value={fontFamily} onValueChange={setFontFamily} disabled={isLoading}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select font" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableFonts.map((font) => (
+                          <SelectItem key={font.name} value={font.name}>
+                            {font.display_name}
+                          </SelectItem>
+                        ))}
+                        {availableFonts.length === 0 && (
+                          <SelectItem value="TikTokSans-Regular">TikTok Sans Regular</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Font Size Slider */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-black">
+                      Font Size: {fontSize}px
+                    </label>
+                    <div className="px-2">
+                      <Slider
+                        value={[fontSize]}
+                        onValueChange={(value) => setFontSize(value[0])}
+                        max={48}
+                        min={12}
+                        step={2}
+                        disabled={isLoading}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>12px</span>
+                      <span>48px</span>
+                    </div>
+                  </div>
+
+                  {/* Font Color Picker */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-black flex items-center gap-2">
+                      <Palette className="w-4 h-4" />
+                      Font Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={fontColor}
+                        onChange={(e) => setFontColor(e.target.value)}
+                        disabled={isLoading}
+                        className="w-12 h-8 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <Input
+                        type="text"
+                        value={fontColor}
+                        onChange={(e) => setFontColor(e.target.value)}
+                        disabled={isLoading}
+                        placeholder="#FFFFFF"
+                        className="flex-1 h-8"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                      />
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      {["#FFFFFF", "#000000", "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1"].map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setFontColor(color)}
+                          disabled={isLoading}
+                          className="w-6 h-6 rounded border-2 border-gray-300 cursor-pointer hover:scale-110 transition-transform disabled:cursor-not-allowed"
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="mt-4 p-3 bg-black rounded-lg">
+                    <p
+                      style={{
+                        color: fontColor,
+                        fontSize: `${Math.min(fontSize, 18)}px`,
+                        fontFamily: fontFamily.includes('TikTok') ? 'system-ui' : 'system-ui'
+                      }}
+                      className="text-center font-medium"
+                    >
+                      Preview: Your subtitle will look like this
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {isLoading && (
               <div className="space-y-4">

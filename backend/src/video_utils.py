@@ -26,8 +26,14 @@ config = Config()
 class VideoProcessor:
     """Handles video processing operations with optimized settings."""
 
-    def __init__(self):
-        self.font_path = str(Path(__file__).parent.parent / "fonts" / "THEBOLDFONT-FREEVERSION.ttf")
+    def __init__(self, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF"):
+        self.font_family = font_family
+        self.font_size = font_size
+        self.font_color = font_color
+        self.font_path = str(Path(__file__).parent.parent / "fonts" / f"{font_family}.ttf")
+        # Fallback to default font if custom font doesn't exist
+        if not Path(self.font_path).exists():
+            self.font_path = str(Path(__file__).parent.parent / "fonts" / "THEBOLDFONT-FREEVERSION.ttf")
 
     def get_optimal_encoding_settings(self, target_quality: str = "high") -> Dict[str, Any]:
         """Get optimal encoding settings for different quality levels."""
@@ -466,7 +472,7 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
         return 0.0
 
-def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: float, video_width: int, video_height: int) -> List[TextClip]:
+def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: float, video_width: int, video_height: int, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> List[TextClip]:
     """Create subtitles using AssemblyAI's precise word timing."""
     transcript_data = load_cached_transcript_data(video_path)
 
@@ -504,11 +510,11 @@ def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: f
 
     # Group words into subtitle segments (3-4 words per subtitle for readability)
     subtitle_clips = []
-    processor = VideoProcessor()
+    processor = VideoProcessor(font_family, font_size, font_color)
 
-    # Smaller font size calculation - reduced from 45 to 28 base size
-    base_font_size = 50
-    font_size = max(20, min(40, int(base_font_size * (video_width / 720))))
+    # Use custom font size or calculate based on video width
+    calculated_font_size = max(20, min(40, int(font_size * (video_width / 720))))
+    final_font_size = calculated_font_size
 
     words_per_subtitle = 3
     for i in range(0, len(relevant_words), words_per_subtitle):
@@ -529,12 +535,12 @@ def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: f
         text = ' '.join(word['text'] for word in word_group)
 
         try:
-            # Create high-quality text clip
+            # Create high-quality text clip with custom font settings
             text_clip = TextClip(
                 text=text,
                 font=processor.font_path,
-                font_size=font_size,
-                color='yellow',
+                font_size=final_font_size,
+                color=font_color,
                 stroke_color='black',
                 stroke_width=1,
                 method='label',
@@ -556,7 +562,7 @@ def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: f
     logger.info(f"Created {len(subtitle_clips)} subtitle elements from AssemblyAI data")
     return subtitle_clips
 
-def create_optimized_clip(video_path: Path, start_time: float, end_time: float, output_path: Path, add_subtitles: bool = True) -> bool:
+def create_optimized_clip(video_path: Path, start_time: float, end_time: float, output_path: Path, add_subtitles: bool = True, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> bool:
     """Create optimized 9:16 clip with AssemblyAI subtitles."""
     try:
         duration = end_time - start_time
@@ -592,14 +598,14 @@ def create_optimized_clip(video_path: Path, start_time: float, end_time: float, 
 
         if add_subtitles:
             subtitle_clips = create_assemblyai_subtitles(
-                video_path, start_time, end_time, new_width, new_height
+                video_path, start_time, end_time, new_width, new_height, font_family, font_size, font_color
             )
             final_clips.extend(subtitle_clips)
 
         # Compose and encode
         final_clip = CompositeVideoClip(final_clips) if len(final_clips) > 1 else cropped_clip
 
-        processor = VideoProcessor()
+        processor = VideoProcessor(font_family, font_size, font_color)
         encoding_settings = processor.get_optimal_encoding_settings("high")
 
         final_clip.write_videofile(
@@ -622,7 +628,7 @@ def create_optimized_clip(video_path: Path, start_time: float, end_time: float, 
         logger.error(f"Failed to create clip: {e}")
         return False
 
-def create_clips_from_segments(video_path: Path, segments: List[Dict[str, Any]], output_dir: Path) -> List[Dict[str, Any]]:
+def create_clips_from_segments(video_path: Path, segments: List[Dict[str, Any]], output_dir: Path, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> List[Dict[str, Any]]:
     """Create optimized video clips from segments."""
     logger.info(f"Creating {len(segments)} clips")
 
@@ -647,7 +653,7 @@ def create_clips_from_segments(video_path: Path, segments: List[Dict[str, Any]],
             clip_filename = f"clip_{i+1}_{segment['start_time'].replace(':', '')}-{segment['end_time'].replace(':', '')}.mp4"
             clip_path = output_dir / clip_filename
 
-            success = create_optimized_clip(video_path, start_seconds, end_seconds, clip_path)
+            success = create_optimized_clip(video_path, start_seconds, end_seconds, clip_path, True, font_family, font_size, font_color)
 
             if success:
                 clip_info = {
@@ -671,6 +677,141 @@ def create_clips_from_segments(video_path: Path, segments: List[Dict[str, Any]],
 
     logger.info(f"Successfully created {len(clips_info)}/{len(segments)} clips")
     return clips_info
+
+def get_available_transitions() -> List[str]:
+    """Get list of available transition video files."""
+    transitions_dir = Path(__file__).parent.parent / "transitions"
+    if not transitions_dir.exists():
+        logger.warning("Transitions directory not found")
+        return []
+
+    transition_files = []
+    for file_path in transitions_dir.glob("*.mp4"):
+        transition_files.append(str(file_path))
+
+    logger.info(f"Found {len(transition_files)} transition files")
+    return transition_files
+
+def apply_transition_effect(clip1_path: Path, clip2_path: Path, transition_path: Path, output_path: Path) -> bool:
+    """Apply transition effect between two clips using a transition video."""
+    try:
+        from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
+
+        # Load clips
+        clip1 = VideoFileClip(str(clip1_path))
+        clip2 = VideoFileClip(str(clip2_path))
+        transition = VideoFileClip(str(transition_path))
+
+        # Ensure transition duration is reasonable (max 1.5 seconds)
+        transition_duration = min(1.5, transition.duration)
+        transition = transition.subclipped(0, transition_duration)
+
+        # Resize transition to match clip dimensions
+        clip_size = clip1.size
+        transition = transition.resized(clip_size)
+
+        # Create fade effect with transition
+        fade_duration = 0.5  # Half second fade
+
+        # Fade out clip1
+        clip1_faded = clip1.with_effects(["fadeout", fade_duration])
+
+        # Fade in clip2
+        clip2_faded = clip2.with_effects(["fadein", fade_duration])
+
+        # Combine: clip1 -> transition -> clip2
+        final_clip = concatenate_videoclips([
+            clip1_faded,
+            transition,
+            clip2_faded
+        ], method="compose")
+
+        # Write output
+        processor = VideoProcessor()
+        encoding_settings = processor.get_optimal_encoding_settings("high")
+
+        final_clip.write_videofile(
+            str(output_path),
+            temp_audiofile='temp-audio.m4a',
+            remove_temp=True,
+            logger=None,
+            **encoding_settings
+        )
+
+        # Cleanup
+        final_clip.close()
+        clip1.close()
+        clip2.close()
+        transition.close()
+
+        logger.info(f"Applied transition effect: {output_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error applying transition effect: {e}")
+        return False
+
+def create_clips_with_transitions(video_path: Path, segments: List[Dict[str, Any]], output_dir: Path, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> List[Dict[str, Any]]:
+    """Create video clips with transition effects between them."""
+    logger.info(f"Creating {len(segments)} clips with transitions")
+
+    # First create individual clips
+    clips_info = create_clips_from_segments(video_path, segments, output_dir, font_family, font_size, font_color)
+
+    if len(clips_info) < 2:
+        logger.info("Not enough clips to apply transitions")
+        return clips_info
+
+    # Get available transitions
+    transitions = get_available_transitions()
+    if not transitions:
+        logger.warning("No transition files found, returning clips without transitions")
+        return clips_info
+
+    # Create clips with transitions
+    transition_output_dir = output_dir / "with_transitions"
+    transition_output_dir.mkdir(parents=True, exist_ok=True)
+
+    enhanced_clips = []
+
+    for i, clip_info in enumerate(clips_info):
+        if i == 0:
+            # First clip - no transition before
+            enhanced_clips.append(clip_info)
+        else:
+            # Apply transition before this clip
+            prev_clip_path = Path(clips_info[i-1]["path"])
+            current_clip_path = Path(clip_info["path"])
+
+            # Select transition (cycle through available transitions)
+            transition_path = Path(transitions[i % len(transitions)])
+
+            # Create output path for clip with transition
+            transition_filename = f"transition_{i}_{clip_info['filename']}"
+            transition_output_path = transition_output_dir / transition_filename
+
+            success = apply_transition_effect(
+                prev_clip_path,
+                current_clip_path,
+                transition_path,
+                transition_output_path
+            )
+
+            if success:
+                # Update clip info with transition version
+                enhanced_clip_info = clip_info.copy()
+                enhanced_clip_info["filename"] = transition_filename
+                enhanced_clip_info["path"] = str(transition_output_path)
+                enhanced_clip_info["has_transition"] = True
+                enhanced_clips.append(enhanced_clip_info)
+                logger.info(f"Added transition to clip {i+1}")
+            else:
+                # Fallback to original clip if transition fails
+                enhanced_clips.append(clip_info)
+                logger.warning(f"Failed to add transition to clip {i+1}, using original")
+
+    logger.info(f"Successfully created {len(enhanced_clips)} clips with transitions")
+    return enhanced_clips
 
 # Backward compatibility functions
 def get_video_transcript_with_assemblyai(path: Path) -> str:
