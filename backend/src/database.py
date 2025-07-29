@@ -10,7 +10,7 @@ load_dotenv()
 # Database configuration
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip"
+    "postgresql+asyncpg://localhost:5432/supoclip"
 )
 
 # Create async engine
