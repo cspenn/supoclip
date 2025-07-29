@@ -23,11 +23,11 @@ export function SignUp() {
         email,
         password,
         name,
-        callbackURL: "/dashboard",
+        callbackURL: "/",
       });
       setMessage("Account created successfully! You can now sign in.");
-    } catch (error: any) {
-      setMessage(error.message || "Failed to create account");
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Failed to create account");
     } finally {
       setLoading(false);
     }

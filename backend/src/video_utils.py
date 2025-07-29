@@ -176,7 +176,7 @@ def round_to_even(value: int) -> int:
     return value - (value % 2)
 
 def detect_optimal_crop_region(video_clip: VideoFileClip, start_time: float, end_time: float, target_ratio: float = 9/16) -> Tuple[int, int, int, int]:
-    """Detect optimal crop region using face detection."""
+    """Detect optimal crop region using improved face detection."""
     try:
         original_width, original_height = video_clip.size
 
@@ -188,45 +188,24 @@ def detect_optimal_crop_region(video_clip: VideoFileClip, start_time: float, end
             new_width = round_to_even(original_width)
             new_height = round_to_even(int(original_width / target_ratio))
 
-        # Try face detection for better cropping
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-        # Sample a few frames
-        duration = end_time - start_time
-        sample_times = [start_time + duration * 0.2, start_time + duration * 0.5, start_time + duration * 0.8]
-        sample_times = [t for t in sample_times if t < end_time]
-
-        face_centers = []
-
-        for sample_time in sample_times:
-            try:
-                frame = video_clip.get_frame(sample_time)
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-
-                faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
-
-                for (x, y, w, h) in faces:
-                    face_center_x = x + w // 2
-                    face_center_y = y + h // 2
-                    face_area = w * h
-                    face_centers.append((face_center_x, face_center_y, face_area))
-
-            except Exception:
-                continue
+        # Try improved face detection
+        face_centers = detect_faces_in_clip(video_clip, start_time, end_time)
 
         # Calculate crop position
         if face_centers:
-            # Use weighted average of face centers
-            total_weight = sum(area for _, _, area in face_centers)
+            # Use weighted average of face centers with temporal consistency
+            total_weight = sum(area * confidence for _, _, area, confidence in face_centers)
             if total_weight > 0:
-                weighted_x = sum(x * area for x, y, area in face_centers) / total_weight
-                weighted_y = sum(y * area for x, y, area in face_centers) / total_weight
+                weighted_x = sum(x * area * confidence for x, y, area, confidence in face_centers) / total_weight
+                weighted_y = sum(y * area * confidence for x, y, area, confidence in face_centers) / total_weight
+
+                # Add slight bias towards upper portion for better face framing
+                weighted_y = max(0, weighted_y - new_height * 0.1)
 
                 x_offset = max(0, min(int(weighted_x - new_width // 2), original_width - new_width))
                 y_offset = max(0, min(int(weighted_y - new_height // 2), original_height - new_height))
 
-                logger.info(f"Face-centered crop: {len(face_centers)} faces detected")
+                logger.info(f"Face-centered crop: {len(face_centers)} faces detected with improved algorithm")
             else:
                 # Center crop
                 x_offset = (original_width - new_width) // 2 if original_width > new_width else 0
@@ -259,6 +238,205 @@ def detect_optimal_crop_region(video_clip: VideoFileClip, start_time: float, end
         y_offset = round_to_even((original_height - new_height) // 2) if original_height > new_height else 0
 
         return (x_offset, y_offset, new_width, new_height)
+
+def detect_faces_in_clip(video_clip: VideoFileClip, start_time: float, end_time: float) -> List[Tuple[int, int, int, float]]:
+    """
+    Improved face detection using multiple methods and temporal consistency.
+    Returns list of (x, y, area, confidence) tuples.
+    """
+    face_centers = []
+
+    try:
+        # Try to use MediaPipe (most accurate)
+        mp_face_detection = None
+        try:
+            import mediapipe as mp
+            mp_face_detection = mp.solutions.face_detection.FaceDetection(
+                model_selection=0,  # 0 for short-range (better for close faces)
+                min_detection_confidence=0.5
+            )
+            logger.info("Using MediaPipe face detector")
+        except ImportError:
+            logger.info("MediaPipe not available, falling back to OpenCV")
+        except Exception as e:
+            logger.warning(f"MediaPipe face detector failed to initialize: {e}")
+
+        # Initialize OpenCV face detectors as fallback
+        haar_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        # Try to load DNN face detector (more accurate than Haar)
+        dnn_net = None
+        try:
+            # Load OpenCV's DNN face detector
+            prototxt_path = cv2.data.haarcascades.replace('haarcascades', 'opencv_face_detector.pbtxt')
+            model_path = cv2.data.haarcascades.replace('haarcascades', 'opencv_face_detector_uint8.pb')
+
+            # If DNN model files don't exist, we'll fall back to Haar cascade
+            import os
+            if os.path.exists(prototxt_path) and os.path.exists(model_path):
+                dnn_net = cv2.dnn.readNetFromTensorflow(model_path, prototxt_path)
+                logger.info("OpenCV DNN face detector loaded as backup")
+            else:
+                logger.info("OpenCV DNN face detector not available")
+        except Exception:
+            logger.info("OpenCV DNN face detector failed to load")
+
+        # Sample more frames for better face detection (every 0.5 seconds)
+        duration = end_time - start_time
+        sample_interval = min(0.5, duration / 10)  # At least 10 samples, max every 0.5s
+        sample_times = []
+
+        current_time = start_time
+        while current_time < end_time:
+            sample_times.append(current_time)
+            current_time += sample_interval
+
+        # Ensure we always sample the middle and end
+        if duration > 1.0:
+            middle_time = start_time + duration / 2
+            if middle_time not in sample_times:
+                sample_times.append(middle_time)
+
+        sample_times = [t for t in sample_times if t < end_time]
+        logger.info(f"Sampling {len(sample_times)} frames for face detection")
+
+        for sample_time in sample_times:
+            try:
+                frame = video_clip.get_frame(sample_time)
+                height, width = frame.shape[:2]
+                detected_faces = []
+
+                # Try MediaPipe first (most accurate)
+                if mp_face_detection is not None:
+                    try:
+                        # MediaPipe expects RGB format
+                        results = mp_face_detection.process(frame)
+
+                        if results.detections:
+                            for detection in results.detections:
+                                bbox = detection.location_data.relative_bounding_box
+                                confidence = detection.score[0]
+
+                                # Convert relative coordinates to absolute
+                                x = int(bbox.xmin * width)
+                                y = int(bbox.ymin * height)
+                                w = int(bbox.width * width)
+                                h = int(bbox.height * height)
+
+                                if w > 30 and h > 30:  # Minimum face size
+                                    detected_faces.append((x, y, w, h, confidence))
+                    except Exception as e:
+                        logger.warning(f"MediaPipe detection failed for frame at {sample_time}s: {e}")
+
+                # If MediaPipe didn't find faces, try DNN detector
+                if not detected_faces and dnn_net is not None:
+                    try:
+                        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                        blob = cv2.dnn.blobFromImage(frame_bgr, 1.0, (300, 300), [104, 117, 123])
+                        dnn_net.setInput(blob)
+                        detections = dnn_net.forward()
+
+                        for i in range(detections.shape[2]):
+                            confidence = detections[0, 0, i, 2]
+                            if confidence > 0.5:  # Confidence threshold
+                                x1 = int(detections[0, 0, i, 3] * width)
+                                y1 = int(detections[0, 0, i, 4] * height)
+                                x2 = int(detections[0, 0, i, 5] * width)
+                                y2 = int(detections[0, 0, i, 6] * height)
+
+                                w = x2 - x1
+                                h = y2 - y1
+
+                                if w > 30 and h > 30:  # Minimum face size
+                                    detected_faces.append((x1, y1, w, h, confidence))
+                    except Exception as e:
+                        logger.warning(f"DNN detection failed for frame at {sample_time}s: {e}")
+
+                # If still no faces found, use Haar cascade
+                if not detected_faces:
+                    try:
+                        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
+                        faces = haar_cascade.detectMultiScale(
+                            gray,
+                            scaleFactor=1.05,  # More sensitive
+                            minNeighbors=3,    # Less strict
+                            minSize=(40, 40),  # Smaller minimum size
+                            maxSize=(int(width*0.7), int(height*0.7))  # Maximum size limit
+                        )
+
+                        for (x, y, w, h) in faces:
+                            # Estimate confidence based on face size and position
+                            face_area = w * h
+                            relative_size = face_area / (width * height)
+                            confidence = min(0.9, 0.3 + relative_size * 2)  # Rough confidence estimate
+                            detected_faces.append((x, y, w, h, confidence))
+                    except Exception as e:
+                        logger.warning(f"Haar cascade detection failed for frame at {sample_time}s: {e}")
+
+                # Process detected faces
+                for (x, y, w, h, confidence) in detected_faces:
+                    face_center_x = x + w // 2
+                    face_center_y = y + h // 2
+                    face_area = w * h
+
+                    # Filter out very small or very large faces
+                    frame_area = width * height
+                    relative_area = face_area / frame_area
+
+                    if 0.005 < relative_area < 0.3:  # Face should be 0.5% to 30% of frame
+                        face_centers.append((face_center_x, face_center_y, face_area, confidence))
+
+            except Exception as e:
+                logger.warning(f"Error detecting faces in frame at {sample_time}s: {e}")
+                continue
+
+        # Close MediaPipe detector
+        if mp_face_detection is not None:
+            mp_face_detection.close()
+
+        # Remove outliers (faces that are very far from the median position)
+        if len(face_centers) > 2:
+            face_centers = filter_face_outliers(face_centers)
+
+        logger.info(f"Detected {len(face_centers)} reliable face centers")
+        return face_centers
+
+    except Exception as e:
+        logger.error(f"Error in face detection: {e}")
+        return []
+
+def filter_face_outliers(face_centers: List[Tuple[int, int, int, float]]) -> List[Tuple[int, int, int, float]]:
+    """Remove face detections that are outliers (likely false positives)."""
+    if len(face_centers) < 3:
+        return face_centers
+
+    try:
+        # Calculate median position
+        x_positions = [x for x, y, area, conf in face_centers]
+        y_positions = [y for x, y, area, conf in face_centers]
+
+        median_x = np.median(x_positions)
+        median_y = np.median(y_positions)
+
+        # Calculate standard deviation
+        std_x = np.std(x_positions)
+        std_y = np.std(y_positions)
+
+        # Filter out faces that are more than 2 standard deviations away
+        filtered_faces = []
+        for face in face_centers:
+            x, y, area, conf = face
+            if (abs(x - median_x) <= 2 * std_x and abs(y - median_y) <= 2 * std_y):
+                filtered_faces.append(face)
+
+        logger.info(f"Filtered {len(face_centers)} -> {len(filtered_faces)} faces (removed outliers)")
+        return filtered_faces if filtered_faces else face_centers  # Return original if all filtered
+
+    except Exception as e:
+        logger.warning(f"Error filtering face outliers: {e}")
+        return face_centers
 
 def parse_timestamp_to_seconds(timestamp_str: str) -> float:
     """Parse timestamp string to seconds."""
@@ -329,7 +507,7 @@ def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: f
     processor = VideoProcessor()
 
     # Smaller font size calculation - reduced from 45 to 28 base size
-    base_font_size = 28
+    base_font_size = 50
     font_size = max(20, min(40, int(base_font_size * (video_width / 720))))
 
     words_per_subtitle = 3
@@ -356,26 +534,20 @@ def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: f
                 text=text,
                 font=processor.font_path,
                 font_size=font_size,
-                color='white',
+                color='yellow',
                 stroke_color='black',
-                stroke_width=1,  # Reduced from max(2, int(font_size / 15)) for cleaner look
-                method='label',  # Changed from 'caption' to 'label' for better quality
+                stroke_width=1,
+                method='label',
                 text_align='center'
             ).with_duration(segment_duration).with_start(segment_start)
 
-            # Position at bottom with more padding
+            # Position in lower middle (not full bottom, not center)
             text_height = text_clip.size[1] if text_clip.size else 40
-            vertical_position = video_height - text_height - 80  # Increased padding from 60 to 80
+            # Place at about 75% of the way down the video (lower middle)
+            vertical_position = int(video_height * 0.75 - text_height // 2)
             text_clip = text_clip.with_position(('center', vertical_position))
 
-            # Subtle background for better readability - reduced opacity and padding
-            bg_clip = ColorClip(
-                size=(text_clip.size[0] + 16, text_height + 12),  # Reduced padding
-                color=(0, 0, 0),
-                duration=segment_duration
-            ).with_opacity(0.3).with_position(('center', vertical_position - 6)).with_start(segment_start)  # Reduced opacity
-
-            subtitle_clips.extend([bg_clip, text_clip])
+            subtitle_clips.extend([text_clip])
 
         except Exception as e:
             logger.warning(f"Failed to create subtitle for '{text}': {e}")

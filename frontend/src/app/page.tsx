@@ -1,46 +1,106 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
-import { PlayCircle, Clock, ArrowRight, Youtube, Zap, Shield } from "lucide-react";
+import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+
+interface ProcessingStatus {
+  step: string;
+  message: string;
+  progress: number;
+}
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [currentStep, setCurrentStep] = useState("");
+  const [sourceType, setSourceType] = useState<"youtube" | "upload">("youtube");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [sourceTitle, setSourceTitle] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { data: session, isPending } = useSession();
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  // Always treat file input as uncontrolled, and store file in a ref
+  const fileRef = useRef<File | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    fileRef.current = file;
+    setFileName(file ? file.name : null);
+  };
+
+  const getStepIcon = (step: string) => {
+    const iconMap: Record<string, React.ReactElement> = {
+      validation: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />,
+      user_check: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />,
+      source_analysis: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />,
+      youtube_info: <Youtube className="w-4 h-4 text-red-500" />,
+      database_save: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />,
+      download: <Loader2 className="w-4 h-4 animate-spin text-green-500" />,
+      transcript: <Loader2 className="w-4 h-4 animate-spin text-purple-500" />,
+      ai_analysis: <Loader2 className="w-4 h-4 animate-spin text-orange-500" />,
+      clip_generation: <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />,
+      save_clips: <Loader2 className="w-4 h-4 animate-spin text-pink-500" />,
+      complete: <CheckCircle className="w-4 h-4 text-green-500" />,
+    };
+    return iconMap[step] || <Loader2 className="w-4 h-4 animate-spin text-gray-500" />;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim() || !session?.user?.id) return;
+
+    if (sourceType === "upload" && !fileRef.current) return;
+    if (sourceType === "youtube" && !url.trim()) return;
+    if (!session?.user?.id) return;
 
     setIsLoading(true);
     setProgress(0);
-
-    // Simulate progress for better UX
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return prev;
-        }
-        return prev + 10;
-      });
-    }, 200);
+    setError(null);
+    setStatusMessage("");
+    setCurrentStep("");
+    setTaskId(null);
+    setSourceTitle(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/start`, {
+      let videoUrl = url;
+
+      // If uploading file, upload it first
+      if (sourceType === "upload" && fileRef.current) {
+        setStatusMessage("Uploading video file...");
+        setProgress(5);
+
+        const formData = new FormData();
+        formData.append("video", fileRef.current);
+        const uploadResponse = await fetch(`${apiUrl}/upload`, {
+          method: "POST",
+          body: formData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload error: ${uploadResponse.status}`);
+        }
+
+        const uploadResult = await uploadResponse.json();
+        videoUrl = uploadResult.video_path;
+      }
+
+      // Step 1: Start the task
+      const startResponse = await fetch(`${apiUrl}/start-with-progress`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,36 +108,38 @@ export default function Home() {
         },
         body: JSON.stringify({
           source: {
-            url: url,
+            url: videoUrl,
             title: null
           }
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      if (!startResponse.ok) {
+        throw new Error(`API error: ${startResponse.status}`);
       }
 
-      const result = await response.json();
-      console.log('Task started successfully:', result);
+      const startResult = await startResponse.json();
+      const taskIdFromStart = startResult.task_id;
+      setTaskId(taskIdFromStart);
 
-      setProgress(100);
-
-      // Redirect to task details page after processing
-      setTimeout(() => {
-        window.location.href = `/tasks/${result.task_id}`;
-      }, 1000);
+      // Redirect immediately to the task page
+      window.location.href = `/tasks/${taskIdFromStart}`;
 
     } catch (error) {
       console.error('Error processing video:', error);
-      // TODO: Replace with toast notification
-      alert('Failed to process video. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to process video. Please try again.');
     } finally {
-      clearInterval(progressInterval);
-      setTimeout(() => {
-        setIsLoading(false);
-        setProgress(0);
-      }, 1000);
+      setIsLoading(false);
+      setProgress(0);
+      setStatusMessage("");
+      setCurrentStep("");
+      setFileName(null);
+      fileRef.current = null;
+      setUrl("");
+      setError(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -185,52 +247,173 @@ export default function Home() {
               Video Processing
             </h2>
             <p className="text-gray-600">
-              Submit YouTube URL for automated clip generation
+              Submit a YouTube URL or upload a video for automated clip generation
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Source Type Selector */}
             <div className="space-y-2">
-              <label htmlFor="youtube-url" className="text-sm font-medium text-black">
-                YouTube URL
+              <label htmlFor="source-type" className="text-sm font-medium text-black">
+                Source Type
               </label>
-              <Input
-                id="youtube-url"
-                type="url"
-                placeholder="https://www.youtube.com/watch?v=..."
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={isLoading}
-                className="h-11"
-              />
+              <Select value={sourceType} onValueChange={(value: "youtube" | "upload") => {
+                setSourceType(value);
+                // Reset file input and fileName when switching to YouTube
+                if (value === "youtube") {
+                  setFileName(null);
+                  fileRef.current = null;
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                  }
+                }
+              }} disabled={isLoading}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select source type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="youtube">
+                    <div className="flex items-center gap-2">
+                      <Youtube className="w-4 h-4" />
+                      YouTube URL
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="upload">
+                    <div className="flex items-center gap-2">
+                      <ArrowRight className="w-4 h-4" />
+                      Upload Video
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {isLoading && (
+            {/* Dynamic Input Based on Source Type */}
+            {sourceType === "youtube" ? (
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Processing</span>
-                  <span className="text-black">{progress}%</span>
-                </div>
-                <Progress value={progress} className="h-1" />
+                <label htmlFor="youtube-url" className="text-sm font-medium text-black">
+                  YouTube URL
+                </label>
+                <Input
+                  id="youtube-url"
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={isLoading}
+                  className="h-11"
+                />
               </div>
+            ) : (
+              <div className="space-y-2">
+                <label htmlFor="video-upload" className="text-sm font-medium text-black">
+                  Upload Video
+                </label>
+                <Input
+                  id="video-upload"
+                  type="file"
+                  accept="video/*"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  disabled={isLoading}
+                  className="h-11"
+                // Do not set value prop, keep input uncontrolled
+                />
+                {fileName && (
+                  <div className="text-xs text-gray-600 mt-1">
+                    Selected: {fileName}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Processing</span>
+                    <span className="text-black">{progress}%</span>
+                  </div>
+                  <Progress value={progress} className="h-2" />
+                </div>
+
+                {/* Detailed Status Display */}
+                {currentStep && statusMessage && (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      {getStepIcon(currentStep)}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-black">{statusMessage}</p>
+                        {sourceTitle && (
+                          <p className="text-xs text-gray-500 mt-1">Processing: {sourceTitle}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Step Progress Indicator */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'validation' || currentStep === 'user_check' ? 'bg-blue-100' : progress > 15 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress > 15 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress > 15 ? 'text-green-700' : 'text-gray-600'}>Validation</span>
+                      </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'download' || currentStep === 'youtube_info' ? 'bg-green-100' : progress > 30 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress > 30 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress > 30 ? 'text-green-700' : 'text-gray-600'}>Download</span>
+                      </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'transcript' ? 'bg-purple-100' : progress > 45 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress > 45 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress > 45 ? 'text-green-700' : 'text-gray-600'}>Transcript</span>
+                      </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'ai_analysis' ? 'bg-orange-100' : progress > 60 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress > 60 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress > 60 ? 'text-green-700' : 'text-gray-600'}>AI Analysis</span>
+                      </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'clip_generation' ? 'bg-indigo-100' : progress > 75 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress > 75 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress > 75 ? 'text-green-700' : 'text-gray-600'}>Create Clips</span>
+                      </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'complete' ? 'bg-green-100' : progress >= 100 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <CheckCircle className={`w-3 h-3 ${progress >= 100 ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className={progress >= 100 ? 'text-green-700' : 'text-gray-600'}>Complete</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {error && (
+              <Alert className="mt-6 border-red-200 bg-red-50">
+                <AlertCircle className="h-4 w-4 text-red-500" />
+                <AlertDescription className="text-sm text-red-700">
+                  {error}
+                </AlertDescription>
+              </Alert>
             )}
 
             <Button
               type="submit"
               className="w-full h-11"
-              disabled={!url.trim() || isLoading}
+              disabled={
+                (sourceType === "youtube" && !url.trim()) ||
+                (sourceType === "upload" && !fileRef.current) ||
+                isLoading
+              }
             >
               {isLoading ? "Processing..." : "Process Video"}
             </Button>
-          </form>
 
-          {url && !isLoading && (
-            <Alert className="mt-6">
-              <AlertDescription className="text-sm">
-                Ready to process: {url.length > 50 ? url.substring(0, 50) + "..." : url}
-              </AlertDescription>
-            </Alert>
-          )}
+            {((sourceType === "youtube" && url) || (sourceType === "upload" && fileName)) && !isLoading && (
+              <Alert className="mt-6">
+                <AlertDescription className="text-sm">
+                  Ready to process: {sourceType === "youtube"
+                    ? (url.length > 50 ? url.substring(0, 50) + "..." : url)
+                    : fileName
+                  }
+                </AlertDescription>
+              </Alert>
+            )}
+          </form>
         </div>
       </div>
     </div>

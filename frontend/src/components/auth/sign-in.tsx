@@ -23,11 +23,11 @@ export function SignIn() {
       await signIn.email({
         email,
         password,
-        callbackURL: "/dashboard",
+        callbackURL: "/",
       });
       setMessage("Signed in successfully!");
     } catch (error: unknown) {
-      setMessage(error.message || "Failed to sign in");
+      setMessage(error instanceof Error ? error.message : "Failed to sign in");
     } finally {
       setLoading(false);
     }

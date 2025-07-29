@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSession } from "@/lib/auth-client";
-import { ArrowLeft, Download, Clock, Star } from "lucide-react";
+import { ArrowLeft, Download, Clock, Star, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import DynamicVideoPlayer from "@/components/dynamic-video-player";
 
 interface Clip {
   id: string;
@@ -32,6 +33,7 @@ interface TaskDetails {
   source_id: string;
   source_title: string;
   source_type: string;
+  status: string;
   clips_count: number;
   created_at: string;
   updated_at: string;
@@ -46,28 +48,28 @@ export default function TaskPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchTaskStatus = async () => {
     if (!session?.user?.id || !params.id) return;
 
-    const fetchTaskData = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-        // Fetch task details
-        const taskResponse = await fetch(`${apiUrl}/tasks/${params.id}`, {
-          headers: {
-            'user_id': session.user.id,
-          },
-        });
+      // Fetch task details (including status)
+      const taskResponse = await fetch(`${apiUrl}/tasks/${params.id}`, {
+        headers: {
+          'user_id': session.user.id,
+        },
+      });
 
-        if (!taskResponse.ok) {
-          throw new Error(`Failed to fetch task: ${taskResponse.status}`);
-        }
+      if (!taskResponse.ok) {
+        throw new Error(`Failed to fetch task: ${taskResponse.status}`);
+      }
 
-        const taskData = await taskResponse.json();
-        setTask(taskData);
+      const taskData = await taskResponse.json();
+      setTask(taskData);
 
-        // Fetch clips for this task
+      // Only fetch clips if task is completed
+      if (taskData.status === 'completed') {
         const clipsResponse = await fetch(`${apiUrl}/tasks/${params.id}/clips`, {
           headers: {
             'user_id': session.user.id,
@@ -80,17 +82,39 @@ export default function TaskPage() {
 
         const clipsData = await clipsResponse.json();
         setClips(clipsData.clips || []);
+      }
 
-      } catch (err) {
-        console.error('Error fetching task data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load task');
+    } catch (err) {
+      console.error('Error fetching task data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load task');
+    }
+  };
+
+  useEffect(() => {
+    if (!session?.user?.id || !params.id) return;
+
+    const fetchTaskData = async () => {
+      try {
+        setIsLoading(true);
+        await fetchTaskStatus();
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchTaskData();
-  }, [session?.user?.id, params.id]);
+
+    // Set up polling every 5 seconds if task is not completed
+    const pollInterval = setInterval(async () => {
+      if (task && task.status === 'processing') {
+        await fetchTaskStatus();
+      } else if (task && (task.status === 'completed' || task.status === 'error')) {
+        clearInterval(pollInterval);
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [session?.user?.id, params.id, task?.status]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -180,7 +204,68 @@ export default function TaskPage() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {clips.length === 0 ? (
+        {task?.status === 'processing' ? (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-xl font-semibold text-black mb-2">Processing Video</h2>
+              <p className="text-gray-600">Generating clips from your video. This usually takes 2-3 minutes.</p>
+            </div>
+
+            {/* Skeleton for 2 clips being generated */}
+            {[1, 2].map((i) => (
+              <Card key={i} className="overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="flex flex-col lg:flex-row">
+                    {/* Video Player Skeleton */}
+                    <div className="bg-gray-200 relative flex-shrink-0 flex items-center justify-center w-full lg:w-96 h-48 lg:h-64">
+                      <Skeleton className="w-full h-full" />
+                    </div>
+
+                    {/* Clip Details Skeleton */}
+                    <div className="p-6 flex-1">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <Skeleton className="h-6 w-24 mb-2" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                        <Skeleton className="h-6 w-12" />
+                      </div>
+
+                      <div className="mb-4">
+                        <Skeleton className="h-4 w-16 mb-2" />
+                        <Skeleton className="h-20 w-full" />
+                      </div>
+
+                      <div className="mb-4">
+                        <Skeleton className="h-4 w-20 mb-2" />
+                        <Skeleton className="h-4 w-full mb-1" />
+                        <Skeleton className="h-4 w-3/4" />
+                      </div>
+
+                      <Skeleton className="h-8 w-24" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : task?.status === 'error' ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <div className="text-red-600 mb-4">
+                <AlertCircle className="w-12 h-12 mx-auto mb-2" />
+                <h2 className="text-xl font-semibold">Processing Failed</h2>
+              </div>
+              <p className="text-gray-600 mb-4">There was an error processing your video. Please try again.</p>
+              <Link href="/">
+                <Button>
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Home
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : clips.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
               <p className="text-gray-600">No clips have been generated for this task yet.</p>
@@ -193,15 +278,8 @@ export default function TaskPage() {
                 <CardContent className="p-0">
                   <div className="flex flex-col lg:flex-row">
                     {/* Video Player */}
-                    <div className="bg-black relative flex-shrink-0 flex items-center justify-center lg:w-80">
-                      <video
-                        controls
-                        className="w-full h-auto max-h-[70vh] object-contain"
-                        poster="/placeholder-video.jpg"
-                      >
-                        <source src={`http://localhost:8000${clip.video_url}`} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
+                    <div className="bg-black relative flex-shrink-0 flex items-center justify-center">
+                      <DynamicVideoPlayer src={`http://localhost:8000${clip.video_url}`} poster="/placeholder-video.jpg" />
                     </div>
 
                     {/* Clip Details */}
