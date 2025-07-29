@@ -151,9 +151,9 @@ async def start_task(request: Request):
             video_path = download_youtube_video(raw_source["url"])
             if video_path:
                 logger.info(f"✅ Video downloaded to: {video_path}")
-                logger.info("🎤 Starting transcript generation with Whisper")
+                logger.info("🎤 Starting transcript generation with AssemblyAI + SRT equalization")
                 transcript = get_video_transcript(video_path)
-                logger.info(f"✅ Transcript generated (length: {len(transcript)} characters)")
+                logger.info(f"✅ AssemblyAI transcript generated with 10-char line equalization (length: {len(transcript)} characters)")
 
                 logger.info("🤖 Starting AI analysis for relevant segments")
                 relevant_parts = await get_most_relevant_parts_by_transcript(transcript)

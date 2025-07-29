@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSession } from "@/lib/auth-client";
-import { ArrowLeft, Download, Play, Clock, Star } from "lucide-react";
+import { ArrowLeft, Download, Clock, Star } from "lucide-react";
 import Link from "next/link";
 
 interface Clip {
@@ -191,12 +191,12 @@ export default function TaskPage() {
             {clips.map((clip) => (
               <Card key={clip.id} className="overflow-hidden">
                 <CardContent className="p-0">
-                  <div className="grid md:grid-cols-2 gap-0">
+                  <div className="flex flex-col lg:flex-row">
                     {/* Video Player */}
-                    <div className="bg-black relative aspect-video">
+                    <div className="bg-black relative flex-shrink-0 flex items-center justify-center lg:w-80">
                       <video
                         controls
-                        className="w-full h-full object-cover"
+                        className="w-full h-auto max-h-[70vh] object-contain"
                         poster="/placeholder-video.jpg"
                       >
                         <source src={`http://localhost:8000${clip.video_url}`} type="video/mp4" />

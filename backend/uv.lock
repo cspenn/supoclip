@@ -168,6 +168,21 @@ wheels = [
 ]
 
 [[package]]
+name = "assemblyai"
+version = "0.42.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/35/e8/e1947433beb862a1a976e688fdb63d8a731aad6fef7c2771c465c4fc9f54/assemblyai-0.42.0.tar.gz", hash = "sha256:5c48f27d4982e69081b2de0f6b6c20262680e3602ad1fcd09c9eb38275c00923", size = 53550 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/31/00c86528de0b7a2fb3d0d78ae73611b3a98bcd9ea8521cdac9f6e2bfe124/assemblyai-0.42.0-py3-none-any.whl", hash = "sha256:1471065d855778df80489d7322ff928d2db9808b0b5cbc0e4c17a83f66e2f8c6", size = 49585 },
+]
+
+[[package]]
 name = "asyncpg"
 version = "0.30.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2240,6 +2255,24 @@ wheels = [
 ]
 
 [[package]]
+name = "srt"
+version = "3.5.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/b7/4a1bc231e0681ebf339337b0cd05b91dc6a0d701fa852bb812e244b7a030/srt-3.5.3.tar.gz", hash = "sha256:4884315043a4f0740fd1f878ed6caa376ac06d70e135f306a6dc44632eed0cc0", size = 28296 }
+
+[[package]]
+name = "srt-equalizer"
+version = "0.1.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "srt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/60/0ef6d49662e1b8d30e54a35b77ea8183ca85a7b9cf7d1ec836cc07450551/srt_equalizer-0.1.10.tar.gz", hash = "sha256:5f6b1b2c48b12bb1caab13822d7ddd0a54a87772b824a0aa2ba64c033d379353", size = 5189 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/79/580db2774a371dc5ec7c71fbd841909d8e76f5ba97d2b4cd55f6fcf7a80e/srt_equalizer-0.1.10-py3-none-any.whl", hash = "sha256:7b0cca73374ff7351badf2dc5266cabefdfd36b91ff736a535445562036cf8ed", size = 5943 },
+]
+
+[[package]]
 name = "sse-starlette"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2270,6 +2303,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "assemblyai" },
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "greenlet" },
@@ -2280,6 +2314,8 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "setuptools-rust" },
     { name = "sqlalchemy" },
+    { name = "srt" },
+    { name = "srt-equalizer" },
     { name = "uvicorn" },
     { name = "whisper" },
     { name = "yt-dlp" },
@@ -2288,6 +2324,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
+    { name = "assemblyai", specifier = ">=0.35.0" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "fastapi", specifier = ">=0.110.0" },
     { name = "greenlet", specifier = ">=2.0.0" },
@@ -2298,6 +2335,8 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "setuptools-rust", specifier = ">=1.11.1" },
     { name = "sqlalchemy", specifier = ">=2.0.25" },
+    { name = "srt", specifier = ">=3.5.3" },
+    { name = "srt-equalizer", specifier = ">=0.1.10" },
     { name = "uvicorn", specifier = ">=0.27.0" },
     { name = "whisper", specifier = ">=1.1.10" },
     { name = "yt-dlp", specifier = ">=2025.7.21" },

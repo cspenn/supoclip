@@ -10,6 +10,7 @@ class Config:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.assembly_ai_api_key = os.getenv("ASSEMBLY_AI_API_KEY")
 
         self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "3600"))
         self.output_dir = os.getenv("OUTPUT_DIR", "outputs")
