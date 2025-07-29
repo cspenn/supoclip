@@ -4,6 +4,8 @@
 
 OpusClip charges $15-29/month and slaps watermarks on every free video. SupoClip gives you the same AI-powered video clipping capabilities - completely free, completely open source, and completely watermark-free, while still providing you with a hosted version, that doesn't cost the same amount as your mortgage.
 
+> For the hosted version, sign up for the waitlist here: [SupoClip Hosted](https://supoclip.vercel.app)
+
 ## Why SupoClip Exists
 
 ### The OpusClip Problem
