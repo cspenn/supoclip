@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { signUp } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { signUp } from "../../lib/auth-client";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 
 export function SignUp() {
   const [name, setName] = useState("");
@@ -18,19 +18,25 @@ export function SignUp() {
     setLoading(true);
     setMessage("");
 
-    try {
-      await signUp.email({
-        email,
-        password,
-        name,
-        callbackURL: "/",
-      });
-      setMessage("Account created successfully! You can now sign in.");
-    } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "Failed to create account");
-    } finally {
+    const response = await signUp.email({
+      email,
+      password,
+      name,
+    });
+
+    if (response.error) {
+      setMessage(response.error.message || "Failed to create account");
       setLoading(false);
+      return;
     }
+
+    setMessage("Account created successfully! Signing you in...");
+    setLoading(false);
+
+    // Automatically sign in after successful sign up
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 1000);
   };
 
   return (

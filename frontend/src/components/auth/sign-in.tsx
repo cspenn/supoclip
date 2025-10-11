@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { signIn } from "../../lib/auth-client";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { useRouter } from "next/navigation";
 
 export function SignIn() {
@@ -19,18 +19,25 @@ export function SignIn() {
     setLoading(true);
     setMessage("");
 
-    try {
-      await signIn.email({
-        email,
-        password,
-        callbackURL: "/",
-      });
-      setMessage("Signed in successfully!");
-    } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "Failed to sign in");
-    } finally {
+    const response = await signIn.email({
+      email,
+      password,
+    });
+
+    if (response.error) {
+      setMessage(response.error.message || "Failed to sign in");
       setLoading(false);
+      return;
     }
+
+    setMessage("Signed in successfully!");
+    setLoading(false);
+
+    // Redirect after successful sign in
+    setTimeout(() => {
+      router.push("/");
+      router.refresh();
+    }, 500);
   };
 
   return (

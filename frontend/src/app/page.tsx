@@ -43,7 +43,7 @@ export default function Home() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  // Load available fonts on component mount
+  // Load available fonts and inject them into the page
   useEffect(() => {
     const loadFonts = async () => {
       try {
@@ -51,6 +51,31 @@ export default function Home() {
         if (response.ok) {
           const data = await response.json();
           setAvailableFonts(data.fonts || []);
+
+          // Dynamically load fonts using @font-face
+          const fontFaceStyles = data.fonts.map((font: { name: string }) => {
+            return `
+              @font-face {
+                font-family: '${font.name}';
+                src: url('${apiUrl}/fonts/${font.name}') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+              }
+            `;
+          }).join('\n');
+
+          // Inject font styles into the page
+          const styleElement = document.createElement('style');
+          styleElement.id = 'custom-fonts';
+          styleElement.innerHTML = fontFaceStyles;
+
+          // Remove existing custom fonts style if present
+          const existingStyle = document.getElementById('custom-fonts');
+          if (existingStyle) {
+            existingStyle.remove();
+          }
+
+          document.head.appendChild(styleElement);
         }
       } catch (error) {
         console.error('Failed to load fonts:', error);
@@ -59,6 +84,27 @@ export default function Home() {
 
     loadFonts();
   }, [apiUrl]);
+
+  // Load user preferences as defaults
+  useEffect(() => {
+    const loadUserPreferences = async () => {
+      if (!session?.user?.id) return;
+
+      try {
+        const response = await fetch('/api/preferences');
+        if (response.ok) {
+          const data = await response.json();
+          setFontFamily(data.fontFamily || "TikTokSans-Regular");
+          setFontSize(data.fontSize || 24);
+          setFontColor(data.fontColor || "#FFFFFF");
+        }
+      } catch (error) {
+        console.error('Failed to load user preferences:', error);
+      }
+    };
+
+    loadUserPreferences();
+  }, [session?.user?.id]);
 
   // Always treat file input as uncontrolled, and store file in a ref
   const fileRef = useRef<File | null>(null);
@@ -251,20 +297,18 @@ export default function Home() {
               <h1 className="text-xl font-bold text-black">SupoClip</h1>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={session.user.image || ""} />
-                  <AvatarFallback className="bg-gray-100 text-black text-sm">
-                    {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-black">{session.user.name}</p>
-                  <p className="text-xs text-gray-500">{session.user.email}</p>
-                </div>
+            <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
+              <Avatar className="w-8 h-8">
+                <AvatarImage src={session.user.image || ""} />
+                <AvatarFallback className="bg-gray-100 text-black text-sm">
+                  {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden sm:block">
+                <p className="text-sm font-medium text-black">{session.user.name}</p>
+                <p className="text-xs text-gray-500">{session.user.email}</p>
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </div>
@@ -464,9 +508,11 @@ export default function Home() {
                       style={{
                         color: fontColor,
                         fontSize: `${Math.min(fontSize, 18)}px`,
-                        fontFamily: fontFamily.includes('TikTok') ? 'system-ui' : 'system-ui'
+                        fontFamily: `'${fontFamily}', system-ui, -apple-system, sans-serif`,
+                        textAlign: 'center',
+                        lineHeight: '1.4'
                       }}
-                      className="text-center font-medium"
+                      className="font-medium"
                     >
                       Preview: Your subtitle will look like this
                     </p>

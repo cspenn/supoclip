@@ -128,9 +128,12 @@ async def start_task(request: Request):
     if source.type == "youtube":
         logger.info("🎬 Getting YouTube video title")
         source.title = get_youtube_video_title(raw_source["url"])
+        if not source.title:
+            logger.warning("⚠️ Could not get YouTube title, using default")
+            source.title = "YouTube Video"
         logger.info(f"📝 Video title: {source.title}")
     else:
-        source.title = raw_source["title"]
+        source.title = raw_source.get("title", "Uploaded Video")
         logger.info(f"📝 Custom title: {source.title}")
 
     relevant_segments_json = []
@@ -298,6 +301,9 @@ async def start_task_with_progress(request: Request):
         if source.type == "youtube":
             try:
                 source.title = get_youtube_video_title(raw_source["url"])
+                if not source.title:
+                    logger.warning("⚠️ Could not get YouTube title, using default")
+                    source.title = "YouTube Video"
                 logger.info(f"📝 YouTube video title: {source.title}")
             except Exception as e:
                 logger.warning(f"⚠️ Could not get YouTube title, using default: {str(e)}")
@@ -553,6 +559,30 @@ async def get_available_fonts():
     except Exception as e:
         logger.error(f"Error retrieving fonts: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving fonts: {str(e)}")
+
+@app.get("/fonts/{font_name}")
+async def get_font_file(font_name: str):
+    """Serve a specific font file"""
+    try:
+        fonts_dir = Path(__file__).parent.parent / "fonts"
+        font_path = fonts_dir / f"{font_name}.ttf"
+
+        if not font_path.exists():
+            raise HTTPException(status_code=404, detail="Font not found")
+
+        return FileResponse(
+            path=str(font_path),
+            media_type="font/ttf",
+            headers={
+                "Cache-Control": "public, max-age=31536000",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving font {font_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error serving font: {str(e)}")
 
 @app.get("/transitions")
 async def get_available_transitions():

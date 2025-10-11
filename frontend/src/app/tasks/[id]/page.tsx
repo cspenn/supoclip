@@ -51,8 +51,8 @@ export default function TaskPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTaskStatus = async () => {
-    if (!session?.user?.id || !params.id) return;
+  const fetchTaskStatus = async (retryCount = 0, maxRetries = 5) => {
+    if (!session?.user?.id || !params.id) return false;
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -63,6 +63,13 @@ export default function TaskPage() {
           'user_id': session.user.id,
         },
       });
+
+      // Handle 404 with retry logic (task might not be persisted yet)
+      if (taskResponse.status === 404 && retryCount < maxRetries) {
+        console.log(`Task not found yet, retrying in ${(retryCount + 1) * 500}ms... (${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
+        return fetchTaskStatus(retryCount + 1, maxRetries);
+      }
 
       if (!taskResponse.ok) {
         throw new Error(`Failed to fetch task: ${taskResponse.status}`);
@@ -87,9 +94,12 @@ export default function TaskPage() {
         setClips(clipsData.clips || []);
       }
 
+      return true;
+
     } catch (err) {
       console.error('Error fetching task data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load task');
+      return false;
     }
   };
 
@@ -107,17 +117,18 @@ export default function TaskPage() {
 
     fetchTaskData();
 
-    // Set up polling every 5 seconds if task is not completed
+    // Set up polling every 5 seconds as fallback (in case SSE doesn't work)
     const pollInterval = setInterval(async () => {
-      if (task && task.status === 'processing') {
+      // Poll while task is null OR while processing
+      if (!task || task.status === 'processing') {
         await fetchTaskStatus();
-      } else if (task && (task.status === 'completed' || task.status === 'error')) {
+      } else if (task.status === 'completed' || task.status === 'error') {
         clearInterval(pollInterval);
       }
     }, 5000);
 
     return () => clearInterval(pollInterval);
-  }, [session?.user?.id, params.id, task?.status]);
+  }, [session?.user?.id, params.id]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -207,14 +218,49 @@ export default function TaskPage() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {task?.status === 'processing' ? (
+        {task?.status === 'processing' || !task ? (
           <div className="space-y-6">
             <div className="text-center mb-8">
-              <h2 className="text-xl font-semibold text-black mb-2">Processing Video</h2>
-              <p className="text-gray-600">Generating clips from your video. This usually takes 2-3 minutes.</p>
+              <h2 className="text-xl font-semibold text-black mb-2">
+                {!task ? "Initializing..." : "Processing Video"}
+              </h2>
+              <p className="text-gray-600">
+                {!task
+                  ? "Setting up your task. This should only take a moment..."
+                  : "Generating clips from your video. This usually takes 2-3 minutes."
+                }
+              </p>
             </div>
 
-            {/* Skeleton for 2 clips being generated */}
+            {/* Real-time Progress Display */}
+            {processingMessage && (
+              <Card className="mb-6">
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <p className="text-sm font-medium text-black">{processingMessage}</p>
+                    </div>
+                    {processingProgress > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-gray-600">
+                          <span>{processingStep}</span>
+                          <span>{processingProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${processingProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Skeleton for clips being generated */}
             {[1, 2].map((i) => (
               <Card key={i} className="overflow-hidden">
                 <CardContent className="p-0">

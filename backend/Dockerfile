@@ -16,18 +16,21 @@ WORKDIR /app
 # Copy pyproject.toml and uv.lock for dependency installation
 COPY pyproject.toml uv.lock* ./
 
-# Create virtual environment and install dependencies
-RUN uv venv .venv
-RUN uv pip install -r pyproject.toml
+# Create virtual environment and install dependencies using uv sync
+RUN uv venv .venv && uv sync
 
 # Copy source code
 COPY src/ ./src/
 
-# Create uploads directory for video processing
-RUN mkdir -p /app/uploads
+# Copy fonts and transitions directories
+COPY fonts/ ./fonts/
+COPY transitions/ ./transitions/
+
+# Create necessary directories for video processing
+RUN mkdir -p /app/uploads /app/clips /app/logs /tmp
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
 
 # Activate virtual environment and start the application
-CMD [".venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD [".venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

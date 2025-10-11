@@ -15,7 +15,11 @@ CREATE TABLE users (
     "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     first_name VARCHAR(100),
     last_name VARCHAR(100),
-    password_hash VARCHAR(255)
+    password_hash VARCHAR(255),
+    -- Default font preferences
+    default_font_family VARCHAR(100) DEFAULT 'TikTokSans-Regular',
+    default_font_size INTEGER DEFAULT 24,
+    default_font_color VARCHAR(7) DEFAULT '#FFFFFF'
 );
 
 -- Source table (created before tasks since tasks reference sources)
@@ -132,11 +136,15 @@ END;
 $$ language 'plpgsql';
 
 -- Create triggers for updated_at and updatedAt
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Users table only has "updatedAt" (Better Auth convention)
 CREATE TRIGGER update_users_updatedAt BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updatedAt_column();
+
+-- Tasks, sources, and generated_clips use snake_case updated_at
 CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_sources_updated_at BEFORE UPDATE ON sources FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_generated_clips_updated_at BEFORE UPDATE ON generated_clips FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Better Auth tables use camelCase "updatedAt"
 CREATE TRIGGER update_session_updatedAt BEFORE UPDATE ON session FOR EACH ROW EXECUTE FUNCTION update_updatedAt_column();
 CREATE TRIGGER update_account_updatedAt BEFORE UPDATE ON account FOR EACH ROW EXECUTE FUNCTION update_updatedAt_column();
 CREATE TRIGGER update_verification_updatedAt BEFORE UPDATE ON verification FOR EACH ROW EXECUTE FUNCTION update_updatedAt_column();
