@@ -39,6 +39,7 @@ services:
         - linux/amd64  # Force x86_64 for MediaPipe compatibility
     container_name: supoclip-backend
     platform: linux/amd64
+    command: [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
     volumes:
@@ -52,6 +53,8 @@ services:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip
       - TEMP_DIR=/app/uploads
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
       - LLM=${LLM:-openai:gpt-4}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -65,11 +68,49 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # Worker process for background video processing
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    container_name: supoclip-worker
+    platform: linux/amd64
+    command: [".venv/bin/arq", "src.workers.tasks.WorkerSettings"]
+    volumes:
+      - ./backend/src:/app/src
+      - uploads:/app/uploads
+      - clips:/app/clips
+      - ./backend/fonts:/app/fonts
+      - ./backend/transitions:/app/transitions
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip
+      - TEMP_DIR=/app/uploads
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
+      - LLM=${LLM:-openai:gpt-4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   # Redis for caching and job queues (useful for video processing)
   redis:

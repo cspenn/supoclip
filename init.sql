@@ -39,6 +39,10 @@ CREATE TABLE tasks (
     generated_clips_ids VARCHAR(36)[], -- Array of clip IDs
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
 
+    -- Progress tracking fields
+    progress INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    progress_message TEXT,
+
     -- Font customization fields
     font_family VARCHAR(100) DEFAULT 'TikTokSans-Regular',
     font_size INTEGER DEFAULT 24,

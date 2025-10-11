@@ -1,0 +1,59 @@
+"""
+Source repository - handles all database operations for video sources.
+"""
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SourceRepository:
+    """Repository for source-related database operations."""
+
+    @staticmethod
+    async def create_source(
+        db: AsyncSession,
+        source_type: str,
+        title: str,
+        url: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Create a new source record and return its ID."""
+        from ..models import Source
+
+        source = Source()
+        source.type = source_type
+        source.title = title
+        source.url = url
+        source.metadata = metadata
+
+        db.add(source)
+        await db.flush()
+
+        source_id = source.id
+        logger.info(f"Created source {source_id}: {title} ({source_type})")
+        return source_id
+
+    @staticmethod
+    async def get_source_by_id(db: AsyncSession, source_id: str) -> Optional[Dict[str, Any]]:
+        """Get source by ID."""
+        from sqlalchemy import text
+
+        result = await db.execute(
+            text("SELECT * FROM sources WHERE id = :source_id"),
+            {"source_id": source_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "id": row.id,
+            "type": row.type,
+            "title": row.title,
+            "url": getattr(row, 'url', None),
+            "metadata": getattr(row, 'metadata', None),
+            "created_at": row.created_at
+        }

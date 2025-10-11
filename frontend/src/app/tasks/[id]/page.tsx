@@ -34,6 +34,8 @@ interface TaskDetails {
   source_title: string;
   source_type: string;
   status: string;
+  progress?: number;
+  progress_message?: string;
   clips_count: number;
   created_at: string;
   updated_at: string;
@@ -50,24 +52,30 @@ export default function TaskPage() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
 
   const fetchTaskStatus = async (retryCount = 0, maxRetries = 5) => {
-    if (!session?.user?.id || !params.id) return false;
+    if (!params.id) return false;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
       // Fetch task details (including status)
+      // Don't wait for session - fetch immediately with user_id if available
+      const headers: HeadersInit = {};
+      if (session?.user?.id) {
+        headers['user_id'] = session.user.id;
+      }
+
       const taskResponse = await fetch(`${apiUrl}/tasks/${params.id}`, {
-        headers: {
-          'user_id': session.user.id,
-        },
+        headers,
       });
 
       // Handle 404 with retry logic (task might not be persisted yet)
       if (taskResponse.status === 404 && retryCount < maxRetries) {
         console.log(`Task not found yet, retrying in ${(retryCount + 1) * 500}ms... (${retryCount + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
+        await new Promise((resolve) => setTimeout(resolve, (retryCount + 1) * 500));
         return fetchTaskStatus(retryCount + 1, maxRetries);
       }
 
@@ -79,11 +87,14 @@ export default function TaskPage() {
       setTask(taskData);
 
       // Only fetch clips if task is completed
-      if (taskData.status === 'completed') {
+      if (taskData.status === "completed") {
+        const clipsHeaders: HeadersInit = {};
+        if (session?.user?.id) {
+          clipsHeaders['user_id'] = session.user.id;
+        }
+
         const clipsResponse = await fetch(`${apiUrl}/tasks/${params.id}/clips`, {
-          headers: {
-            'user_id': session.user.id,
-          },
+          headers: clipsHeaders,
         });
 
         if (!clipsResponse.ok) {
@@ -95,16 +106,16 @@ export default function TaskPage() {
       }
 
       return true;
-
     } catch (err) {
-      console.error('Error fetching task data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load task');
+      console.error("Error fetching task data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load task");
       return false;
     }
   };
 
+  // Initial fetch - runs immediately, doesn't wait for session
   useEffect(() => {
-    if (!session?.user?.id || !params.id) return;
+    if (!params.id) return;
 
     const fetchTaskData = async () => {
       try {
@@ -116,24 +127,67 @@ export default function TaskPage() {
     };
 
     fetchTaskData();
+  }, [params.id]); // Only run once when params change
 
-    // Set up polling every 5 seconds as fallback (in case SSE doesn't work)
-    const pollInterval = setInterval(async () => {
-      // Poll while task is null OR while processing
-      if (!task || task.status === 'processing') {
-        await fetchTaskStatus();
-      } else if (task.status === 'completed' || task.status === 'error') {
-        clearInterval(pollInterval);
+  // SSE effect - real-time progress updates
+  useEffect(() => {
+    if (!params.id || !task) return;
+
+    // Only connect to SSE if task is queued or processing
+    if (task.status !== "queued" && task.status !== "processing") return;
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const eventSource = new EventSource(`${apiUrl}/tasks/${params.id}/progress`);
+
+    console.log("📡 Connected to SSE for real-time progress");
+
+    eventSource.addEventListener("status", (e) => {
+      const data = JSON.parse(e.data);
+      console.log("📊 Status:", data);
+      setProgress(data.progress || 0);
+      setProgressMessage(data.message || "");
+    });
+
+    eventSource.addEventListener("progress", (e) => {
+      const data = JSON.parse(e.data);
+      console.log("📈 Progress:", data);
+      setProgress(data.progress || 0);
+      setProgressMessage(data.message || "");
+
+      // Update task status if provided
+      if (data.status && task) {
+        setTask({ ...task, status: data.status });
       }
-    }, 5000);
+    });
 
-    return () => clearInterval(pollInterval);
-  }, [session?.user?.id, params.id]);
+    eventSource.addEventListener("close", async (e) => {
+      const data = JSON.parse(e.data);
+      console.log("✅ Task completed:", data.status);
+      eventSource.close();
+
+      // Refresh task and clips
+      await fetchTaskStatus();
+    });
+
+    eventSource.addEventListener("error", (e) => {
+      console.error("❌ SSE error:", e);
+      if (e.data) {
+        const data = JSON.parse(e.data);
+        setError(data.error || "Connection error");
+      }
+      eventSource.close();
+    });
+
+    return () => {
+      console.log("🔌 Disconnecting SSE");
+      eventSource.close();
+    };
+  }, [params.id, task?.status]); // Re-run when task status changes
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const getScoreColor = (score: number) => {
@@ -175,7 +229,7 @@ export default function TaskPage() {
           </Alert>
           <Link href="/" className="mt-4 inline-block">
             <Button variant="outline">
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-4 h-4" />
               Back to Home
             </Button>
           </Link>
@@ -192,7 +246,7 @@ export default function TaskPage() {
           <div className="flex items-center gap-4 mb-4">
             <Link href="/">
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
+                <ArrowLeft className="w-4 h-4" />
                 Back
               </Button>
             </Link>
@@ -200,16 +254,22 @@ export default function TaskPage() {
 
           {task && (
             <div>
-              <h1 className="text-2xl font-bold text-black mb-2">
-                {task.source_title}
-              </h1>
+              <h1 className="text-2xl font-bold text-black mb-2">{task.source_title}</h1>
               <div className="flex items-center gap-4 text-sm text-gray-600">
-                <Badge variant="outline">{task.source_type}</Badge>
+                <Badge variant="outline" className="capitalize">{task.source_type}</Badge>
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
                   {new Date(task.created_at).toLocaleDateString()}
                 </span>
-                <span>{clips.length} clips generated</span>
+                {task.status === "completed" ? (
+                  <span>{clips.length} {clips.length === 1 ? "clip" : "clips"} generated</span>
+                ) : task.status === "processing" ? (
+                  <Badge className="bg-blue-100 text-blue-800">Processing</Badge>
+                ) : task.status === "queued" ? (
+                  <Badge className="bg-yellow-100 text-yellow-800">Queued</Badge>
+                ) : (
+                  <Badge variant="outline" className="capitalize">{task.status}</Badge>
+                )}
               </div>
             </div>
           )}
@@ -218,47 +278,54 @@ export default function TaskPage() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {task?.status === 'processing' || !task ? (
+        {task?.status === "processing" || task?.status === "queued" || !task ? (
           <div className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-xl font-semibold text-black mb-2">
-                {!task ? "Initializing..." : "Processing Video"}
+                {!task ? "Initializing..." : task.status === "queued" ? "Queued for Processing" : "Processing Video"}
               </h2>
               <p className="text-gray-600">
                 {!task
                   ? "Setting up your task. This should only take a moment..."
-                  : "Generating clips from your video. This usually takes 2-3 minutes."
-                }
+                  : task.status === "queued"
+                  ? "Your task is in the queue and will start processing shortly."
+                  : "Generating clips from your video. This usually takes 2-3 minutes."}
               </p>
             </div>
 
-            {/* Real-time Progress Display */}
-            {processingMessage && (
-              <Card className="mb-6">
-                <CardContent className="p-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                      <p className="text-sm font-medium text-black">{processingMessage}</p>
-                    </div>
-                    {processingProgress > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-xs text-gray-600">
-                          <span>{processingStep}</span>
-                          <span>{processingProgress}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${processingProgress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
+            {/* Processing Status Display with Progress */}
+            <Card className="mb-6">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <p className="text-sm font-medium text-black">
+                      {progressMessage || (!task ? "Initializing your task..." : "Processing video and generating clips...")}
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+
+                  {/* Progress Bar */}
+                  {progress > 0 && (
+                    <div className="w-full">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-gray-500">Progress</span>
+                        <span className="text-xs font-medium text-blue-600">{progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-500 text-center">
+                    This page will automatically update when your clips are ready
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Skeleton for clips being generated */}
             {[1, 2].map((i) => (
@@ -298,7 +365,7 @@ export default function TaskPage() {
               </Card>
             ))}
           </div>
-        ) : task?.status === 'error' ? (
+        ) : task?.status === "error" ? (
           <Card>
             <CardContent className="p-8 text-center">
               <div className="text-red-600 mb-4">
@@ -308,7 +375,7 @@ export default function TaskPage() {
               <p className="text-gray-600 mb-4">There was an error processing your video. Please try again.</p>
               <Link href="/">
                 <Button>
-                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  <ArrowLeft className="w-4 h-4" />
                   Back to Home
                 </Button>
               </Link>
@@ -317,7 +384,33 @@ export default function TaskPage() {
         ) : clips.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-gray-600">No clips have been generated for this task yet.</p>
+              {task?.status === "completed" ? (
+                <>
+                  <div className="text-yellow-600 mb-4">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-2" />
+                    <h2 className="text-xl font-semibold">No Clips Generated</h2>
+                  </div>
+                  <p className="text-gray-600 mb-4">
+                    The task completed but no clips were generated. The video may not have had suitable content for clipping.
+                  </p>
+                  <Link href="/">
+                    <Button>
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Try Another Video
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Clock className="w-8 h-8 text-blue-500 animate-pulse" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-black mb-2">Still Generating...</h2>
+                  <p className="text-gray-600">
+                    Your clips are being generated. This page will refresh automatically when they're ready.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -332,7 +425,7 @@ export default function TaskPage() {
                 <div className="grid grid-cols-3 gap-4 text-xs">
                   <div>
                     <span className="text-gray-500">Font:</span>
-                    <p className="font-medium">{task.font_family || 'Default'}</p>
+                    <p className="font-medium">{task.font_family || "Default"}</p>
                   </div>
                   <div>
                     <span className="text-gray-500">Size:</span>
@@ -343,9 +436,9 @@ export default function TaskPage() {
                     <div className="flex items-center gap-1">
                       <div
                         className="w-3 h-3 rounded border"
-                        style={{ backgroundColor: task.font_color || '#FFFFFF' }}
+                        style={{ backgroundColor: task.font_color || "#FFFFFF" }}
                       ></div>
-                      <p className="font-medium">{task.font_color || '#FFFFFF'}</p>
+                      <p className="font-medium">{task.font_color || "#FFFFFF"}</p>
                     </div>
                   </div>
                 </div>
@@ -357,18 +450,21 @@ export default function TaskPage() {
                   <div className="flex flex-col lg:flex-row">
                     {/* Video Player */}
                     <div className="bg-black relative flex-shrink-0 flex items-center justify-center">
-                      <DynamicVideoPlayer src={`http://localhost:8000${clip.video_url}`} poster="/placeholder-video.jpg" />
+                      <DynamicVideoPlayer
+                        src={`http://localhost:8000${clip.video_url}`}
+                        poster="/placeholder-video.jpg"
+                      />
                     </div>
 
                     {/* Clip Details */}
                     <div className="p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div>
-                          <h3 className="font-semibold text-lg text-black mb-1">
-                            Clip {clip.clip_order}
-                          </h3>
+                          <h3 className="font-semibold text-lg text-black mb-1">Clip {clip.clip_order}</h3>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <span>{clip.start_time} - {clip.end_time}</span>
+                            <span>
+                              {clip.start_time} - {clip.end_time}
+                            </span>
                             <span>•</span>
                             <span>{formatDuration(clip.duration)}</span>
                           </div>
@@ -384,25 +480,21 @@ export default function TaskPage() {
                       {clip.text && (
                         <div className="mb-4">
                           <h4 className="font-medium text-black mb-2">Transcript</h4>
-                          <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
-                            {clip.text}
-                          </p>
+                          <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">{clip.text}</p>
                         </div>
                       )}
 
                       {clip.reasoning && (
                         <div className="mb-4">
                           <h4 className="font-medium text-black mb-2">AI Analysis</h4>
-                          <p className="text-sm text-gray-600">
-                            {clip.reasoning}
-                          </p>
+                          <p className="text-sm text-gray-600">{clip.reasoning}</p>
                         </div>
                       )}
 
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" asChild>
                           <a href={`http://localhost:8000${clip.video_url}`} download={clip.filename}>
-                            <Download className="w-4 h-4 mr-2" />
+                            <Download className="w-4 h-4" />
                             Download
                           </a>
                         </Button>

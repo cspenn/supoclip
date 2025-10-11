@@ -24,37 +24,38 @@ class YouTubeDownloader:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def get_optimal_download_options(self, video_id: str) -> Dict[str, Any]:
-        """Get optimal yt-dlp options for high-quality downloads."""
+        """Get optimal yt-dlp options for high-quality downloads with enhanced YouTube bypass."""
         output_path = self.temp_dir / f"{video_id}.%(ext)s"
 
         return {
             'outtmpl': str(output_path),
-            # High quality video + audio selection with fallbacks
-            'format': (
-                'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
-                'bestvideo[height<=1080]+bestaudio/'
-                'best[height<=1080][ext=mp4]/'
-                'best[height<=1080]/'
-                'best'
-            ),
+            # More permissive format selection to avoid "format not available" errors
+            'format': 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b',
             'merge_output_format': 'mp4',
             'writesubtitles': False,
             'writeautomaticsub': False,
             # Optimized for speed and reliability
             'socket_timeout': 30,
-            'retries': 3,
-            'fragment_retries': 3,
+            'retries': 5,  # Increased retries
+            'fragment_retries': 5,
             'http_chunk_size': 10485760,  # 10MB chunks
             # Quiet operation - only errors/warnings
             'quiet': True,
             'no_warnings': False,  # Show warnings but not info
             'ignoreerrors': False,
-            # Headers to avoid 403 errors
+            # Enhanced headers to avoid 403 errors
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            },
+            # Simplified YouTube bypass - use android client for better reliability
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                }
             },
             # Post-processing options
             'postprocessors': [{
@@ -64,6 +65,10 @@ class YouTubeDownloader:
             # Metadata extraction
             'extract_flat': False,
             'writeinfojson': False,
+            # Additional bypass options
+            'nocheckcertificate': True,
+            'prefer_insecure': False,
+            'age_limit': None,
         }
 
 def get_youtube_video_id(url: str) -> Optional[str]:
@@ -129,13 +134,20 @@ def get_youtube_video_info(url: str) -> Optional[Dict[str, Any]]:
             'no_warnings': True,
             'extractaudio': False,
             'skip_download': True,
-            'socket_timeout': 15,
+            'socket_timeout': 30,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Connection': 'keep-alive',
             },
+            # Simplified extractor args for better compatibility
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                }
+            },
+            'nocheckcertificate': True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

@@ -8,16 +8,27 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
-import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush } from "lucide-react";
+import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush, Clock } from "lucide-react";
 
 interface ProcessingStatus {
   step: string;
   message: string;
   progress: number;
+}
+
+interface LatestTask {
+  id: string;
+  source_title: string;
+  source_type: string;
+  status: string;
+  clips_count: number;
+  created_at: string;
 }
 
 export default function Home() {
@@ -40,6 +51,10 @@ export default function Home() {
   const [fontColor, setFontColor] = useState("#FFFFFF");
   const [availableFonts, setAvailableFonts] = useState<Array<{ name: string, display_name: string }>>([]);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+
+  // Latest task state
+  const [latestTask, setLatestTask] = useState<LatestTask | null>(null);
+  const [isLoadingLatest, setIsLoadingLatest] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -106,6 +121,35 @@ export default function Home() {
     loadUserPreferences();
   }, [session?.user?.id]);
 
+  // Load latest task
+  useEffect(() => {
+    const fetchLatestTask = async () => {
+      if (!session?.user?.id) return;
+
+      try {
+        setIsLoadingLatest(true);
+        const response = await fetch(`${apiUrl}/tasks/`, {
+          headers: {
+            'user_id': session.user.id,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.tasks && data.tasks.length > 0) {
+            setLatestTask(data.tasks[0]); // Get the first (latest) task
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load latest task:', error);
+      } finally {
+        setIsLoadingLatest(false);
+      }
+    };
+
+    fetchLatestTask();
+  }, [session?.user?.id, apiUrl]);
+
   // Always treat file input as uncontrolled, and store file in a ref
   const fileRef = useRef<File | null>(null);
 
@@ -170,8 +214,8 @@ export default function Home() {
         videoUrl = uploadResult.video_path;
       }
 
-      // Step 1: Start the task
-      const startResponse = await fetch(`${apiUrl}/start-with-progress`, {
+      // Step 1: Start the task (using new refactored endpoint)
+      const startResponse = await fetch(`${apiUrl}/tasks/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,18 +341,25 @@ export default function Home() {
               <h1 className="text-xl font-bold text-black">SupoClip</h1>
             </div>
 
-            <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
-              <Avatar className="w-8 h-8">
-                <AvatarImage src={session.user.image || ""} />
-                <AvatarFallback className="bg-gray-100 text-black text-sm">
-                  {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden sm:block">
-                <p className="text-sm font-medium text-black">{session.user.name}</p>
-                <p className="text-xs text-gray-500">{session.user.email}</p>
-              </div>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/list">
+                <Button variant="outline" size="sm">
+                  All Generations
+                </Button>
+              </Link>
+              <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={session.user.image || ""} />
+                  <AvatarFallback className="bg-gray-100 text-black text-sm">
+                    {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="hidden sm:block">
+                  <p className="text-sm font-medium text-black">{session.user.name}</p>
+                  <p className="text-xs text-gray-500">{session.user.email}</p>
+                </div>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -316,6 +367,76 @@ export default function Home() {
       {/* Main Content */}
       <div className="max-w-4xl mx-auto px-4 py-16">
         <div className="max-w-xl mx-auto">
+          {/* Latest Generation Preview */}
+          {latestTask && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-black">Latest Generation</h2>
+                <Link href="/list">
+                  <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
+                    See All <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+
+              <Link href={`/tasks/${latestTask.id}`}>
+                <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-semibold text-black mb-2 truncate">
+                          {latestTask.source_title}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                          <Badge variant="outline" className="capitalize">
+                            {latestTask.source_type}
+                          </Badge>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            {new Date(latestTask.created_at).toLocaleDateString()}
+                          </span>
+                          <span>
+                            {latestTask.clips_count} {latestTask.clips_count === 1 ? "clip" : "clips"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {latestTask.status === "completed" ? (
+                          <Badge className="bg-green-100 text-green-800">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Completed
+                          </Badge>
+                        ) : latestTask.status === "processing" ? (
+                          <Badge className="bg-blue-100 text-blue-800">
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Processing
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">{latestTask.status}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Separator className="my-8" />
+            </div>
+          )}
+
+          {isLoadingLatest && (
+            <div className="mb-8">
+              <Skeleton className="h-5 w-32 mb-4" />
+              <Card>
+                <CardContent className="p-6">
+                  <Skeleton className="h-5 w-64 mb-2" />
+                  <Skeleton className="h-4 w-48" />
+                </CardContent>
+              </Card>
+              <Separator className="my-8" />
+            </div>
+          )}
+
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-black mb-2">
               Video Processing

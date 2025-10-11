@@ -30,6 +30,7 @@ from sqlalchemy import text
 
 from .models import User, Task, Source, GeneratedClip
 from .database import init_db, close_db, get_db, AsyncSessionLocal
+from .api.routes.tasks import router as tasks_router
 
 config = Config()
 
@@ -55,6 +56,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API routers
+app.include_router(tasks_router)
 
 # Mount static files for serving clips
 clips_dir = Path(config.temp_dir) / "clips"
@@ -527,6 +531,9 @@ async def get_task_details(task_id: str, db: AsyncSession = Depends(get_db)):
       "status": task.status,
       "generated_clips_ids": task.generated_clips_ids,
       "clips_count": clips_count,
+      "font_family": task.font_family if hasattr(task, 'font_family') else None,
+      "font_size": task.font_size if hasattr(task, 'font_size') else None,
+      "font_color": task.font_color if hasattr(task, 'font_color') else None,
       "created_at": task.created_at.isoformat(),
       "updated_at": task.updated_at.isoformat()
     }
