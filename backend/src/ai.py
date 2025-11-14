@@ -63,10 +63,18 @@ TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 
 Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity - choose segments that would genuinely engage viewers and have proper time ranges."""
 
-# Create simplified agent
+# Create simplified agent with local-first model selection
+llm_model = config.get_llm_model()
+
+# Log which LLM mode is active
+if config.local_llm_enabled:
+    logger.info(f"🤖 Using local LLM: {config.local_llm_base_url}")
+else:
+    logger.info(f"☁️ Using cloud LLM: {config.llm}")
+
 transcript_agent = Agent(
-    model=config.llm,
-    result_type=TranscriptAnalysis,
+    model=llm_model,
+    output_type=TranscriptAnalysis,
     system_prompt=simplified_system_prompt
 )
 
