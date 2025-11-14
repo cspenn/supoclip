@@ -7,20 +7,21 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 # Load environment variables
 load_dotenv()
 
-# Database configuration
+# Database configuration - SQLite instead of PostgreSQL
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://localhost:5432/supoclip"
+    "sqlite+aiosqlite:///./supoclip.db"  # Local SQLite database
 )
 
-# Create async engine
+# Create async engine with SQLite-specific configuration
+connect_args = {}
+if "sqlite" in DATABASE_URL:
+    connect_args = {"check_same_thread": False}
+
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,  # Set to True for SQL query logging
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    pool_recycle=3600,
+    connect_args=connect_args,
 )
 
 # Create async session maker
