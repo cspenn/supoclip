@@ -14,11 +14,14 @@ import json
 import cv2
 from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ColorClip
 
-import assemblyai as aai
 import srt
 from datetime import timedelta
 
 from .config import Config
+from .transcription_mlx import (
+    transcribe_video_mlx,
+    load_cached_transcript_mlx,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -58,33 +61,24 @@ class VideoProcessor:
         return settings.get(target_quality, settings["high"])
 
 def get_video_transcript(video_path: Path) -> str:
-    """Get transcript using AssemblyAI with word-level timing for precise subtitles."""
+    """
+    Get transcript using MLX Whisper (offline, Apple Silicon optimized).
+
+    Replaces AssemblyAI with local processing for privacy and offline capability.
+    Formats transcript with timestamps for AI analysis.
+    """
     logger.info(f"Getting transcript for: {video_path}")
 
-    # Configure AssemblyAI
-    aai.settings.api_key = config.assembly_ai_api_key
-    transcriber = aai.Transcriber()
-
-    # Request word-level timestamps for precise subtitle sync
-    config_obj = aai.TranscriptionConfig(
-        speaker_labels=False,
-        punctuate=True,
-        format_text=True,
-        speech_model=aai.SpeechModel.best
-    )
-
     try:
-        logger.info("Starting AssemblyAI transcription")
-        transcript = transcriber.transcribe(str(video_path), config=config_obj)
-
-        if transcript.status == aai.TranscriptStatus.error:
-            logger.error(f"AssemblyAI transcription failed: {transcript.error}")
-            raise Exception(f"Transcription failed: {transcript.error}")
+        # Use MLX Whisper for local transcription
+        logger.info("Starting MLX Whisper transcription (offline)")
+        result = transcribe_video_mlx(video_path, model_size="medium")
 
         # Format transcript with timestamps for AI analysis
         formatted_lines = []
-        if transcript.words:
-            logger.info(f"Processing {len(transcript.words)} words with precise timing")
+        if result.get("words"):
+            words = result["words"]
+            logger.info(f"Processing {len(words)} words with precise timing")
 
             # Group words into logical segments for readability
             current_segment = []
@@ -92,20 +86,21 @@ def get_video_transcript(video_path: Path) -> str:
             segment_word_count = 0
             max_words_per_segment = 8  # ~3-4 seconds of speech
 
-            for word in transcript.words:
+            for word in words:
                 if current_start is None:
-                    current_start = word.start
+                    current_start = word["start"]
 
-                current_segment.append(word.text)
+                current_segment.append(word["text"])
                 segment_word_count += 1
 
                 # End segment at natural breaks or word limit
+                word_text = word["text"]
                 if (segment_word_count >= max_words_per_segment or
-                    word.text.endswith('.') or word.text.endswith('!') or word.text.endswith('?')):
+                    word_text.endswith('.') or word_text.endswith('!') or word_text.endswith('?')):
 
                     if current_segment:
                         start_time = format_ms_to_timestamp(current_start)
-                        end_time = format_ms_to_timestamp(word.end)
+                        end_time = format_ms_to_timestamp(word["end"])
                         text = ' '.join(current_segment)
                         formatted_lines.append(f"[{start_time} - {end_time}] {text}")
 
@@ -116,19 +111,16 @@ def get_video_transcript(video_path: Path) -> str:
             # Handle any remaining words
             if current_segment and current_start is not None:
                 start_time = format_ms_to_timestamp(current_start)
-                end_time = format_ms_to_timestamp(transcript.words[-1].end)
+                end_time = format_ms_to_timestamp(words[-1]["end"])
                 text = ' '.join(current_segment)
                 formatted_lines.append(f"[{start_time} - {end_time}] {text}")
 
-        # Cache the raw transcript for subtitle generation
-        cache_transcript_data(video_path, transcript)
-
-        result = '\n'.join(formatted_lines)
-        logger.info(f"Transcript formatted: {len(formatted_lines)} segments, {len(result)} chars")
-        return result
+        result_text = '\n'.join(formatted_lines)
+        logger.info(f"✅ Transcript formatted: {len(formatted_lines)} segments, {len(result_text)} chars")
+        return result_text
 
     except Exception as e:
-        logger.error(f"Error in transcription: {e}")
+        logger.error(f"❌ Error in transcription: {e}")
         raise
 
 def cache_transcript_data(video_path: Path, transcript) -> None:
@@ -473,7 +465,12 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         return 0.0
 
 def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: float, video_width: int, video_height: int, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> List[TextClip]:
-    """Create subtitles using AssemblyAI's precise word timing."""
+    """
+    Create subtitles using MLX Whisper's precise word timing.
+
+    Legacy function name kept for backward compatibility.
+    Uses cached transcript data from MLX transcription.
+    """
     transcript_data = load_cached_transcript_data(video_path)
 
     if not transcript_data or not transcript_data.get('words'):
@@ -815,7 +812,11 @@ def create_clips_with_transitions(video_path: Path, segments: List[Dict[str, Any
 
 # Backward compatibility functions
 def get_video_transcript_with_assemblyai(path: Path) -> str:
-    """Backward compatibility wrapper."""
+    """
+    Backward compatibility wrapper for old API.
+
+    Uses MLX Whisper instead of AssemblyAI.
+    """
     return get_video_transcript(path)
 
 def create_9_16_clip(video_path: Path, start_time: float, end_time: float, output_path: Path, subtitle_text: str = "") -> bool:
