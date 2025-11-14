@@ -251,6 +251,181 @@ The AI (via Pydantic AI) selects 3-7 segments based on:
 - Generated clips: `{TEMP_DIR}/clips/`
 - Clips served via FastAPI static files at `/clips/{filename}`
 
+## Development Standards and Best Practices
+
+This project adheres to strict coding standards documented in `docs/standards.md`. These standards ensure code quality, maintainability, and consistency across the codebase.
+
+### Python 3.11+ Requirements
+
+**Mandatory:**
+- Type hints required on all functions and class methods
+- PEP 8 compliance enforced via Ruff and Black
+- Google-style docstrings (PEP 257)
+- Python 3.11+ specific features: structural pattern matching (`match-case`), exception groups (`except*`), TOML parsing
+- Asyncio best practices: `TaskGroup`, explicit timeouts, exception handling
+- `dataclass(slots=True)` for memory-efficient structures
+
+**Anti-Patterns to Avoid:**
+- Mutable defaults in function signatures
+- Bare `except` clauses
+- Circular imports
+- Global variable overuse
+- Hardcoded secrets or magic numbers
+- Spaghetti code (max 2 levels of nesting)
+
+### Project Structure
+
+**File Conventions:**
+- All source files must start and end with a file path comment: `# start src/example/file.py`
+- Use absolute imports from project root only (no relative imports)
+- Maximum 750 lines per file (refactor if exceeded)
+- Standard invocation: `python -m src.main`
+- Keep main.py orchestration-focused; move core logic to modules
+
+**Required Project Files:**
+- `docs/prd.md` - Product requirements
+- `docs/workplan.md` - Development plan
+- `docs/polish.md` - Refinement checklist
+- `checkpython.sh` - Automated quality checks (never modify)
+- `.pre-commit-config.yaml` - Pre-commit framework configuration
+- `migrations/` - Alembic database migration scripts (when applicable)
+
+**Project-Specific Note:** This project uses `uv` for dependency management instead of Poetry. Environment variables are stored in `.env` files for local development.
+
+### Configuration Management
+
+**CORE RULE:** Configuration must be externalized and validated.
+- Environment-specific settings go in `.env` files (for local development)
+- Sensitive credentials must be kept in `.env` (and added to `.gitignore`)
+- Configuration should be validated with Pydantic at application startup
+- Never hardcode configuration values or secrets in source code
+- All configuration loading should use Pydantic models for type safety and validation
+
+### Code Quality Principles
+
+**Design Principles:**
+- DRY (Don't Repeat Yourself)
+- SPOT (Single Point of Truth)
+- SOLID principles
+- GRASP (General Responsibility Assignment)
+- YAGNI (You Aren't Gonna Need It)
+
+**Implementation Rules:**
+- Functions and methods must have a single responsibility
+- Inline code comments must not exceed 2 lines (prefer clear naming)
+- Avoid deeply nested logic (maximum 2 levels)
+- Use clear, descriptive, unambiguous names
+- Resource safety: always use `with` statements and `finally` blocks
+- Prefer explicit over implicit behavior
+
+### Database Access
+
+**Backend Database Patterns:**
+- Currently uses raw SQL via asyncpg for performance (as documented in `backend/src/database.py`)
+- SQLAlchemy models in `backend/src/models.py` for type safety
+- Async sessions via `AsyncSessionLocal` context manager
+- No direct database connection calls outside database module
+- When migrating to SQLite: use SQLAlchemy Core/ORM for all operations (raw SQL forbidden in app code)
+- Use Alembic for all schema migrations (manual schema changes are forbidden)
+
+**Frontend Database Access:**
+- Prisma Client via Better Auth adapter
+- All queries type-safe and generated
+- Session management automatic via Better Auth
+
+### API Communication
+
+**External HTTP Requests:**
+- Use HTTPX for all external API calls (both sync and async)
+- Strict timeouts required
+- Connection pooling and reuse
+- Exponential backoff for retries where appropriate
+- No bare requests; all requests explicitly configured
+
+### Logging Standards
+
+**Logging Configuration:**
+- Use Python logging module exclusively
+- Log to timestamped files in `logs/` directory and console simultaneously
+- Emoji indicators for log levels:
+  - 🟢 INFO
+  - 🟡 WARN
+  - 🛑 ERROR
+- Log level must be configurable (currently via environment variables)
+- Avoid logging sensitive information (credentials, tokens, etc.)
+
+**Current Pattern:**
+Backend uses emoji-based logging: 🚀 (startup), 📝 (info), ✅ (success), ❌ (error), 🎬 (video ops), 🤖 (AI), ⬇️ (download), 📊 (stats)
+
+### Testing Requirements
+
+**Test Coverage:**
+- Use pytest for all unit tests
+- Tests must cover:
+  - Pydantic model validation
+  - Database logic (using test database or fixtures)
+  - API interactions (using pytest-httpx mocking)
+  - Alembic migrations (when applicable)
+  - Configuration loading
+- Update tests whenever code changes
+- All tests must pass before committing (`pytest` shows 100% passing)
+
+**Quality Checks:**
+- Run `./checkpython.sh` before committing (must report zero errors)
+- Pre-commit hooks enforce these checks automatically
+- Tools used:
+  - Ruff (linting and formatting)
+  - mypy (type checking)
+  - Bandit (security scanning)
+  - pytest (testing)
+
+### Debugging Methodology: Verifiable Units of Work (VUWs)
+
+For complex changes and bug fixes, work is organized into **Verifiable Units of Work (VUWs)** - small, isolated tasks with mandatory verification checklists.
+
+**VUW Principles:**
+1. **Extreme Granularity** - Each VUW targets a single file or specific error across a few files
+2. **Verification is Done** - Every VUW has a mandatory verification checklist that must pass
+3. **Sequential Execution** - One VUW at a time; cannot start next until previous passes
+4. **Mandatory Checkpoints** - Git checkpoint before and after each VUW
+
+**VUW Verification Checklist:**
+- `[ ]` **Run `./checkpython.sh`:** Must report **zero errors** with **100% passing tests**
+- `[ ]` **Self-attestation:** Confirm `checkpython.sh` passed and tests succeeded
+
+**Campaign Organization:**
+- **Campaign 1:** Application Stability (blockers that prevent running)
+- **Campaign 2:** Type Safety (zero `mypy` errors)
+- **Campaign 3:** Code Quality (zero `ruff` errors)
+- Work from highest-priority issues to lowest
+
+### Performance and Progress Monitoring
+
+**Progress Feedback:**
+- Use `tqdm` for loops expected to have >5 steps or take >10 seconds
+- Provides clear user feedback during long operations
+- Counts iterations and time elapsed
+
+**Performance Optimization:**
+- Profile with cProfile and line_profiler before optimizing
+- Cache connections with `lru_cache`
+- Use memory-efficient structures (dataclass slots, generators)
+- Leverage Python 3.11's faster CPython with adaptive interpreter
+
+### Project-Specific Deviations
+
+This project currently deviates from some docs/standards.md recommendations:
+
+| Standard | Project Current | Migration Plan |
+|----------|-----------------|---|
+| Dependency Manager | Uses `uv` | Keep `uv` (better than Poetry for this project) |
+| Configuration | Uses `.env` files | May migrate to YAML if project grows |
+| Database (Backend) | Raw SQL via asyncpg | Will migrate to SQLAlchemy for offline version |
+| Database (Current) | PostgreSQL | Will migrate to SQLite for offline version |
+| Job Queue | Redis + arq | Will replace with local asyncio queue |
+
+These deviations are documented and tracked in the migration plan (`docs/progress/fixes/migration-mlx-no-docker-2025-11-14.md`).
+
 ## Testing and Development Tips
 
 - Backend API docs available at http://localhost:8000/docs (Swagger UI)
