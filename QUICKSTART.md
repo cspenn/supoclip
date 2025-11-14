@@ -1,94 +1,106 @@
 # SupoClip Quick Start Guide
 
-Run SupoClip with Docker in just one command!
+Run SupoClip natively on macOS (no Docker required)!
 
 ## Prerequisites
 
-1. **Docker Desktop** installed and running
-2. **API Keys** (get these from the providers):
-   - [AssemblyAI API Key](https://www.assemblyai.com/) (required for transcription)
+1. **macOS 13.5+** (Ventura or later)
+2. **Apple Silicon** (M1/M2/M3) recommended for MLX optimization
+3. **Homebrew** - Install via https://brew.sh/
+4. **Python 3.11+** - `brew install python@3.11`
+5. **Node.js 18+** - `brew install node`
+6. **FFmpeg** - `brew install ffmpeg`
+7. **API Keys** (optional - only needed for AI analysis):
    - At least one AI provider:
      - [OpenAI API Key](https://platform.openai.com/api-keys) (recommended)
-     - [Google AI API Key](https://makersuite.google.com/app/apikey)
+     - [Google AI API Key](https://aistudio.google.com/app/apikey)
      - [Anthropic API Key](https://console.anthropic.com/)
 
-## Quick Start (Single Command)
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
-./start.sh
+# Install system dependencies
+brew install python@3.11 node ffmpeg
+
+# Clone the repository (if not already done)
+git clone https://github.com/supoclip/supoclip.git
+cd supoclip
+
+# Backend setup
+cd backend
+python3.11 -m venv .venv
+source .venv/bin/activate
+uv sync
+
+# Frontend setup
+cd ../frontend
+npm install
 ```
 
-That's it! The script will:
-- Check prerequisites
-- Build Docker images
-- Start all services
-- Show you where to access the app
-
-## First Time Setup
-
-### 1. Configure Environment Variables
-
-Edit the `.env` file in the project root and add your API keys:
+### 2. Configure Environment (Optional)
 
 ```bash
-# Required for video transcription
-ASSEMBLY_AI_API_KEY=your_assemblyai_key_here
+# Copy environment template
+cp .env.example .env
 
-# Choose one AI provider for clip selection
-OPENAI_API_KEY=your_openai_key_here
-
-# Configure which AI model to use
-LLM=openai:gpt-4
+# Edit .env to add API keys (only needed for AI analysis)
+# - MLX Whisper works completely offline for transcription
+# - LLM keys only needed for segment selection (optional)
 ```
 
-### 2. Start SupoClip
+### 3. Run the Application
 
 ```bash
-./start.sh
+# Terminal 1: Start Backend
+cd backend
+source .venv/bin/activate
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start Frontend (in a new terminal)
+cd frontend
+npm run dev
 ```
 
-### 3. Access the Application
+### 4. Access the Application
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
-## Manual Docker Commands
+## What's Offline vs Online?
 
-If you prefer to use Docker commands directly:
+✅ **Works Completely Offline:**
+- Video transcription (MLX Whisper - no internet needed)
+- Video processing and clip generation (MoviePy, OpenCV)
+- Database operations (SQLite)
+- Authentication (Better Auth)
 
-```bash
-# Start all services
-docker-compose up -d --build
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-
-# Rebuild after code changes
-docker-compose up -d --build
-```
+❌ **Requires Internet/API Keys:**
+- AI segment analysis (uses OpenAI/Google/Anthropic LLMs)
+- Optional: YouTube video downloads (yt-dlp)
 
 ## Environment Configuration
 
-### Required Variables
+### Optional Variables (API Keys)
 
 | Variable | Description | Where to Get |
 |----------|-------------|--------------|
-| `ASSEMBLY_AI_API_KEY` | Speech-to-text transcription | https://www.assemblyai.com/ |
 | `OPENAI_API_KEY` | OpenAI GPT models | https://platform.openai.com/api-keys |
-| `LLM` | AI model identifier | e.g., `openai:gpt-4` |
+| `GOOGLE_API_KEY` | Google Gemini models | https://aistudio.google.com/app/apikey |
+| `ANTHROPIC_API_KEY` | Anthropic Claude models | https://console.anthropic.com/ |
+| `LLM_MODEL` | AI model identifier | e.g., `openai:gpt-4o` |
 
-### Optional Variables
+### Configuration Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WHISPER_MODEL_SIZE` | `medium` | Whisper model size (tiny/base/small/medium/large) |
+| `MLX_WHISPER_MODEL` | `medium` | MLX Whisper model (tiny/base/small/medium/large) |
 | `BETTER_AUTH_SECRET` | dev secret | Auth secret (change in production!) |
-| `GOOGLE_API_KEY` | - | For Google Gemini models |
-| `ANTHROPIC_API_KEY` | - | For Claude models |
+| `DATABASE_URL` | `file:./supoclip.db` | SQLite database path |
+| `MAX_WORKERS` | `2` | Local job queue workers |
+| `TEMP_DIR` | `./temp` | Temporary directory for video processing |
 
 ## Supported AI Models
 
@@ -114,62 +126,71 @@ LLM=google:gemini-pro
 
 ## Troubleshooting
 
-### Services not starting?
+### Backend won't start?
 
-1. **Check Docker is running**:
+1. **Verify Python 3.11+**:
    ```bash
-   docker info
+   python3 --version
    ```
 
-2. **View service logs**:
+2. **Activate virtual environment**:
    ```bash
-   docker-compose logs -f
+   cd backend
+   source .venv/bin/activate
    ```
 
-3. **Check service health**:
+3. **Check if port 8000 is in use**:
    ```bash
-   docker-compose ps
+   lsof -i :8000
+   # Kill process if needed: kill -9 <PID>
    ```
 
-### API Keys not working?
-
-1. Verify keys are set in `.env` file
-2. Ensure no extra spaces around the `=` sign
-3. Restart services after changing `.env`:
+4. **Verify dependencies**:
    ```bash
-   docker-compose down
-   docker-compose up -d
+   uv sync
+   ```
+
+### Frontend won't start?
+
+1. **Clear node_modules and reinstall**:
+   ```bash
+   cd frontend
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
+
+2. **Check if port 3000 is in use**:
+   ```bash
+   lsof -i :3000
+   ```
+
+### MLX Whisper model not downloading?
+
+1. **Ensure internet connection** (first run only)
+2. **Check disk space** (models are ~1-2GB)
+3. **Manual download**:
+   ```bash
+   python3 -c "import mlx_whisper; mlx_whisper.load_models('medium')"
    ```
 
 ### Database issues?
 
-Reset the database:
+Reset the SQLite database:
 ```bash
-docker-compose down -v  # WARNING: This deletes all data!
-docker-compose up -d
+rm backend/supoclip.db
+# Database will be recreated on next run
 ```
 
 ## Architecture
 
-SupoClip runs 4 Docker containers:
+SupoClip runs natively on macOS:
 
 1. **Frontend** (Next.js 15) - Port 3000
 2. **Backend** (FastAPI + Python) - Port 8000
-3. **PostgreSQL** - Port 5432
-4. **Redis** - Port 6379
+3. **Database** (SQLite) - Local file `supoclip.db`
+4. **Job Queue** (Local asyncio) - In-process workers
 
-All services are connected via a Docker network and start automatically with proper health checks.
-
-## What Happens When You Run `./start.sh`?
-
-1. Checks if `.env` file exists with required API keys
-2. Verifies Docker is running
-3. Builds Docker images (first time: ~5-10 minutes)
-4. Starts PostgreSQL and waits for it to be healthy
-5. Starts Redis cache
-6. Starts backend API server
-7. Starts frontend web server
-8. Displays URLs for accessing the application
+All services run in the same process/machine with no Docker overhead.
 
 ## Production Deployment
 
