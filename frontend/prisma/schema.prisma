@@ -11,29 +11,29 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 // Better Auth User model with backend compatibility
 model User {
-  id            String    @id @default(uuid())
+  id            String    @id @default(cuid())
   name          String
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
-  createdAt     DateTime  @default(now()) @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @db.Timestamptz
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // Additional fields for backend compatibility
-  first_name    String?   @db.VarChar(100)
-  last_name     String?   @db.VarChar(100)
-  password_hash String?   @db.VarChar(255)
+  first_name    String?
+  last_name     String?
+  password_hash String?
 
   // Default font preferences
-  default_font_family String?   @default("TikTokSans-Regular") @db.VarChar(100)
+  default_font_family String?   @default("TikTokSans-Regular")
   default_font_size   Int?      @default(24)
-  default_font_color  String?   @default("#FFFFFF") @db.VarChar(7)
+  default_font_color  String?   @default("#FFFFFF")
 
   // Relationships
   tasks         Task[]
@@ -44,19 +44,19 @@ model User {
 }
 
 model Task {
-  id                   String    @id @default(uuid())
+  id                   String    @id @default(cuid())
   user_id              String
   source_id            String?
-  generated_clips_ids  String[]
-  status               String    @default("pending") @db.VarChar(20)
+  generated_clips_ids  String?  // JSON array stored as TEXT
+  status               String    @default("pending")
 
   // Font customization fields
-  font_family          String?   @default("TikTokSans-Regular") @db.VarChar(100)
+  font_family          String?   @default("TikTokSans-Regular")
   font_size            Int?      @default(24)
-  font_color           String?   @default("#FFFFFF") @db.VarChar(7)
+  font_color           String?   @default("#FFFFFF")
 
-  created_at           DateTime  @default(now()) @db.Timestamptz
-  updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @default(now()) @updatedAt
 
   // Relationships
   user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -70,11 +70,11 @@ model Task {
 }
 
 model Source {
-  id         String   @id @default(uuid())
-  type       String   @db.VarChar(20)
-  title      String   @db.VarChar(500)
-  created_at DateTime @default(now()) @db.Timestamptz
-  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+  id         String   @id @default(cuid())
+  type       String
+  title      String
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
 
   // Relationships
   tasks      Task[]
