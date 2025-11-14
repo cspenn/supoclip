@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 import os
+from openai import AsyncOpenAI
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 load_dotenv()
 
@@ -19,14 +22,17 @@ class Config:
         # Options: tiny, base, small, medium, large
         self.mlx_whisper_model = os.getenv("MLX_WHISPER_MODEL", "medium")
 
-        # LLM configuration for transcript analysis
-        self.llm = os.getenv(
-            "LLM_MODEL",
-            "google:gemini-2.5-flash-lite"
-        )
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        # Local LLM configuration (default - no API key required)
+        self.local_llm_enabled = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
+        self.local_llm_base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:6969/v1")
+        self.local_llm_model = os.getenv("LOCAL_LLM_MODEL", "local-model")
+        self.local_llm_api_key = os.getenv("LOCAL_LLM_API_KEY", "not-needed")
+
+        # Cloud LLM configuration (optional fallback)
+        self.llm = os.getenv("LLM_MODEL", "")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY", "")
 
         # Video processing settings
         self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "3600"))
@@ -48,3 +54,53 @@ class Config:
         # Local job queue settings
         self.max_workers = int(os.getenv("MAX_WORKERS", "2"))
         self.worker_timeout = int(os.getenv("WORKER_TIMEOUT", "3600"))
+
+    def get_llm_model(self) -> OpenAIChatModel | str:
+        """Get configured LLM model (local-first, cloud fallback).
+
+        Returns:
+            OpenAIChatModel for local LLM or str for cloud LLM model identifier.
+
+        Raises:
+            ValueError: If no LLM is configured.
+        """
+        if self.local_llm_enabled:
+            return self._create_local_llm_model()
+        elif self.llm and self._has_cloud_api_key():
+            return self.llm
+        else:
+            raise ValueError(
+                "No LLM configured. Either:\n"
+                "1. Enable local LLM: LOCAL_LLM_ENABLED=true and start koboldcpp\n"
+                "2. Configure cloud LLM: Set LLM_MODEL and appropriate API key"
+            )
+
+    def _create_local_llm_model(self) -> OpenAIChatModel:
+        """Create OpenAI-compatible model for local LLM.
+
+        Returns:
+            OpenAIChatModel configured for local endpoint.
+        """
+        client = AsyncOpenAI(
+            base_url=self.local_llm_base_url,
+            api_key=self.local_llm_api_key,
+            max_retries=3,
+            timeout=120.0,
+        )
+
+        return OpenAIChatModel(
+            self.local_llm_model,
+            provider=OpenAIProvider(openai_client=client)
+        )
+
+    def _has_cloud_api_key(self) -> bool:
+        """Check if any cloud API key is configured.
+
+        Returns:
+            True if at least one cloud API key is set.
+        """
+        return bool(
+            self.openai_api_key or
+            self.anthropic_api_key or
+            self.google_api_key
+        )

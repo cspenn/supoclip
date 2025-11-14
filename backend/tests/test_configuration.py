@@ -39,10 +39,10 @@ class TestConfigLoading:
         assert config.mlx_whisper_model == "large"
 
     def test_llm_model_default(self, monkeypatch):
-        """Test LLM model defaults to gemini."""
+        """Test LLM model defaults to empty string (local-first)."""
         monkeypatch.delenv("LLM_MODEL", raising=False)
         config = Config()
-        assert config.llm == "google:gemini-2.5-flash-lite"
+        assert config.llm == ""
 
     def test_llm_model_from_env(self, monkeypatch):
         """Test LLM model can be set from environment."""
@@ -58,9 +58,9 @@ class TestConfigLoading:
 
         config = Config()
 
-        assert config.openai_api_key is None
-        assert config.anthropic_api_key is None
-        assert config.google_api_key is None
+        assert config.openai_api_key == ""
+        assert config.anthropic_api_key == ""
+        assert config.google_api_key == ""
 
 
 class TestVideoProcessingConfig:
