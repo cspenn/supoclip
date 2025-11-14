@@ -285,3 +285,117 @@ class TestOfflineScenarios:
 
         assert test_video.exists()
         assert test_video.stat().st_size > 0
+
+
+class TestLocalLLMOfflineOperation:
+    """Test local LLM support for fully offline operation."""
+
+    def test_local_llm_configured_by_default(self, test_config):
+        """Test that local LLM is enabled by default."""
+        assert test_config.local_llm_enabled is True
+
+    def test_local_llm_no_api_key_required(self, monkeypatch):
+        """Test that local LLM works without API keys."""
+        # Ensure all API keys are removed
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("LOCAL_LLM_ENABLED", "true")
+
+        config = Config()
+
+        # Should not raise error even without API keys
+        try:
+            model = config.get_llm_model()
+            assert model is not None
+        except Exception as e:
+            pytest.fail(f"Local LLM should work without API keys: {e}")
+
+    def test_local_llm_base_url_configurable(self, monkeypatch):
+        """Test local LLM endpoint is configurable."""
+        custom_endpoint = "http://custom-host:5001/v1"
+        monkeypatch.setenv("LOCAL_LLM_BASE_URL", custom_endpoint)
+        config = Config()
+
+        assert config.local_llm_base_url == custom_endpoint
+
+    def test_local_llm_default_endpoint(self, monkeypatch):
+        """Test default local LLM endpoint."""
+        monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+        config = Config()
+
+        assert config.local_llm_base_url == "http://localhost:6969/v1"
+
+    def test_cloud_fallback_when_local_disabled(self, monkeypatch):
+        """Test cloud LLM fallback when local disabled."""
+        monkeypatch.setenv("LOCAL_LLM_ENABLED", "false")
+        monkeypatch.setenv("LLM_MODEL", "openai:gpt-4o")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+
+        config = Config()
+        model = config.get_llm_model()
+
+        # Should return cloud model identifier
+        assert isinstance(model, str)
+        assert model == "openai:gpt-4o"
+
+    def test_full_offline_pipeline_configured(self, test_config):
+        """Test full offline pipeline configuration."""
+        # Database: SQLite (offline)
+        assert "sqlite" in test_config.database_url.lower()
+
+        # Transcription: MLX Whisper (offline)
+        assert test_config.mlx_whisper_model is not None
+
+        # LLM: Local (offline)
+        assert test_config.local_llm_enabled is True
+
+        # Job Queue: Local asyncio (offline)
+        assert test_config.max_workers > 0
+
+    def test_no_api_calls_with_local_llm_enabled(self, monkeypatch):
+        """Test that no cloud API calls are made when local LLM enabled."""
+        # Set up local-only mode
+        monkeypatch.setenv("LOCAL_LLM_ENABLED", "true")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        config = Config()
+
+        # Should not require any cloud API keys
+        assert config.openai_api_key == ""
+        assert config.google_api_key == ""
+        assert config.anthropic_api_key == ""
+
+    def test_local_llm_model_name_configurable(self, monkeypatch):
+        """Test local LLM model name is configurable."""
+        monkeypatch.setenv("LOCAL_LLM_MODEL", "mistral-7b")
+        config = Config()
+
+        assert config.local_llm_model == "mistral-7b"
+
+    def test_local_llm_cost_zero_when_enabled(self, test_config):
+        """Test that local LLM has zero cost (no API calls)."""
+        if test_config.local_llm_enabled:
+            # No API calls = no cost
+            assert test_config.openai_api_key == ""
+            assert test_config.google_api_key == ""
+            assert test_config.anthropic_api_key == ""
+
+    def test_error_message_helpful_when_misconfigured(self, monkeypatch):
+        """Test error message is helpful when LLM misconfigured."""
+        monkeypatch.setenv("LOCAL_LLM_ENABLED", "false")
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        config = Config()
+
+        try:
+            config.get_llm_model()
+            pytest.fail("Should raise ValueError when misconfigured")
+        except ValueError as e:
+            error_msg = str(e)
+            # Error should suggest both local and cloud options
+            assert "LOCAL_LLM_ENABLED" in error_msg
+            assert "LLM_MODEL" in error_msg
