@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Column, String, DateTime, ForeignKey, CheckConstraint, ARRAY, Boolean, Float, Integer, Text, text
+from sqlalchemy import Column, String, DateTime, ForeignKey, CheckConstraint, ARRAY, Boolean, Float, Integer, Text, text, JSON
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 import uuid
+import json
 
 from .database import Base
 
@@ -36,7 +37,8 @@ class Task(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid_string)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     source_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("sources.id", ondelete="SET NULL"), nullable=True)
-    generated_clips_ids: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String(36)), nullable=True)
+    # Use JSON for SQLite compatibility (works with both SQLite and PostgreSQL)
+    generated_clips_ids: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"), nullable=False)
 
     # Font customization fields
