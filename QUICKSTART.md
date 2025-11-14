@@ -10,11 +10,68 @@ Run SupoClip natively on macOS (no Docker required)!
 4. **Python 3.11+** - `brew install python@3.11`
 5. **Node.js 18+** - `brew install node`
 6. **FFmpeg** - `brew install ffmpeg`
-7. **API Keys** (optional - only needed for AI analysis):
-   - At least one AI provider:
-     - [OpenAI API Key](https://platform.openai.com/api-keys) (recommended)
-     - [Google AI API Key](https://aistudio.google.com/app/apikey)
-     - [Anthropic API Key](https://console.anthropic.com/)
+7. **Local LLM** (optional - recommended for fully offline operation):
+   - KoboldCPP for local LLM inference
+   - A GGUF model file (7B-13B recommended)
+
+## Local LLM Setup (Recommended)
+
+For fully offline operation, run a local LLM using KoboldCPP. This enables AI segment analysis without any cloud API calls or costs.
+
+### Install KoboldCPP
+
+```bash
+# macOS (Apple Silicon)
+brew install koboldcpp
+
+# Or download from: https://github.com/LostRuins/koboldcpp/releases
+```
+
+### Download a Model
+
+Download a GGUF model file (recommended: 7B-13B parameter models for good speed/quality balance):
+
+- [Mistral-7B-Instruct](https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF) - Fast, good quality
+- [Llama-2-13B-Chat](https://huggingface.co/TheBloke/Llama-2-13B-chat-GGUF) - Good all-around
+- [OpenHermes-2.5-Mistral-7B](https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF) - Balanced
+
+After downloading, note the path to the model file (e.g., `~/Models/mistral-7b.gguf`).
+
+### Start KoboldCPP
+
+```bash
+koboldcpp --port 6969 --model ~/Models/mistral-7b.gguf --contextsize 4096
+```
+
+Leave this terminal running. KoboldCPP will:
+- Load your local model (~2-5 minutes first time)
+- Start OpenAI-compatible API on `http://localhost:6969`
+- Display memory usage and generation speed
+
+### Configure SupoClip for Local LLM
+
+The default configuration is already set for local LLM:
+
+```bash
+# Copy the environment template (already configured for local LLM)
+cp .env.example .env
+
+# No API keys needed for local mode!
+# LOCAL_LLM_ENABLED=true (default)
+# LOCAL_LLM_BASE_URL=http://localhost:6969/v1 (default)
+```
+
+That's it! When you process videos, SupoClip will use your local model instead of cloud APIs.
+
+### Cloud LLM Alternative (Optional)
+
+If you prefer cloud LLMs, simply edit your `.env` file:
+
+```bash
+LOCAL_LLM_ENABLED=false
+LLM_MODEL=openai:gpt-4o  # or google:gemini-2.5-flash
+OPENAI_API_KEY=your-key-here
+```
 
 ## Quick Start
 
@@ -71,22 +128,32 @@ npm run dev
 
 ## What's Offline vs Online?
 
-✅ **Works Completely Offline:**
+✅ **Works Completely Offline (Default):**
 - Video transcription (MLX Whisper - no internet needed)
+- AI segment analysis (Local LLM via KoboldCPP - no internet needed)
 - Video processing and clip generation (MoviePy, OpenCV)
 - Database operations (SQLite)
 - Authentication (Better Auth)
 
-❌ **Requires Internet/API Keys:**
-- AI segment analysis (uses OpenAI/Google/Anthropic LLMs)
+⚙️ **Requires Internet/API Keys (Optional Cloud Mode):**
+- Cloud AI analysis (uses OpenAI/Google/Anthropic LLMs) - optional if you prefer cloud
 - Optional: YouTube video downloads (yt-dlp)
 
 ## Environment Configuration
 
-### Optional Variables (API Keys)
+### Local LLM Configuration (Default - No API Keys Needed)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOCAL_LLM_ENABLED` | `true` | Enable local LLM (recommended) |
+| `LOCAL_LLM_BASE_URL` | `http://localhost:6969/v1` | KoboldCPP endpoint |
+| `LOCAL_LLM_MODEL` | `local-model` | Local model name (passed to KoboldCPP) |
+
+### Cloud LLM Configuration (Optional - Only if Using Cloud APIs)
 
 | Variable | Description | Where to Get |
 |----------|-------------|--------------|
+| `LOCAL_LLM_ENABLED` | Set to `false` to use cloud APIs | - |
 | `OPENAI_API_KEY` | OpenAI GPT models | https://platform.openai.com/api-keys |
 | `GOOGLE_API_KEY` | Google Gemini models | https://aistudio.google.com/app/apikey |
 | `ANTHROPIC_API_KEY` | Anthropic Claude models | https://console.anthropic.com/ |
