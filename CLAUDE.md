@@ -72,11 +72,19 @@ uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 - `uv` package manager
 
 **Environment variables (backend/.env):**
-- `ASSEMBLY_AI_API_KEY` - Required for video transcription
-- `LLM` - AI model identifier (e.g., "openai:gpt-4", "anthropic:claude-3-5-sonnet")
+
+**Local LLM (Default - No API Key Required):**
+- `LOCAL_LLM_ENABLED` - Enable local LLM (default: true)
+- `LOCAL_LLM_BASE_URL` - Local LLM endpoint (default: http://localhost:6969/v1)
+- `LOCAL_LLM_MODEL` - Model name for local LLM (default: local-model)
+
+**Cloud LLM (Optional Fallback):**
+- `LLM_MODEL` - AI model identifier (e.g., "openai:gpt-4", "anthropic:claude-3-5-sonnet")
 - `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY` - Depending on LLM choice
-- `DATABASE_URL` - PostgreSQL connection string
-- `TEMP_DIR` - Directory for temporary files (defaults to /tmp)
+
+**Other Configuration:**
+- `DATABASE_URL` - SQLite connection string (default: sqlite+aiosqlite:///./supoclip.db)
+- `TEMP_DIR` - Directory for temporary files (defaults to ./temp)
 
 ### Frontend Development
 
@@ -136,14 +144,14 @@ Services:
 ### Video Processing Pipeline
 
 1. **Video Input** → YouTube URL (via yt-dlp) or uploaded file
-2. **Transcription** → AssemblyAI generates word-level timestamps
-3. **AI Analysis** → Pydantic AI analyzes transcript for viral segments (10-45s clips)
+2. **Transcription** → MLX Whisper generates word-level timestamps (offline)
+3. **AI Analysis** → Local LLM or cloud LLM analyzes transcript for viral segments (10-45s clips)
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Smart face-centered cropping (MediaPipe + OpenCV fallbacks)
-   - AssemblyAI-powered subtitles (word-level sync)
+   - MLX Whisper-powered subtitles (word-level sync)
    - Custom fonts (TTF files in backend/fonts/)
    - Optional transition effects (videos in backend/transitions/)
-5. **Storage** → Clips saved to `{TEMP_DIR}/clips/` and metadata in PostgreSQL
+5. **Storage** → Clips saved to `{TEMP_DIR}/clips/` and metadata in SQLite
 
 ### Authentication Flow
 
