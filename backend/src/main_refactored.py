@@ -17,22 +17,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Config
+from .logging_config import setup_logging
 from .database import init_db, close_db, get_db
 from .workers.job_queue import JobQueue
 from .api.routes import tasks
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('logs/backend.log')
-    ]
-)
+# Configure configuration and logging
+config = Config()
+setup_logging(config.get_log_level(), config.log_dir, "backend")
 
 logger = logging.getLogger(__name__)
-config = Config()
 
 
 @asynccontextmanager
@@ -63,7 +57,7 @@ app = FastAPI(
     title="SupoClip API",
     description="Refactored Python backend for SupoClip with async job processing",
     version="0.2.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -85,6 +79,7 @@ app.include_router(tasks.router)
 
 # Keep existing utility endpoints
 from .api.routes.media import router as media_router
+
 app.include_router(media_router)
 
 
@@ -96,7 +91,7 @@ def read_root():
         "version": "0.2.0",
         "status": "running",
         "docs": "/docs",
-        "architecture": "refactored with job queue"
+        "architecture": "refactored with job queue",
     }
 
 
@@ -110,6 +105,7 @@ async def health_check():
 async def check_database_health(db: AsyncSession = Depends(get_db)):
     """Check database connectivity."""
     from sqlalchemy import text
+
     try:
         await db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
