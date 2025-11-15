@@ -12,15 +12,15 @@ class Config:
 
     Uses:
     - SQLite for database (not PostgreSQL)
-    - MLX Whisper for transcription (not AssemblyAI)
+    - parakeet-mlx for transcription (not AssemblyAI)
     - Local asyncio queue for jobs (not Redis/arq)
     """
 
     def __init__(self) -> None:
         """Initialize configuration from environment variables."""
-        # MLX Whisper transcription model
-        # Options: tiny, base, small, medium, large
-        self.mlx_whisper_model = os.getenv("MLX_WHISPER_MODEL", "medium")
+        # parakeet-mlx transcription model
+        # Default: mlx-community/parakeet-tdt-0.6b-v2
+        self.parakeet_model = os.getenv("PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2")
 
         # Local LLM configuration (default - no API key required)
         self.local_llm_enabled = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
