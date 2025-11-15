@@ -22,7 +22,7 @@ class ClipRepository:
         start_time: str,
         end_time: str,
         duration: float,
-        text: str,
+        clip_text: str,
         relevance_score: float,
         reasoning: str,
         clip_order: int
@@ -47,7 +47,7 @@ class ClipRepository:
                 "start_time": start_time,
                 "end_time": end_time,
                 "duration": duration,
-                "text": text,
+                "text": clip_text,
                 "relevance_score": relevance_score,
                 "reasoning": reasoning,
                 "clip_order": clip_order
