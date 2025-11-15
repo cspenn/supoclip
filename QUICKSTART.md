@@ -91,8 +91,9 @@ That's it! The script will:
 - ✅ Check and install Python dependencies
 - ✅ Check and install Node dependencies
 - ✅ Verify KoboldCPP is running (optional, warns if not)
+- ✅ Auto-detect available ports (if 8000/3000 busy, uses 8001/3001, etc.)
 - ✅ Start backend and frontend automatically
-- ✅ Show you the URLs to access
+- ✅ Show you the actual URLs being used
 
 Then open your browser:
 - **Frontend**: http://localhost:3000
@@ -235,6 +236,7 @@ LLM=google:gemini-pro
    ```bash
    lsof -i :8000
    # Kill process if needed: kill -9 <PID>
+   # OR: ./start.sh will auto-detect and use alternate port (8001, 8002, etc.)
    ```
 
 4. **Verify dependencies**:
