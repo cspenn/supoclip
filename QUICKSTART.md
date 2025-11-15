@@ -128,7 +128,7 @@ npm install
 cp .env.example .env
 
 # No API keys needed for local operation!
-# - MLX Whisper works completely offline for transcription
+# - parakeet-mlx works completely offline for transcription
 # - KoboldCPP provides local AI without any cloud services
 ```
 
@@ -154,7 +154,7 @@ npm run dev
 ## What's Offline vs Online?
 
 ✅ **Works Completely Offline (Default):**
-- Video transcription (MLX Whisper - no internet needed)
+- Video transcription (parakeet-mlx - no internet needed)
 - AI segment analysis (Local LLM via KoboldCPP - no internet needed)
 - Video processing and clip generation (MoviePy, OpenCV)
 - Database operations (SQLite)
@@ -188,7 +188,7 @@ npm run dev
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MLX_WHISPER_MODEL` | `medium` | MLX Whisper model (tiny/base/small/medium/large) |
+| `PARAKEET_MODEL` | `mlx-community/parakeet-tdt-0.6b-v2` | parakeet-mlx model identifier |
 | `BETTER_AUTH_SECRET` | dev secret | Auth secret (change in production!) |
 | `DATABASE_URL` | `file:./supoclip.db` | SQLite database path |
 | `MAX_WORKERS` | `2` | Local job queue workers |
@@ -256,13 +256,13 @@ LLM=google:gemini-pro
    lsof -i :3000
    ```
 
-### MLX Whisper model not downloading?
+### parakeet-mlx model not downloading?
 
 1. **Ensure internet connection** (first run only)
 2. **Check disk space** (models are ~1-2GB)
 3. **Manual download**:
    ```bash
-   python3 -c "import mlx_whisper; mlx_whisper.load_models('medium')"
+   python3 -c "from parakeet_mlx.utils import from_pretrained; from_pretrained('mlx-community/parakeet-tdt-0.6b-v2')"
    ```
 
 ### Database issues?
