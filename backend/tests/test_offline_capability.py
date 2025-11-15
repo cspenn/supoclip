@@ -3,7 +3,7 @@ Offline capability tests for SupoClip backend.
 
 Tests that the application can operate without external services:
 - No external API calls required by default
-- MLX Whisper (local) instead of AssemblyAI (cloud)
+- parakeet-mlx (local) instead of AssemblyAI (cloud)
 - SQLite (local) instead of PostgreSQL
 - Local job queue instead of Redis
 - No internet dependency for basic operation
@@ -58,16 +58,16 @@ class TestOfflineDatabase:
 class TestOfflineTranscription:
     """Test offline transcription capability."""
 
-    def test_mlx_whisper_default(self, test_config):
-        """Test that MLX Whisper is configured."""
-        assert test_config.mlx_whisper_model is not None
-        assert test_config.mlx_whisper_model in ["tiny", "base", "small", "medium", "large"]
+    def test_parakeet_default(self, test_config):
+        """Test that parakeet-mlx is configured."""
+        assert test_config.parakeet_model is not None
+        assert "parakeet-tdt" in test_config.parakeet_model
 
-    def test_mlx_not_cloud_service(self):
-        """Test MLX Whisper is not a cloud service."""
+    def test_parakeet_not_cloud_service(self):
+        """Test parakeet-mlx is not a cloud service."""
         from src.transcription_mlx import transcribe_video_mlx
 
-        # MLX is a local processing library, not cloud-based
+        # parakeet-mlx is a local processing library, not cloud-based
         # The module should exist and be importable
         assert transcribe_video_mlx is not None
 
@@ -148,8 +148,8 @@ class TestOfflineConfiguration:
         # Database: SQLite (local)
         assert "sqlite" in test_config.database_url.lower()
 
-        # Transcription: MLX Whisper (local)
-        assert test_config.mlx_whisper_model is not None
+        # Transcription: parakeet-mlx (local)
+        assert test_config.parakeet_model is not None
 
         # Job Queue: Local asyncio queue (no Redis)
         assert test_config.max_workers > 0
@@ -344,8 +344,8 @@ class TestLocalLLMOfflineOperation:
         # Database: SQLite (offline)
         assert "sqlite" in test_config.database_url.lower()
 
-        # Transcription: MLX Whisper (offline)
-        assert test_config.mlx_whisper_model is not None
+        # Transcription: parakeet-mlx (offline)
+        assert test_config.parakeet_model is not None
 
         # LLM: Local (offline)
         assert test_config.local_llm_enabled is True
