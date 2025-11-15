@@ -1,76 +1,129 @@
+# start backend/src/workers/job_queue.py
 """
-Job queue setup using arq (async Redis queue).
+Job queue adapter - delegates to LocalJobQueue for compatibility.
+
+This module provides a compatibility layer for code that still imports
+from job_queue. It wraps the asyncio-based LocalJobQueue to provide
+a unified interface.
+
+MODULE: backend/src/workers/job_queue.py
 """
 import logging
-from typing import Optional
-from arq import create_pool
-from arq.connections import RedisSettings, ArqRedis
-from ..config import Config
+from typing import Optional, Callable, Any
+
+from .local_queue import get_job_queue, LocalJobQueue
 
 logger = logging.getLogger(__name__)
-config = Config()
-
-# Redis settings for arq
-ARQ_REDIS_SETTINGS = RedisSettings(
-    host=config.redis_host,
-    port=config.redis_port,
-    database=0
-)
 
 
 class JobQueue:
-    """Wrapper for arq job queue operations."""
+    """
+    Compatibility wrapper for local asyncio job queue.
 
-    _pool: Optional[ArqRedis] = None
+    Maintains the class-method interface of the original arq-based
+    JobQueue while delegating to LocalJobQueue internally.
+    """
 
-    @classmethod
-    async def get_pool(cls) -> ArqRedis:
-        """Get or create the Redis connection pool."""
-        if cls._pool is None:
-            cls._pool = await create_pool(ARQ_REDIS_SETTINGS)
-            logger.info(f"Created arq Redis pool: {config.redis_host}:{config.redis_port}")
-        return cls._pool
+    _instance: Optional[LocalJobQueue] = None
 
     @classmethod
-    async def close_pool(cls):
-        """Close the Redis connection pool."""
-        if cls._pool is not None:
-            await cls._pool.close()
-            cls._pool = None
-            logger.info("Closed arq Redis pool")
-
-    @classmethod
-    async def enqueue_job(cls, function_name: str, *args, **kwargs) -> str:
+    async def get_pool(cls) -> LocalJobQueue:
         """
-        Enqueue a job to be processed by workers.
+        Get or create the job queue instance.
+
+        For compatibility with original JobQueue API that had
+        get_pool() for initialization.
+
+        Returns:
+            LocalJobQueue instance
+        """
+        if cls._instance is None:
+            cls._instance = get_job_queue()
+            logger.info("✅ Job queue initialized (local asyncio)")
+        return cls._instance
+
+    @classmethod
+    async def close_pool(cls) -> None:
+        """
+        Close and cleanup the job queue.
+
+        For compatibility with original JobQueue API that had
+        close_pool() for shutdown.
+        """
+        if cls._instance is not None:
+            await cls._instance.stop_workers()
+            cls._instance = None
+            logger.info("✅ Job queue closed")
+
+    @classmethod
+    async def enqueue_job(
+        cls,
+        function_name: str | Callable,
+        *args: Any,
+        **kwargs: Any
+    ) -> str:
+        """
+        Enqueue a job for background processing.
+
+        Accepts both string function names (old arq API) and function
+        objects (new asyncio API) for compatibility.
 
         Args:
-            function_name: Name of the worker function to call
+            function_name: Function name (str) or callable
             *args: Positional arguments for the function
             **kwargs: Keyword arguments for the function
 
         Returns:
-            job_id: Unique ID for the enqueued job
+            job_id: Unique identifier for the enqueued job
         """
-        pool = await cls.get_pool()
-        job = await pool.enqueue_job(function_name, *args, **kwargs)
-        logger.info(f"Enqueued job {job.job_id}: {function_name}")
-        return job.job_id
+        queue = await cls.get_pool()
 
-    @classmethod
-    async def get_job_result(cls, job_id: str):
-        """Get the result of a completed job."""
-        pool = await cls.get_pool()
-        job = await pool.job(job_id)
-        if job:
-            return await job.result()
-        return None
+        # Handle both string function names (old arq API) and callables
+        if isinstance(function_name, str):
+            logger.info(f"📝 Enqueueing job by string name: {function_name}")
+            # For now, we only support "process_video_task"
+            if function_name == "process_video_task":
+                from .tasks import process_video_task
+                actual_function = process_video_task
+            else:
+                raise ValueError(
+                    f"Unknown worker function: {function_name}. "
+                    "Supported: 'process_video_task'"
+                )
+        else:
+            actual_function = function_name
+
+        job_id = await queue.enqueue_job(actual_function, *args, **kwargs)
+        logger.info(f"📝 Enqueued job {job_id}")
+        return job_id
 
     @classmethod
     async def get_job_status(cls, job_id: str) -> Optional[str]:
-        """Get the status of a job."""
-        pool = await cls.get_pool()
-        job = await pool.job(job_id)
-        if job:
-            return await job.status()
-        return None
+        """
+        Get the status of a job.
+
+        Args:
+            job_id: The job ID
+
+        Returns:
+            Job status string ("queued", "processing", "completed", "error")
+            or None if job not found
+        """
+        queue = await cls.get_pool()
+        return queue.get_job_status(job_id)
+
+    @classmethod
+    async def get_job_result(cls, job_id: str) -> Any:
+        """
+        Get the result of a completed job.
+
+        Args:
+            job_id: The job ID
+
+        Returns:
+            Job result if completed, None otherwise
+        """
+        queue = await cls.get_pool()
+        return queue.get_job_result(job_id)
+
+# end backend/src/workers/job_queue.py

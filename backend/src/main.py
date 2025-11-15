@@ -31,6 +31,7 @@ from sqlalchemy import text
 from .models import User, Task, Source, GeneratedClip
 from .database import init_db, close_db, get_db, AsyncSessionLocal
 from .api.routes.tasks import router as tasks_router
+from .workers.local_queue import get_job_queue
 
 config = Config()
 
@@ -38,8 +39,22 @@ config = Config()
 async def lifespan(app: FastAPI):
     try:
         await init_db()
+
+        # Initialize job queue
+        queue = get_job_queue()
+        await queue.start_workers()
+        logger.info("✅ Job queue workers started")
+
         yield
     finally:
+        # Shutdown job queue
+        try:
+            queue = get_job_queue()
+            await queue.stop_workers()
+            logger.info("✅ Job queue workers stopped")
+        except Exception as e:
+            logger.error(f"Error stopping workers: {e}")
+
         await close_db()
 
 app = FastAPI(

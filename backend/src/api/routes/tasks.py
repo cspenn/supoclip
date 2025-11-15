@@ -12,9 +12,8 @@ from typing import Dict, Any
 from ...database import get_db
 from ...services.task_service import TaskService
 from ...workers.job_queue import JobQueue
-from ...workers.progress import ProgressTracker
+from ...workers.tasks import process_video_task
 from ...config import Config
-import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -96,7 +95,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
 
         # Enqueue job for worker
         job_id = await JobQueue.enqueue_job(
-            "process_video_task",
+            process_video_task,
             task_id,
             raw_source["url"],
             source_type,
@@ -169,6 +168,19 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
     SSE endpoint for real-time progress updates.
     Streams progress updates as Server-Sent Events.
     """
+    # Import Redis and ProgressTracker locally to handle optional dependencies
+    try:
+        import redis.asyncio as redis
+        from ...workers.progress import ProgressTracker
+    except (ImportError, ModuleNotFoundError):
+        # Redis not available, return error
+        async def error_generator():
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": "Redis not configured for real-time updates"})
+            }
+        return EventSourceResponse(error_generator())
+
     async def event_generator():
         """Generate SSE events for task progress."""
         # First, check if task exists

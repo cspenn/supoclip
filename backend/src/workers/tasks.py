@@ -1,5 +1,9 @@
+# start backend/src/workers/tasks.py
 """
-Worker tasks - background jobs processed by arq workers.
+Worker tasks - background jobs processed by local asyncio queue.
+
+This module defines tasks that are executed asynchronously by the local
+job queue (LocalJobQueue). Tasks are executed with asyncio workers.
 """
 import logging
 from typing import Dict, Any
@@ -9,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 async def process_video_task(
-    ctx: Dict[str, Any],
     task_id: str,
     url: str,
     source_type: str,
@@ -22,7 +25,6 @@ async def process_video_task(
     Background worker task to process a video.
 
     Args:
-        ctx: arq context (provides Redis connection and other utilities)
         task_id: Task ID to update
         url: Video URL or file path
         source_type: "youtube" or "upload"
@@ -36,20 +38,20 @@ async def process_video_task(
     """
     from ..database import AsyncSessionLocal
     from ..services.task_service import TaskService
-    from ..workers.progress import ProgressTracker
+    from ..workers.local_progress import get_progress_tracker
 
     logger.info(f"Worker processing task {task_id}")
 
-    # Create progress tracker
-    progress = ProgressTracker(ctx['redis'], task_id)
+    # Create progress tracker (local in-memory version)
+    progress = get_progress_tracker()
 
     async with AsyncSessionLocal() as db:
         task_service = TaskService(db)
 
         try:
             # Progress callback
-            async def update_progress(percent: int, message: str):
-                await progress.update(percent, message)
+            async def update_progress(percent: int, message: str) -> None:
+                await progress.update(task_id, percent, message, "processing")
                 logger.info(f"Task {task_id}: {percent}% - {message}")
 
             # Process the video
@@ -64,37 +66,12 @@ async def process_video_task(
             )
 
             logger.info(f"Task {task_id} completed successfully")
+            await progress.update(task_id, 100, "Completed", "completed")
             return result
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-            # Error will be caught by arq and task status will be updated
+            await progress.update(task_id, 0, f"Error: {str(e)}", "error")
             raise
 
-
-# Worker configuration for arq
-class WorkerSettings:
-    """Configuration for arq worker."""
-
-    from ..config import Config
-    from arq.connections import RedisSettings
-
-    config = Config()
-
-    # Functions to run
-    functions = [process_video_task]
-    queue_name = "supoclip_tasks"
-
-    # Redis settings from environment
-    redis_settings = RedisSettings(
-        host=config.redis_host,
-        port=config.redis_port,
-        database=0
-    )
-
-    # Retry settings
-    max_tries = 3  # Retry failed jobs up to 3 times
-    job_timeout = 3600  # 1 hour timeout for video processing
-
-    # Worker pool settings
-    max_jobs = 4  # Process up to 4 jobs simultaneously
+# end backend/src/workers/tasks.py
