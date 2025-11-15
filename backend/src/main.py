@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
         # Initialize job queue
         queue = get_job_queue()
         await queue.start_workers()
-        logger.info("✅ Job queue workers started")
+        logger.info("Job queue workers started")
 
         yield
     finally:
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
         try:
             queue = get_job_queue()
             await queue.stop_workers()
-            logger.info("✅ Job queue workers stopped")
+            logger.info("Job queue workers stopped")
         except Exception as e:
             logger.error(f"Error stopping workers: {e}")
 
@@ -94,7 +94,7 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
 @app.post("/start")
 async def start_task(request: Request):
     """Start a new task for authenticated users"""
-    logger.info("🚀 Starting new task request")
+    logger.info("Starting new task request")
 
     data = await request.json()
     headers = request.headers
@@ -109,58 +109,58 @@ async def start_task(request: Request):
     font_color = font_options.get("font_color", "#FFFFFF")
 
     logger.info(
-        f"📝 Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
+        f"Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
     )
 
     if not raw_source or not raw_source.get("url"):
-        logger.error("❌ Source URL is missing")
+        logger.error("Source URL is missing")
         raise HTTPException(status_code=400, detail="Source URL is required")
 
     if not user_id:
-        logger.error("❌ User ID is missing")
+        logger.error("User ID is missing")
         raise HTTPException(status_code=401, detail="User authentication required")
 
     # Validate user_id is a valid string and user exists
     if not user_id or len(user_id.strip()) == 0:
-        logger.error(f"❌ Invalid user ID format: {user_id}")
+        logger.error(f"Invalid user ID format: {user_id}")
         raise HTTPException(status_code=400, detail="Invalid user ID format")
 
-    logger.info(f"🔍 Checking if user {user_id} exists in database")
+    logger.info(f"Checking if user {user_id} exists in database")
     # Check if user exists in database
     async with AsyncSessionLocal() as db:
         user_exists = await db.execute(
             text("SELECT 1 FROM users WHERE id = :user_id"), {"user_id": user_id}
         )
         if not user_exists.fetchone():
-            logger.error(f"❌ User {user_id} not found in database")
+            logger.error(f"User {user_id} not found in database")
             raise HTTPException(status_code=404, detail="User not found")
 
-        logger.info(f"✅ User {user_id} found in database")
+        logger.info(f"User {user_id} found in database")
 
         source = Source()
         source.type = source.decide_source_type(raw_source["url"])
-        logger.info(f"📺 Source type detected: {source.type}")
+        logger.info(f"Source type detected: {source.type}")
 
         if source.type == "youtube":
-            logger.info("🎬 Getting YouTube video title")
+            logger.info("Getting YouTube video title")
             source.title = get_youtube_video_title(raw_source["url"])
             if not source.title:
-                logger.warning("⚠️ Could not get YouTube title, using default")
+                logger.warning("Could not get YouTube title, using default")
                 source.title = "YouTube Video"
-            logger.info(f"📝 Video title: {source.title}")
+            logger.info(f"Video title: {source.title}")
         else:
             source.title = raw_source.get("title", "Uploaded Video")
-            logger.info(f"📝 Custom title: {source.title}")
+            logger.info(f"Custom title: {source.title}")
 
         relevant_segments_json = []
         clips_info = []
         relevant_parts = None
 
-        logger.info("💾 Saving source and creating task in database")
+        logger.info("Saving source and creating task in database")
         async with AsyncSessionLocal() as db:
             db.add(source)
             await db.flush()
-            logger.info(f"✅ Source saved with ID: {source.id}")
+            logger.info(f"Source saved with ID: {source.id}")
 
             task = Task(
                 user_id=user_id,
@@ -175,27 +175,27 @@ async def start_task(request: Request):
 
             db.add(task)
             await db.commit()
-            logger.info(f"✅ Task created with ID: {task.id}")
+            logger.info(f"Task created with ID: {task.id}")
 
             # Determine video path based on source type
             video_path = None
             if source.type == "youtube":
-                logger.info("⬇️ Starting YouTube video download")
+                logger.info("Starting YouTube video download")
                 video_path = download_youtube_video(raw_source["url"])
                 if not video_path:
-                    logger.error("❌ Failed to download video")
+                    logger.error("Failed to download video")
                     raise HTTPException(
                         status_code=500, detail="Failed to download video"
                     )
-                logger.info(f"✅ Video downloaded to: {video_path}")
+                logger.info(f"Video downloaded to: {video_path}")
             else:
                 # For uploaded videos, the URL is actually the file path
                 video_path = raw_source["url"]
-                logger.info(f"📁 Using uploaded video at: {video_path}")
+                logger.info(f"Using uploaded video at: {video_path}")
 
                 # Verify the uploaded file exists
                 if not Path(video_path).exists():
-                    logger.error(f"❌ Uploaded video file not found: {video_path}")
+                    logger.error(f"Uploaded video file not found: {video_path}")
                     raise HTTPException(
                         status_code=404, detail="Uploaded video file not found"
                     )
@@ -203,21 +203,21 @@ async def start_task(request: Request):
             # Process video (same for both YouTube and uploaded videos)
             if video_path:
                 logger.info(
-                    "🎤 Starting transcript generation with AssemblyAI + SRT equalization"
+                    "Starting transcript generation with AssemblyAI + SRT equalization"
                 )
                 transcript = get_video_transcript(video_path)
                 logger.info(
-                    f"✅ AssemblyAI transcript generated with 10-char line equalization (length: {len(transcript)} characters)"
+                    f"AssemblyAI transcript generated with 10-char line equalization (length: {len(transcript)} characters)"
                 )
 
-                logger.info("🤖 Starting AI analysis for relevant segments")
+                logger.info("Starting AI analysis for relevant segments")
                 relevant_parts = await get_most_relevant_parts_by_transcript(transcript)
                 logger.info(
-                    f"✅ AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
+                    f"AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
                 )
 
                 # Convert to JSON format for response
-                logger.info("📊 Converting AI results to JSON format")
+                logger.info("Converting AI results to JSON format")
                 relevant_segments_json = [
                     {
                         "start_time": segment.start_time,
@@ -228,14 +228,14 @@ async def start_task(request: Request):
                     }
                     for segment in relevant_parts.most_relevant_segments
                 ]
-                logger.info(f"✅ Created {len(relevant_segments_json)} segment records")
+                logger.info(f"Created {len(relevant_segments_json)} segment records")
 
                 # Create clips from relevant segments with transitions and custom fonts
-                logger.info("🎬 Starting video clip generation with transitions")
+                logger.info("Starting video clip generation with transitions")
                 clips_output_dir = Path(config.temp_dir) / "clips"
-                logger.info(f"📁 Output directory: {clips_output_dir}")
+                logger.info(f"Output directory: {clips_output_dir}")
                 logger.info(
-                    f"🎨 Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
+                    f"Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
                 )
                 clips_info = create_clips_with_transitions(
                     video_path,
@@ -245,17 +245,15 @@ async def start_task(request: Request):
                     font_size,
                     font_color,
                 )
-                logger.info(
-                    f"✅ Generated {len(clips_info)} video clips with transitions"
-                )
+                logger.info(f"Generated {len(clips_info)} video clips with transitions")
 
                 # Save clips to database
-                logger.info("💾 Saving clips to database")
+                logger.info("Saving clips to database")
                 async with AsyncSessionLocal() as db:
                     clip_ids = []
                     for i, clip_info in enumerate(clips_info):
                         logger.info(
-                            f"💾 Saving clip {i+1}/{len(clips_info)}: {clip_info['filename']}"
+                            f"Saving clip {i+1}/{len(clips_info)}: {clip_info['filename']}"
                         )
                         clip_record = GeneratedClip(
                             task_id=task.id,
@@ -272,10 +270,10 @@ async def start_task(request: Request):
                         db.add(clip_record)
                         await db.flush()
                         clip_ids.append(clip_record.id)
-                        logger.info(f"✅ Clip {i+1} saved with ID: {clip_record.id}")
+                        logger.info(f"Clip {i+1} saved with ID: {clip_record.id}")
 
                     # Update task with clip IDs
-                    logger.info(f"🔗 Updating task with {len(clip_ids)} clip IDs")
+                    logger.info(f"Updating task with {len(clip_ids)} clip IDs")
                     task_update = await db.execute(
                         text(
                             "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
@@ -283,16 +281,16 @@ async def start_task(request: Request):
                         {"clip_ids": clip_ids, "task_id": task.id},
                     )
                     await db.commit()
-                    logger.info("✅ Task updated with clip IDs")
+                    logger.info("Task updated with clip IDs")
             else:
-                logger.error("❌ No video path available for processing")
+                logger.error("No video path available for processing")
                 raise HTTPException(
                     status_code=500, detail="No video available for processing"
                 )
 
-            logger.info(f"🎉 Task completed successfully! Task ID: {task.id}")
+            logger.info(f"Task completed successfully! Task ID: {task.id}")
         logger.info(
-            f"📊 Final results - Segments: {len(relevant_segments_json)}, Clips: {len(clips_info)}"
+            f"Final results - Segments: {len(relevant_segments_json)}, Clips: {len(clips_info)}"
         )
 
         return {
@@ -321,15 +319,15 @@ async def start_task_with_progress(request: Request):
     font_color = font_options.get("font_color", "#FFFFFF")
 
     logger.info(
-        f"📝 Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
+        f"Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
     )
 
     if not raw_source or not raw_source.get("url"):
-        logger.error("❌ Source URL is missing")
+        logger.error("Source URL is missing")
         raise HTTPException(status_code=400, detail="Source URL is required")
 
     if not user_id:
-        logger.error("❌ User ID is missing")
+        logger.error("User ID is missing")
         raise HTTPException(status_code=401, detail="User authentication required")
 
     # Validate user_id and create initial task
@@ -338,7 +336,7 @@ async def start_task_with_progress(request: Request):
             text("SELECT 1 FROM users WHERE id = :user_id"), {"user_id": user_id}
         )
         if not user_exists.fetchone():
-            logger.error(f"❌ User {user_id} not found in database")
+            logger.error(f"User {user_id} not found in database")
             raise HTTPException(status_code=404, detail="User not found")
 
         source = Source()
@@ -349,13 +347,11 @@ async def start_task_with_progress(request: Request):
             try:
                 source.title = get_youtube_video_title(raw_source["url"])
                 if not source.title:
-                    logger.warning("⚠️ Could not get YouTube title, using default")
+                    logger.warning("Could not get YouTube title, using default")
                     source.title = "YouTube Video"
-                logger.info(f"📝 YouTube video title: {source.title}")
+                logger.info(f"YouTube video title: {source.title}")
             except Exception as e:
-                logger.warning(
-                    f"⚠️ Could not get YouTube title, using default: {str(e)}"
-                )
+                logger.warning(f"Could not get YouTube title, using default: {str(e)}")
                 source.title = "YouTube Video"
         else:
             source.title = raw_source.get("title", "Uploaded Video")
@@ -411,7 +407,7 @@ async def process_video_task(
     """Background task to process video and update task status"""
 
     try:
-        logger.info(f"🚀 Starting background processing for task {task_id}")
+        logger.info(f"Starting background processing for task {task_id}")
         await update_task_status(task_id, "processing")
 
         # Get source from database
@@ -426,16 +422,16 @@ async def process_video_task(
             if not source_data:
                 raise Exception("Source not found")
 
-        logger.info(f"📊 Task {task_id}: Analyzing video source...")
+        logger.info(f"Task {task_id}: Analyzing video source...")
 
         # Determine video path based on source type
         video_path = None
         if source_data.type == "youtube":
-            logger.info(f"📊 Task {task_id}: Downloading YouTube video...")
+            logger.info(f"Task {task_id}: Downloading YouTube video...")
             video_path = download_youtube_video(raw_source["url"])
             if not video_path:
                 raise Exception("Failed to download video")
-            logger.info(f"✅ Video downloaded to: {video_path}")
+            logger.info(f"Video downloaded to: {video_path}")
         else:
             video_path = raw_source["url"]
             if not Path(video_path).exists():
@@ -443,16 +439,14 @@ async def process_video_task(
 
         # Process video
         if video_path:
-            logger.info(f"📊 Task {task_id}: Generating transcript with AssemblyAI...")
+            logger.info(f"Task {task_id}: Generating transcript with AssemblyAI...")
             transcript = get_video_transcript(video_path)
-            logger.info(
-                f"✅ Transcript generated (length: {len(transcript)} characters)"
-            )
+            logger.info(f"Transcript generated (length: {len(transcript)} characters)")
 
-            logger.info(f"📊 Task {task_id}: AI analyzing content for best clips...")
+            logger.info(f"Task {task_id}: AI analyzing content for best clips...")
             relevant_parts = await get_most_relevant_parts_by_transcript(transcript)
             logger.info(
-                f"✅ AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
+                f"AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
             )
 
             # Convert to JSON format
@@ -468,11 +462,11 @@ async def process_video_task(
             ]
 
             logger.info(
-                f"📊 Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions..."
+                f"Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions..."
             )
             clips_output_dir = Path(config.temp_dir) / "clips"
             logger.info(
-                f"🎨 Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
+                f"Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
             )
             clips_info = create_clips_with_transitions(
                 video_path,
@@ -482,9 +476,9 @@ async def process_video_task(
                 font_size,
                 font_color,
             )
-            logger.info(f"✅ Generated {len(clips_info)} video clips with transitions")
+            logger.info(f"Generated {len(clips_info)} video clips with transitions")
 
-            logger.info(f"📊 Task {task_id}: Saving clips to database...")
+            logger.info(f"Task {task_id}: Saving clips to database...")
             async with AsyncSessionLocal() as db:
                 clip_ids = []
                 for i, clip_info in enumerate(clips_info):
@@ -515,12 +509,12 @@ async def process_video_task(
 
         # Mark as completed
         await update_task_status(task_id, "completed")
-        logger.info(f"🎉 Task {task_id} completed successfully!")
+        logger.info(f"Task {task_id} completed successfully!")
 
     except Exception as e:
-        logger.error(f"❌ Error processing task {task_id}: {str(e)}")
+        logger.error(f"Error processing task {task_id}: {str(e)}")
         await update_task_status(task_id, "error")
-        logger.error(f"📊 Task {task_id} marked as error: {str(e)}")
+        logger.error(f"Task {task_id} marked as error: {str(e)}")
 
 
 @app.get("/tasks/{task_id}/clips")
@@ -742,9 +736,9 @@ async def upload_video(request: Request):
             content = await video_file.read()
             await f.write(content)
 
-        logger.info(f"✅ Video uploaded successfully to: {video_path}")
+        logger.info(f"Video uploaded successfully to: {video_path}")
 
         return {"message": "Video uploaded successfully", "video_path": str(video_path)}
     except Exception as e:
-        logger.error(f"❌ Error uploading video: {str(e)}")
+        logger.error(f"Error uploading video: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading video: {str(e)}")

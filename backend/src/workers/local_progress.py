@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Progress:
     """Progress information for a task."""
+
     task_id: str
     progress: int  # 0-100
     message: str
@@ -30,7 +31,7 @@ class Progress:
             "progress": self.progress,
             "message": self.message,
             "status": self.status,
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
         }
 
 
@@ -43,11 +44,7 @@ class LocalProgressTracker:
         self.subscribers: Dict[str, list] = {}  # task_id -> list of asyncio.Queue
 
     async def update(
-        self,
-        task_id: str,
-        progress: int,
-        message: str,
-        status: str = "processing"
+        self, task_id: str, progress: int, message: str, status: str = "processing"
     ) -> None:
         """
         Update progress for a task.
@@ -63,7 +60,7 @@ class LocalProgressTracker:
             progress=progress,
             message=message,
             status=status,
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
 
         self.progress_data[task_id] = prog
@@ -76,7 +73,7 @@ class LocalProgressTracker:
                 except Exception as e:
                     logger.warning(f"Failed to notify subscriber: {e}")
 
-        logger.debug(f"📝 Progress update for {task_id}: {progress}% - {message}")
+        logger.debug(f"Progress update for {task_id}: {progress}% - {message}")
 
     def get(self, task_id: str) -> Optional[Progress]:
         """
@@ -90,11 +87,7 @@ class LocalProgressTracker:
         """
         return self.progress_data.get(task_id)
 
-    async def complete(
-        self,
-        task_id: str,
-        message: str = "Complete!"
-    ) -> None:
+    async def complete(self, task_id: str, message: str = "Complete!") -> None:
         """
         Mark task as completed.
 

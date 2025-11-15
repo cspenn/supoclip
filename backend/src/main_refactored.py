@@ -33,14 +33,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     # Startup
-    logger.info("🚀 Starting SupoClip API...")
+    logger.info("Starting SupoClip API...")
     try:
         await init_db()
-        logger.info("✅ Database initialized")
+        logger.info("Database initialized")
 
         # Initialize job queue
         await JobQueue.get_pool()
-        logger.info("✅ Job queue initialized")
+        logger.info("Job queue initialized")
 
         yield
 
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Shutting down SupoClip API...")
         await close_db()
         await JobQueue.close_pool()
-        logger.info("✅ Cleanup complete")
+        logger.info("Cleanup complete")
 
 
 # Create FastAPI app

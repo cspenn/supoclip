@@ -39,7 +39,7 @@ class JobQueue:
         """
         if cls._instance is None:
             cls._instance = get_job_queue()
-            logger.info("✅ Job queue initialized (local asyncio)")
+            logger.info("Job queue initialized (local asyncio)")
         return cls._instance
 
     @classmethod
@@ -53,14 +53,11 @@ class JobQueue:
         if cls._instance is not None:
             await cls._instance.stop_workers()
             cls._instance = None
-            logger.info("✅ Job queue closed")
+            logger.info("Job queue closed")
 
     @classmethod
     async def enqueue_job(
-        cls,
-        function_name: str | Callable,
-        *args: Any,
-        **kwargs: Any
+        cls, function_name: str | Callable, *args: Any, **kwargs: Any
     ) -> str:
         """
         Enqueue a job for background processing.
@@ -80,10 +77,11 @@ class JobQueue:
 
         # Handle both string function names (old arq API) and callables
         if isinstance(function_name, str):
-            logger.info(f"📝 Enqueueing job by string name: {function_name}")
+            logger.info(f"Enqueueing job by string name: {function_name}")
             # For now, we only support "process_video_task"
             if function_name == "process_video_task":
                 from .tasks import process_video_task
+
                 actual_function = process_video_task
             else:
                 raise ValueError(
@@ -94,7 +92,7 @@ class JobQueue:
             actual_function = function_name
 
         job_id = await queue.enqueue_job(actual_function, *args, **kwargs)
-        logger.info(f"📝 Enqueued job {job_id}")
+        logger.info(f"Enqueued job {job_id}")
         return job_id
 
     @classmethod
@@ -125,5 +123,6 @@ class JobQueue:
         """
         queue = await cls.get_pool()
         return queue.get_job_result(job_id)
+
 
 # end backend/src/workers/job_queue.py

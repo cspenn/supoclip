@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Job:
     """Represents a background job."""
+
     job_id: str
     function: Callable
     args: tuple = field(default_factory=tuple)
@@ -55,7 +56,7 @@ class LocalJobQueue:
             worker = asyncio.create_task(self._worker(f"worker-{i}"))
             self.workers.append(worker)
 
-        logger.info(f"🚀 Started {self.max_workers} local workers")
+        logger.info(f"Started {self.max_workers} local workers")
 
     async def stop_workers(self) -> None:
         """Stop all workers gracefully."""
@@ -67,7 +68,7 @@ class LocalJobQueue:
 
         await asyncio.gather(*self.workers, return_exceptions=True)
         self.workers.clear()
-        logger.info("✅ Stopped all local workers")
+        logger.info("Stopped all local workers")
 
     async def _worker(self, name: str) -> None:
         """
@@ -76,13 +77,13 @@ class LocalJobQueue:
         Args:
             name: Worker identifier
         """
-        logger.info(f"📝 Worker {name} started")
+        logger.info(f"Worker {name} started")
 
         while self._running:
             try:
                 job = await asyncio.wait_for(self.queue.get(), timeout=1.0)
 
-                logger.info(f"📝 Worker {name} processing job {job.job_id}")
+                logger.info(f"Worker {name} processing job {job.job_id}")
                 job.status = "processing"
                 job.started_at = datetime.now()
 
@@ -91,12 +92,12 @@ class LocalJobQueue:
                     result = await job.function(*job.args, **job.kwargs)
                     job.result = result
                     job.status = "completed"
-                    logger.info(f"✅ Job {job.job_id} completed successfully")
+                    logger.info(f"Job {job.job_id} completed successfully")
 
                 except Exception as e:
                     job.error = str(e)
                     job.status = "error"
-                    logger.error(f"❌ Job {job.job_id} failed: {e}", exc_info=True)
+                    logger.error(f"Job {job.job_id} failed: {e}", exc_info=True)
 
                 finally:
                     job.completed_at = datetime.now()
@@ -105,17 +106,12 @@ class LocalJobQueue:
             except asyncio.TimeoutError:
                 continue  # No jobs in queue, keep waiting
             except asyncio.CancelledError:
-                logger.info(f"📝 Worker {name} cancelled")
+                logger.info(f"Worker {name} cancelled")
                 break
             except Exception as e:
-                logger.error(f"❌ Worker {name} error: {e}", exc_info=True)
+                logger.error(f"Worker {name} error: {e}", exc_info=True)
 
-    async def enqueue_job(
-        self,
-        function: Callable,
-        *args: Any,
-        **kwargs: Any
-    ) -> str:
+    async def enqueue_job(self, function: Callable, *args: Any, **kwargs: Any) -> str:
         """
         Enqueue a job to be processed by workers.
 
@@ -128,17 +124,12 @@ class LocalJobQueue:
             job_id: Unique job identifier
         """
         job_id = str(uuid.uuid4())
-        job = Job(
-            job_id=job_id,
-            function=function,
-            args=args,
-            kwargs=kwargs
-        )
+        job = Job(job_id=job_id, function=function, args=args, kwargs=kwargs)
 
         self.jobs[job_id] = job
         await self.queue.put(job)
 
-        logger.info(f"📝 Enqueued job {job_id}")
+        logger.info(f"Enqueued job {job_id}")
         return job_id
 
     def get_job(self, job_id: str) -> Optional[Job]:
