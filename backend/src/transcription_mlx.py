@@ -1,5 +1,5 @@
 """
-Video transcription using MLX Whisper (offline, Apple Silicon optimized).
+Video transcription using parakeet-mlx (offline, Apple Silicon optimized).
 Replaces AssemblyAI cloud API for local, privacy-preserving transcription.
 
 Module: backend/src/transcription_mlx.py
@@ -10,27 +10,29 @@ from typing import Dict, List, Any, Optional
 import json
 
 try:
-    import mlx_whisper
+    from parakeet_mlx.utils import from_pretrained
+    from mlx.core import bfloat16
 except ImportError:
-    mlx_whisper = None
+    from_pretrained = None
+    bfloat16 = None
 
 logger = logging.getLogger(__name__)
 
 
 def transcribe_video_mlx(
     video_path: Path,
-    model_size: str = "medium"
+    model_id: str = "mlx-community/parakeet-tdt-0.6b-v2"
 ) -> Dict[str, Any]:
     """
-    Transcribe video using MLX Whisper (offline, Apple Silicon optimized).
+    Transcribe video using parakeet-mlx (offline, Apple Silicon optimized).
 
     This replaces the AssemblyAI API call with local processing.
     Provides word-level timestamps compatible with existing clip generation.
 
     Args:
         video_path: Path to video file
-        model_size: Model size - tiny, base, small, medium, large
-                   (medium recommended for speed/accuracy balance)
+        model_id: Model identifier from MLX Community
+                 (default: "mlx-community/parakeet-tdt-0.6b-v2")
 
     Returns:
         Dict with transcription data:
@@ -40,16 +42,16 @@ def transcribe_video_mlx(
             - language: Detected/specified language code
 
     Raises:
-        ImportError: If mlx_whisper not installed
+        ImportError: If parakeet-mlx not installed
         FileNotFoundError: If video file not found
         Exception: If transcription fails
     """
-    if mlx_whisper is None:
+    if from_pretrained is None:
         raise ImportError(
-            "mlx-whisper not installed. Install with: uv pip install mlx-whisper"
+            "parakeet-mlx not installed. Install with: uv pip install parakeet-mlx"
         )
 
-    logger.info(f"🚀 Transcribing video with MLX Whisper ({model_size}): {video_path}")
+    logger.info(f"🚀 Transcribing video with parakeet-mlx: {video_path}")
 
     # Check if file exists
     if not Path(video_path).exists():
@@ -67,22 +69,25 @@ def transcribe_video_mlx(
             # Continue with fresh transcription
 
     try:
-        # MLX Whisper transcription with word-level timing
-        logger.info(f"📝 Starting MLX transcription (model: {model_size})...")
-        result = mlx_whisper.transcribe(
+        # Load parakeet-mlx model
+        logger.info(f"📝 Loading parakeet-mlx model: {model_id}...")
+        model = from_pretrained(model_id, dtype=bfloat16)
+        logger.info(f"✅ Model loaded. Starting transcription...")
+
+        # Transcribe with word-level timing via streaming
+        logger.info(f"📝 Starting parakeet transcription...")
+        result = model.transcribe(
             str(video_path),
-            path_or_hf_repo=f"mlx-community/whisper-{model_size}",
-            word_level_timings=True,  # Enable word-level timestamps
-            language="en",
-            fp16=False,
+            chunk_duration=120.0,
+            overlap_duration=15.0,
         )
 
         # Format result to match AssemblyAI structure for backward compatibility
         formatted_result = {
-            "text": result.get("text", ""),
-            "segments": result.get("segments", []),
-            "words": _extract_words_from_segments(result.get("segments", [])),
-            "language": result.get("language", "en"),
+            "text": _extract_text_from_result(result),
+            "segments": _extract_segments_from_result(result),
+            "words": _extract_words_from_result(result),
+            "language": "en",
         }
 
         # Cache for future use - avoid re-transcribing same video
@@ -97,19 +102,86 @@ def transcribe_video_mlx(
         return formatted_result
 
     except Exception as e:
-        logger.error(f"❌ MLX transcription failed: {e}", exc_info=True)
+        logger.error(f"❌ parakeet-mlx transcription failed: {e}", exc_info=True)
         raise
 
 
-def _extract_words_from_segments(segments: List[Dict]) -> List[Dict[str, Any]]:
+def _extract_text_from_result(result: Any) -> str:
     """
-    Extract word-level timestamps from Whisper segments.
+    Extract full transcript text from parakeet result.
 
-    Converts Whisper output format to AssemblyAI-compatible format
+    Args:
+        result: AlignedResult from parakeet_mlx
+
+    Returns:
+        Full transcript text
+    """
+    if hasattr(result, 'sentences'):
+        # parakeet returns sentences with tokens
+        text_parts: List[str] = []
+        for sentence in result.sentences:
+            sentence_text = ""
+            for token in sentence.tokens:
+                if hasattr(token, 'word'):
+                    sentence_text += token.word
+            if sentence_text:
+                text_parts.append(sentence_text)
+        return " ".join(text_parts)
+    return ""
+
+
+def _extract_segments_from_result(result: Any) -> List[Dict[str, Any]]:
+    """
+    Extract segments from parakeet result.
+
+    Converts parakeet output format to AssemblyAI-compatible format.
+
+    Args:
+        result: AlignedResult from parakeet_mlx
+
+    Returns:
+        List of segment dicts with timing information
+    """
+    segments: List[Dict[str, Any]] = []
+
+    if hasattr(result, 'sentences'):
+        for idx, sentence in enumerate(result.sentences):
+            if sentence.tokens:
+                # Get timing from first and last tokens
+                start_time = _get_token_start_time(sentence.tokens[0])
+                end_time = _get_token_end_time(sentence.tokens[-1])
+
+                # Build segment text
+                segment_text = ""
+                for token in sentence.tokens:
+                    if hasattr(token, 'word'):
+                        segment_text += token.word
+
+                segments.append({
+                    "id": idx,
+                    "seek": 0,
+                    "start": start_time,
+                    "end": end_time,
+                    "text": segment_text.strip(),
+                    "tokens": [t.id for t in sentence.tokens if hasattr(t, 'id')],
+                    "temperature": 0.0,
+                    "avg_logprob": 0.0,
+                    "compression_ratio": 0.0,
+                    "no_speech_prob": 0.0,
+                })
+
+    return segments
+
+
+def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
+    """
+    Extract word-level timestamps from parakeet result.
+
+    Converts parakeet output format to AssemblyAI-compatible format
     for seamless integration with existing clip generation code.
 
     Args:
-        segments: List of segment dicts from Whisper result
+        result: AlignedResult from parakeet_mlx
 
     Returns:
         List of word dicts with:
@@ -120,26 +192,63 @@ def _extract_words_from_segments(segments: List[Dict]) -> List[Dict[str, Any]]:
     """
     words: List[Dict[str, Any]] = []
 
-    for segment in segments:
-        # Handle segments with word-level data
-        if "words" in segment:
-            for word_data in segment["words"]:
-                words.append({
-                    "text": word_data.get("word", "").strip(),
-                    "start": int(word_data.get("start", 0) * 1000),  # seconds to ms
-                    "end": int(word_data.get("end", 0) * 1000),
-                    "confidence": word_data.get("probability", 1.0),
-                })
-        # Fallback: if no word-level data, create one entry per segment
-        elif "text" in segment:
-            words.append({
-                "text": segment.get("text", "").strip(),
-                "start": int(segment.get("start", 0) * 1000),
-                "end": int(segment.get("end", 0) * 1000),
-                "confidence": 1.0,
-            })
+    if hasattr(result, 'sentences'):
+        for sentence in result.sentences:
+            for token in sentence.tokens:
+                if hasattr(token, 'word') and token.word.strip():
+                    start_ms = _get_token_start_time(token)
+                    end_ms = _get_token_end_time(token)
+
+                    # Skip if timing is invalid
+                    if start_ms >= end_ms:
+                        continue
+
+                    words.append({
+                        "text": token.word.strip(),
+                        "start": start_ms,
+                        "end": end_ms,
+                        "confidence": 1.0,
+                    })
 
     return words
+
+
+def _get_token_start_time(token: Any) -> int:
+    """
+    Get start time in milliseconds from parakeet token.
+
+    Args:
+        token: AlignedToken from parakeet_mlx
+
+    Returns:
+        Start time in milliseconds
+    """
+    if hasattr(token, 'start_ts'):
+        # start_ts is in seconds (float), convert to milliseconds
+        return int(token.start_ts * 1000)
+    elif hasattr(token, 'stime'):
+        # Alternative attribute name
+        return int(token.stime * 1000)
+    return 0
+
+
+def _get_token_end_time(token: Any) -> int:
+    """
+    Get end time in milliseconds from parakeet token.
+
+    Args:
+        token: AlignedToken from parakeet_mlx
+
+    Returns:
+        End time in milliseconds
+    """
+    if hasattr(token, 'end_ts'):
+        # end_ts is in seconds (float), convert to milliseconds
+        return int(token.end_ts * 1000)
+    elif hasattr(token, 'etime'):
+        # Alternative attribute name
+        return int(token.etime * 1000)
+    return 0
 
 
 def get_video_transcript_mlx(video_path: Path) -> str:
