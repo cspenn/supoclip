@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 import os
 from openai import AsyncOpenAI
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 load_dotenv()
@@ -70,11 +70,11 @@ class Config:
         self.log_dir = os.getenv("LOG_DIR", "logs")
         self.log_retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
 
-    def get_llm_model(self) -> OpenAIChatModel | str:
+    def get_llm_model(self) -> OpenAIModel | str:
         """Get configured LLM model (local-first, cloud fallback).
 
         Returns:
-            OpenAIChatModel for local LLM or str for cloud LLM model identifier.
+            OpenAIModel for local LLM or str for cloud LLM model identifier.
 
         Raises:
             ValueError: If no LLM is configured.
@@ -90,11 +90,11 @@ class Config:
                 "2. Configure cloud LLM: Set LLM_MODEL and appropriate API key"
             )
 
-    def _create_local_llm_model(self) -> OpenAIChatModel:
+    def _create_local_llm_model(self) -> OpenAIModel:
         """Create OpenAI-compatible model for local LLM.
 
         Returns:
-            OpenAIChatModel configured for local endpoint.
+            OpenAIModel configured for local endpoint.
         """
         client = AsyncOpenAI(
             base_url=self.local_llm_base_url,
@@ -103,7 +103,7 @@ class Config:
             timeout=120.0,
         )
 
-        return OpenAIChatModel(
+        return OpenAIModel(
             self.local_llm_model, provider=OpenAIProvider(openai_client=client)
         )
 

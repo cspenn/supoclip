@@ -168,18 +168,7 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
     SSE endpoint for real-time progress updates.
     Streams progress updates as Server-Sent Events.
     """
-    # Import Redis and ProgressTracker locally to handle optional dependencies
-    try:
-        import redis.asyncio as redis
-        from ...workers.progress import ProgressTracker
-    except (ImportError, ModuleNotFoundError):
-        # Redis not available, return error
-        async def error_generator():
-            yield {
-                "event": "error",
-                "data": json.dumps({"error": "Redis not configured for real-time updates"})
-            }
-        return EventSourceResponse(error_generator())
+    from ...workers.local_progress import get_progress_tracker
 
     async def event_generator():
         """Generate SSE events for task progress."""
@@ -213,31 +202,37 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
             }
             return
 
-        # Connect to Redis for real-time updates
-        redis_client = redis.Redis(
-            host=config.redis_host,
-            port=config.redis_port,
-            decode_responses=True
-        )
+        # Get local progress tracker
+        tracker = get_progress_tracker()
 
         try:
             # Subscribe to progress updates
-            async for progress_data in ProgressTracker.subscribe_to_progress(redis_client, task_id):
+            async for progress in tracker.subscribe(task_id):
                 yield {
                     "event": "progress",
-                    "data": json.dumps(progress_data)
+                    "data": json.dumps({
+                        "task_id": progress.task_id,
+                        "progress": progress.progress,
+                        "message": progress.message,
+                        "status": progress.status,
+                        "updated_at": progress.updated_at.isoformat()
+                    })
                 }
 
                 # Close connection if task is done
-                if progress_data.get("status") in ["completed", "error"]:
+                if progress.status in ["completed", "error"]:
                     yield {
                         "event": "close",
-                        "data": json.dumps({"status": progress_data.get("status")})
+                        "data": json.dumps({"status": progress.status})
                     }
                     break
 
-        finally:
-            await redis_client.close()
+        except Exception as e:
+            logger.error(f"Error streaming progress: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": str(e)})
+            }
 
     return EventSourceResponse(event_generator())
 

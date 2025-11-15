@@ -392,7 +392,7 @@ async def update_task_status(task_id: str, status: str):
     async with AsyncSessionLocal() as db:
         await db.execute(
             text(
-                "UPDATE tasks SET status = :status, updated_at = NOW() WHERE id = :task_id"
+                "UPDATE tasks SET status = :status WHERE id = :task_id"
             ),
             {"status": status, "task_id": task_id},
         )

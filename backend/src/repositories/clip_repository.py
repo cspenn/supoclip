@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import List, Dict, Any
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +28,19 @@ class ClipRepository:
         clip_order: int
     ) -> str:
         """Create a new clip record and return its ID."""
+        clip_id = str(uuid.uuid4())
         result = await db.execute(
             text("""
                 INSERT INTO generated_clips
-                (task_id, filename, file_path, start_time, end_time, duration,
-                 text, relevance_score, reasoning, clip_order, created_at)
+                (id, task_id, filename, file_path, start_time, end_time, duration,
+                 text, relevance_score, reasoning, clip_order)
                 VALUES
-                (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                 :text, :relevance_score, :reasoning, :clip_order, NOW())
+                (:id, :task_id, :filename, :file_path, :start_time, :end_time, :duration,
+                 :text, :relevance_score, :reasoning, :clip_order)
                 RETURNING id
             """),
             {
+                "id": clip_id,
                 "task_id": task_id,
                 "filename": filename,
                 "file_path": file_path,
@@ -50,7 +53,6 @@ class ClipRepository:
                 "clip_order": clip_order
             }
         )
-        clip_id = result.scalar()
         logger.debug(f"Created clip {clip_id} for task {task_id}")
         return clip_id
 

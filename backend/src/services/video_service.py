@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class VideoDownloadError(Exception):
+    """Raised when video download fails."""
+    pass
+
+
+class VideoNotFoundError(Exception):
+    """Raised when video file is not found."""
+    pass
+
+
 class VideoService:
     """Service for video processing operations."""
 
@@ -31,15 +41,19 @@ class VideoService:
         Download a YouTube video asynchronously.
         Runs the sync download_youtube_video in a thread pool.
         """
-        logger.info(f"Starting video download: {url}")
-        video_path = await run_in_thread(download_youtube_video, url)
+        try:
+            logger.info(f"Starting video download: {url}")
+            video_path = await run_in_thread(download_youtube_video, url)
 
-        if not video_path:
-            logger.error(f"Failed to download video: {url}")
-            return None
+            if not video_path:
+                logger.error(f"Failed to download video: {url}")
+                return None
 
-        logger.info(f"Video downloaded successfully: {video_path}")
-        return video_path
+            logger.info(f"Video downloaded successfully: {video_path}")
+            return video_path
+        except Exception as e:
+            logger.error(f"Exception during video download from {url}: {e}", exc_info=True)
+            raise
 
     @staticmethod
     async def get_video_title(url: str) -> str:
@@ -60,10 +74,14 @@ class VideoService:
         Generate transcript from video using AssemblyAI.
         Runs in thread pool to avoid blocking.
         """
-        logger.info(f"Generating transcript for: {video_path}")
-        transcript = await run_in_thread(get_video_transcript, str(video_path))
-        logger.info(f"Transcript generated: {len(transcript)} characters")
-        return transcript
+        try:
+            logger.info(f"Generating transcript for: {video_path}")
+            transcript = await run_in_thread(get_video_transcript, str(video_path))
+            logger.info(f"Transcript generated: {len(transcript)} characters")
+            return transcript
+        except Exception as e:
+            logger.error(f"Exception during transcript generation for {video_path}: {e}", exc_info=True)
+            raise
 
     @staticmethod
     async def analyze_transcript(transcript: str) -> Any:
@@ -88,22 +106,26 @@ class VideoService:
         Create video clips from segments with transitions and subtitles.
         Runs in thread pool as video processing is CPU-intensive.
         """
-        logger.info(f"Creating {len(segments)} video clips")
-        clips_output_dir = Path(config.temp_dir) / "clips"
-        clips_output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            logger.info(f"Creating {len(segments)} video clips")
+            clips_output_dir = Path(config.temp_dir) / "clips"
+            clips_output_dir.mkdir(parents=True, exist_ok=True)
 
-        clips_info = await run_in_thread(
-            create_clips_with_transitions,
-            str(video_path),
-            segments,
-            clips_output_dir,
-            font_family,
-            font_size,
-            font_color
-        )
+            clips_info = await run_in_thread(
+                create_clips_with_transitions,
+                str(video_path),
+                segments,
+                clips_output_dir,
+                font_family,
+                font_size,
+                font_color
+            )
 
-        logger.info(f"Successfully created {len(clips_info)} clips")
-        return clips_info
+            logger.info(f"Successfully created {len(clips_info)} clips")
+            return clips_info
+        except Exception as e:
+            logger.error(f"Exception during clip creation for {video_path}: {e}", exc_info=True)
+            raise
 
     @staticmethod
     def determine_source_type(url: str) -> str:
@@ -135,23 +157,27 @@ class VideoService:
             if source_type == "youtube":
                 video_path = await VideoService.download_video(url)
                 if not video_path:
-                    raise Exception("Failed to download video")
+                    raise VideoDownloadError(f"Failed to download video from URL: {url}")
             else:
                 video_path = Path(url)
                 if not video_path.exists():
-                    raise Exception("Video file not found")
+                    raise VideoNotFoundError(f"Video file not found at path: {url}")
+
+            logger.info(f"Step 1 complete: Video path obtained: {video_path}")
 
             # Step 2: Generate transcript
             if progress_callback:
                 await progress_callback(30, "Generating transcript...")
 
             transcript = await VideoService.generate_transcript(video_path)
+            logger.info(f"Step 2 complete: Transcript generated ({len(transcript)} characters)")
 
             # Step 3: AI analysis
             if progress_callback:
                 await progress_callback(50, "Analyzing content with AI...")
 
             relevant_parts = await VideoService.analyze_transcript(transcript)
+            logger.info(f"Step 3 complete: AI analysis done ({len(relevant_parts.most_relevant_segments)} segments identified)")
 
             # Step 4: Create clips
             if progress_callback:
@@ -175,6 +201,7 @@ class VideoService:
                 font_size,
                 font_color
             )
+            logger.info(f"Step 4 complete: Created {len(clips_info)} video clips")
 
             if progress_callback:
                 await progress_callback(100, "Processing complete!")
@@ -187,5 +214,5 @@ class VideoService:
             }
 
         except Exception as e:
-            logger.error(f"Error in video processing pipeline: {e}")
+            logger.error(f"Error in video processing pipeline: {e}", exc_info=True)
             raise

@@ -153,7 +153,7 @@ class TaskService:
             }
 
         except Exception as e:
-            logger.error(f"Error processing task {task_id}: {e}")
+            logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
             await self.task_repo.update_task_status(
                 self.db, task_id, "error", progress_message=str(e)
             )

@@ -6,6 +6,7 @@ from sqlalchemy import text
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,15 @@ class TaskRepository:
         font_color: str = "#FFFFFF"
     ) -> str:
         """Create a new task and return its ID."""
+        task_id = str(uuid.uuid4())
         result = await db.execute(
             text("""
-                INSERT INTO tasks (user_id, source_id, status, font_family, font_size, font_color, created_at, updated_at)
-                VALUES (:user_id, :source_id, :status, :font_family, :font_size, :font_color, NOW(), NOW())
+                INSERT INTO tasks (id, user_id, source_id, status, font_family, font_size, font_color)
+                VALUES (:id, :user_id, :source_id, :status, :font_family, :font_size, :font_color)
                 RETURNING id
             """),
             {
+                "id": task_id,
                 "user_id": user_id,
                 "source_id": source_id,
                 "status": status,
@@ -40,7 +43,6 @@ class TaskRepository:
             }
         )
         await db.commit()
-        task_id = result.scalar()
         logger.info(f"Created task {task_id} for user {user_id}")
         return task_id
 
@@ -95,18 +97,16 @@ class TaskRepository:
         }
 
         # Build dynamic query based on what's provided
-        query_parts = ["UPDATE tasks SET status = :status"]
+        set_parts = ["status = :status"]
 
         if progress is not None:
-            query_parts.append("progress = :progress")
+            set_parts.append("progress = :progress")
 
         if progress_message is not None:
-            query_parts.append("progress_message = :progress_message")
+            set_parts.append("progress_message = :progress_message")
 
-        query_parts.append("updated_at = NOW()")
-        query_parts.append("WHERE id = :task_id")
-
-        query = ", ".join(query_parts)
+        # Build complete query (no comma before WHERE)
+        query = f"UPDATE tasks SET {', '.join(set_parts)} WHERE id = :task_id"
 
         await db.execute(text(query), params)
         await db.commit()
@@ -117,7 +117,7 @@ class TaskRepository:
     async def update_task_clips(db: AsyncSession, task_id: str, clip_ids: List[str]) -> None:
         """Update task with generated clip IDs."""
         await db.execute(
-            text("UPDATE tasks SET generated_clips_ids = :clip_ids, updated_at = NOW() WHERE id = :task_id"),
+            text("UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"),
             {"clip_ids": clip_ids, "task_id": task_id}
         )
         await db.commit()

@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Sources table
 CREATE TABLE IF NOT EXISTS sources (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    type TEXT CHECK (type IN ('youtube', 'video_url')) NOT NULL,
+    type TEXT CHECK (type IN ('youtube', 'video_url', 'upload')) NOT NULL,
     title TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
