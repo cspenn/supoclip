@@ -27,12 +27,12 @@ supoclip/
 
 **Backend:**
 - FastAPI with async/await patterns
-- AssemblyAI for video transcription (word-level timing)
+- parakeet-mlx for video transcription (word-level timing, offline)
 - Pydantic AI for transcript analysis and clip selection
 - MoviePy v2 for video processing
 - OpenCV + MediaPipe for face detection and smart cropping
-- PostgreSQL (via asyncpg/SQLAlchemy) for persistence
-- Redis for caching/job queues
+- SQLite for local persistence
+- Local asyncio queue for job processing
 - yt-dlp for YouTube video downloads
 
 **Frontend:**
@@ -144,11 +144,11 @@ Services:
 ### Video Processing Pipeline
 
 1. **Video Input** → YouTube URL (via yt-dlp) or uploaded file
-2. **Transcription** → MLX Whisper generates word-level timestamps (offline)
+2. **Transcription** → parakeet-mlx generates word-level timestamps (offline)
 3. **AI Analysis** → Local LLM or cloud LLM analyzes transcript for viral segments (10-45s clips)
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Smart face-centered cropping (MediaPipe + OpenCV fallbacks)
-   - MLX Whisper-powered subtitles (word-level sync)
+   - parakeet-mlx-powered subtitles (word-level sync)
    - Custom fonts (TTF files in backend/fonts/)
    - Optional transition effects (videos in backend/transitions/)
 5. **Storage** → Clips saved to `{TEMP_DIR}/clips/` and metadata in SQLite
