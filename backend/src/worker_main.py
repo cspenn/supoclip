@@ -9,15 +9,11 @@ import logging
 from arq import run_worker
 from .workers.tasks import WorkerSettings
 from .config import Config
+from .logging_config import setup_logging
 
-# Configure logging for worker
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-    ]
-)
+# Configure configuration and logging
+config = Config()
+setup_logging(config.get_log_level(), config.log_dir, "worker")
 
 logger = logging.getLogger(__name__)
 
