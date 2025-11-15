@@ -102,26 +102,26 @@ find_available_port() {
     return 1
 }
 
-# Check for available ports
+# Check for available ports (default to 8008 and 3003)
 echo "Checking for available ports..."
-BACKEND_PORT=$(find_available_port 8000)
+BACKEND_PORT=$(find_available_port 8008)
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: Could not find available port starting from 8000${NC}"
+    echo -e "${RED}Error: Could not find available port starting from 8008${NC}"
     exit 1
 fi
 
-FRONTEND_PORT=$(find_available_port 3000)
+FRONTEND_PORT=$(find_available_port 3003)
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: Could not find available port starting from 3000${NC}"
+    echo -e "${RED}Error: Could not find available port starting from 3003${NC}"
     exit 1
 fi
 
-if [ "$BACKEND_PORT" != "8000" ]; then
-    echo -e "${YELLOW}⚠ Port 8000 in use, using port $BACKEND_PORT instead${NC}"
+if [ "$BACKEND_PORT" != "8008" ]; then
+    echo -e "${YELLOW}⚠ Port 8008 in use, using port $BACKEND_PORT instead${NC}"
 fi
 
-if [ "$FRONTEND_PORT" != "3000" ]; then
-    echo -e "${YELLOW}⚠ Port 3000 in use, using port $FRONTEND_PORT instead${NC}"
+if [ "$FRONTEND_PORT" != "3003" ]; then
+    echo -e "${YELLOW}⚠ Port 3003 in use, using port $FRONTEND_PORT instead${NC}"
 fi
 
 echo ""
@@ -150,7 +150,23 @@ echo "  Frontend:  http://localhost:$FRONTEND_PORT"
 echo "  Backend:   http://localhost:$BACKEND_PORT"
 echo "  API Docs:  http://localhost:$BACKEND_PORT/docs"
 echo ""
+echo "Updating frontend environment with actual port..."
+# Update frontend .env.local with the actual backend port if different
+sed -i '' "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://localhost:$BACKEND_PORT|" frontend/.env.local
+sed -i '' "s|NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://localhost:$FRONTEND_PORT|" frontend/.env.local
+echo ""
 echo "Starting services..."
+echo ""
+
+# Seed database with default user if needed
+echo -e "${BLUE}Initializing database...${NC}"
+cd backend
+source .venv/bin/activate
+python3 seed.py
+if [ $? -ne 0 ]; then
+    echo -e "${YELLOW}⚠ Database seeding failed (may already be seeded)${NC}"
+fi
+cd ..
 echo ""
 
 # Start backend in background

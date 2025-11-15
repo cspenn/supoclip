@@ -96,8 +96,8 @@ That's it! The script will:
 - ✅ Show you the actual URLs being used
 
 Then open your browser:
-- **Frontend**: http://localhost:3000
-- **API Docs**: http://localhost:8000/docs
+- **Frontend**: http://localhost:3003
+- **API Docs**: http://localhost:8008/docs
 
 ### Manual Setup (If Preferred)
 
@@ -139,18 +139,18 @@ cp .env.example .env
 # Terminal 1: Start Backend
 cd backend
 source .venv/bin/activate
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8008
 
 # Terminal 2: Start Frontend (in a new terminal)
 cd frontend
-npm run dev
+PORT=3003 npm run dev
 ```
 
 #### 4. Access the Application
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+- **Frontend**: http://localhost:3003
+- **Backend API**: http://localhost:8008
+- **API Documentation**: http://localhost:8008/docs
 
 ## Authentication (No Sign-In Required!)
 
@@ -259,11 +259,10 @@ LLM=google:gemini-pro
    source .venv/bin/activate
    ```
 
-3. **Check if port 8000 is in use**:
+3. **Check if port 8008 is in use**:
    ```bash
-   lsof -i :8000
-   # Kill process if needed: kill -9 <PID>
-   # OR: ./start.sh will auto-detect and use alternate port (8001, 8002, etc.)
+   lsof -i :8008
+   # Note: ./start.sh will auto-detect and use alternate port (8009, 8010, etc.) if needed
    ```
 
 4. **Verify dependencies**:
@@ -280,9 +279,9 @@ LLM=google:gemini-pro
    npm install
    ```
 
-2. **Check if port 3000 is in use**:
+2. **Check if port 3003 is in use**:
    ```bash
-   lsof -i :3000
+   lsof -i :3003
    ```
 
 ### parakeet-mlx model not downloading?
@@ -306,8 +305,8 @@ rm backend/supoclip.db
 
 SupoClip runs natively on macOS:
 
-1. **Frontend** (Next.js 15) - Port 3000
-2. **Backend** (FastAPI + Python) - Port 8000
+1. **Frontend** (Next.js 15) - Port 3003
+2. **Backend** (FastAPI + Python) - Port 8008
 3. **Database** (SQLite) - Local file `supoclip.db`
 4. **Job Queue** (Local asyncio) - In-process workers
 
