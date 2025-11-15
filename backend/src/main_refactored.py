@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Config
-from .logging_config import setup_logging
+from .logging_config import setup_logging, cleanup_old_logs
 from .database import init_db, close_db, get_db
 from .workers.job_queue import JobQueue
 from .api.routes import tasks
@@ -25,6 +25,9 @@ from .api.routes import tasks
 # Configure configuration and logging
 config = Config()
 setup_logging(config.get_log_level(), config.log_dir, "backend")
+
+# Clean up old logs on startup
+cleanup_old_logs(config.log_dir, config.log_retention_days)
 
 logger = logging.getLogger(__name__)
 

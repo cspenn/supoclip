@@ -2,7 +2,7 @@ from .youtube_utils import *
 from .video_utils import *
 from .ai import *
 from .config import Config
-from .logging_config import setup_logging
+from .logging_config import setup_logging, cleanup_old_logs
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +23,9 @@ from .workers.local_queue import get_job_queue
 # Configure configuration and logging
 config = Config()
 setup_logging(config.get_log_level(), config.log_dir, "backend")
+
+# Clean up old logs on startup
+cleanup_old_logs(config.log_dir, config.log_retention_days)
 
 logger = logging.getLogger(__name__)
 
