@@ -62,7 +62,7 @@ class VideoProcessor:
 
 def get_video_transcript(video_path: Path) -> str:
     """
-    Get transcript using MLX Whisper (offline, Apple Silicon optimized).
+    Get transcript using parakeet-mlx (offline, Apple Silicon optimized).
 
     Replaces AssemblyAI with local processing for privacy and offline capability.
     Formats transcript with timestamps for AI analysis.
@@ -70,9 +70,9 @@ def get_video_transcript(video_path: Path) -> str:
     logger.info(f"Getting transcript for: {video_path}")
 
     try:
-        # Use MLX Whisper for local transcription
-        logger.info("Starting MLX Whisper transcription (offline)")
-        result = transcribe_video_mlx(video_path, model_size="medium")
+        # Use parakeet-mlx for local transcription
+        logger.info("Starting parakeet-mlx transcription (offline)")
+        result = transcribe_video_mlx(video_path, model_id=config.parakeet_model)
 
         # Format transcript with timestamps for AI analysis
         formatted_lines = []
@@ -466,10 +466,10 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
 
 def create_assemblyai_subtitles(video_path: Path, clip_start: float, clip_end: float, video_width: int, video_height: int, font_family: str = "THEBOLDFONT-FREEVERSION", font_size: int = 24, font_color: str = "#FFFFFF") -> List[TextClip]:
     """
-    Create subtitles using MLX Whisper's precise word timing.
+    Create subtitles using parakeet-mlx's precise word timing.
 
     Legacy function name kept for backward compatibility.
-    Uses cached transcript data from MLX transcription.
+    Uses cached transcript data from parakeet-mlx transcription.
     """
     transcript_data = load_cached_transcript_data(video_path)
 
@@ -815,7 +815,7 @@ def get_video_transcript_with_assemblyai(path: Path) -> str:
     """
     Backward compatibility wrapper for old API.
 
-    Uses MLX Whisper instead of AssemblyAI.
+    Uses parakeet-mlx instead of AssemblyAI.
     """
     return get_video_transcript(path)
 
