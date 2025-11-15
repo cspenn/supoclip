@@ -120,6 +120,16 @@ async def get_most_relevant_parts_by_transcript(transcript: str) -> TranscriptAn
     """Get the most relevant parts of a transcript for creating clips - simplified version."""
     logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
 
+    # Guard against empty transcripts to prevent AI hallucination
+    if not transcript or len(transcript.strip()) == 0:
+        logger.error("Cannot analyze empty transcript")
+        raise ValueError("Cannot analyze empty transcript - transcription may have failed")
+
+    # Additional safety check: transcript should have reasonable length
+    if len(transcript.strip()) < 50:
+        logger.error(f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure")
+        raise ValueError(f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required")
+
     try:
         # Lazy initialize agent on first use
         agent = _get_transcript_agent()

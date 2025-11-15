@@ -36,6 +36,7 @@ class Config:
 
         # Cloud LLM configuration (optional fallback)
         self.llm = os.getenv("LLM_MODEL", "")
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.google_api_key = os.getenv("GOOGLE_API_KEY", "")
@@ -114,7 +115,10 @@ class Config:
             True if at least one cloud API key is set.
         """
         return bool(
-            self.openai_api_key or self.anthropic_api_key or self.google_api_key
+            self.groq_api_key
+            or self.openai_api_key
+            or self.anthropic_api_key
+            or self.google_api_key
         )
 
     def get_log_level(self) -> str:

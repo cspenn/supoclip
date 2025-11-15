@@ -119,17 +119,9 @@ def _extract_text_from_result(result: Any) -> str:
     Returns:
         Full transcript text
     """
-    if hasattr(result, "sentences"):
-        # parakeet returns sentences with tokens
-        text_parts: List[str] = []
-        for sentence in result.sentences:
-            sentence_text = ""
-            for token in sentence.tokens:
-                if hasattr(token, "word"):
-                    sentence_text += token.word
-            if sentence_text:
-                text_parts.append(sentence_text)
-        return " ".join(text_parts)
+    # parakeet-mlx AlignedResult already has .text attribute
+    if hasattr(result, "text"):
+        return result.text
     return ""
 
 
@@ -149,31 +141,25 @@ def _extract_segments_from_result(result: Any) -> List[Dict[str, Any]]:
 
     if hasattr(result, "sentences"):
         for idx, sentence in enumerate(result.sentences):
-            if sentence.tokens:
-                # Get timing from first and last tokens
-                start_time = _get_token_start_time(sentence.tokens[0])
-                end_time = _get_token_end_time(sentence.tokens[-1])
+            # AlignedSentence has .text, .start, .end attributes directly
+            # .start and .end are in seconds (float), convert to milliseconds
+            start_ms = int(sentence.start * 1000) if hasattr(sentence, "start") else 0
+            end_ms = int(sentence.end * 1000) if hasattr(sentence, "end") else 0
 
-                # Build segment text
-                segment_text = ""
-                for token in sentence.tokens:
-                    if hasattr(token, "word"):
-                        segment_text += token.word
-
-                segments.append(
-                    {
-                        "id": idx,
-                        "seek": 0,
-                        "start": start_time,
-                        "end": end_time,
-                        "text": segment_text.strip(),
-                        "tokens": [t.id for t in sentence.tokens if hasattr(t, "id")],
-                        "temperature": 0.0,
-                        "avg_logprob": 0.0,
-                        "compression_ratio": 0.0,
-                        "no_speech_prob": 0.0,
-                    }
-                )
+            segments.append(
+                {
+                    "id": idx,
+                    "seek": 0,
+                    "start": start_ms,
+                    "end": end_ms,
+                    "text": sentence.text if hasattr(sentence, "text") else "",
+                    "tokens": [t.id for t in sentence.tokens if hasattr(t, "id")],
+                    "temperature": 0.0,
+                    "avg_logprob": 0.0,
+                    "compression_ratio": 0.0,
+                    "no_speech_prob": 0.0,
+                }
+            )
 
     return segments
 
@@ -197,25 +183,27 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
     """
     words: List[Dict[str, Any]] = []
 
-    if hasattr(result, "sentences"):
-        for sentence in result.sentences:
-            for token in sentence.tokens:
-                if hasattr(token, "word") and token.word.strip():
-                    start_ms = _get_token_start_time(token)
-                    end_ms = _get_token_end_time(token)
+    # AlignedResult has .tokens attribute - a flattened list of all AlignedToken objects
+    if hasattr(result, "tokens"):
+        for token in result.tokens:
+            # AlignedToken has .text, .start, .end, .confidence attributes
+            if hasattr(token, "text") and token.text.strip():
+                # .start and .end are in seconds (float), convert to milliseconds
+                start_ms = int(token.start * 1000) if hasattr(token, "start") else 0
+                end_ms = int(token.end * 1000) if hasattr(token, "end") else 0
 
-                    # Skip if timing is invalid
-                    if start_ms >= end_ms:
-                        continue
+                # Skip if timing is invalid
+                if start_ms >= end_ms:
+                    continue
 
-                    words.append(
-                        {
-                            "text": token.word.strip(),
-                            "start": start_ms,
-                            "end": end_ms,
-                            "confidence": 1.0,
-                        }
-                    )
+                words.append(
+                    {
+                        "text": token.text.strip(),
+                        "start": start_ms,
+                        "end": end_ms,
+                        "confidence": token.confidence if hasattr(token, "confidence") else 1.0,
+                    }
+                )
 
     return words
 
@@ -230,12 +218,9 @@ def _get_token_start_time(token: Any) -> int:
     Returns:
         Start time in milliseconds
     """
-    if hasattr(token, "start_ts"):
-        # start_ts is in seconds (float), convert to milliseconds
-        return int(token.start_ts * 1000)
-    elif hasattr(token, "stime"):
-        # Alternative attribute name
-        return int(token.stime * 1000)
+    # AlignedToken has .start attribute in seconds (float)
+    if hasattr(token, "start"):
+        return int(token.start * 1000)
     return 0
 
 
@@ -249,12 +234,9 @@ def _get_token_end_time(token: Any) -> int:
     Returns:
         End time in milliseconds
     """
-    if hasattr(token, "end_ts"):
-        # end_ts is in seconds (float), convert to milliseconds
-        return int(token.end_ts * 1000)
-    elif hasattr(token, "etime"):
-        # Alternative attribute name
-        return int(token.etime * 1000)
+    # AlignedToken has .end attribute in seconds (float)
+    if hasattr(token, "end"):
+        return int(token.end * 1000)
     return 0
 
 

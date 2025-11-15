@@ -116,9 +116,12 @@ class TaskRepository:
     @staticmethod
     async def update_task_clips(db: AsyncSession, task_id: str, clip_ids: List[str]) -> None:
         """Update task with generated clip IDs."""
+        import json
+        # SQLite requires JSON column values to be serialized to JSON strings
+        clip_ids_json = json.dumps(clip_ids)
         await db.execute(
             text("UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"),
-            {"clip_ids": clip_ids, "task_id": task_id}
+            {"clip_ids": clip_ids_json, "task_id": task_id}
         )
         await db.commit()
         logger.info(f"Updated task {task_id} with {len(clip_ids)} clips")

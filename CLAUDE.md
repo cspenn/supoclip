@@ -79,7 +79,8 @@ uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 - `LOCAL_LLM_MODEL` - Model name for local LLM (default: local-model)
 
 **Cloud LLM (Optional Fallback):**
-- `LLM_MODEL` - AI model identifier (e.g., "openai:gpt-4", "anthropic:claude-3-5-sonnet")
+- `LLM_MODEL` - AI model identifier (e.g., "groq:meta-llama/llama-4-scout-17b-16e-instruct", "openai:gpt-4", "anthropic:claude-3-5-sonnet")
+- `GROQ_API_KEY` - Groq API key (if using Groq models - recommended for speed and cost)
 - `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY` - Depending on LLM choice
 
 **Other Configuration:**

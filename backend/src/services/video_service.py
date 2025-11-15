@@ -71,12 +71,12 @@ class VideoService:
     @staticmethod
     async def generate_transcript(video_path: Path) -> str:
         """
-        Generate transcript from video using AssemblyAI.
+        Generate transcript from video using parakeet-mlx.
         Runs in thread pool to avoid blocking.
         """
         try:
             logger.info(f"Generating transcript for: {video_path}")
-            transcript = await run_in_thread(get_video_transcript, str(video_path))
+            transcript = await run_in_thread(get_video_transcript, video_path)
             logger.info(f"Transcript generated: {len(transcript)} characters")
             return transcript
         except Exception as e:
@@ -113,7 +113,7 @@ class VideoService:
 
             clips_info = await run_in_thread(
                 create_clips_with_transitions,
-                str(video_path),
+                video_path,
                 segments,
                 clips_output_dir,
                 font_family,
