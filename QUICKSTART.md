@@ -75,7 +75,32 @@ OPENAI_API_KEY=your-key-here
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Fastest Way - One-Command Startup ⚡
+
+```bash
+# Clone the repository (if not already done)
+git clone https://github.com/supoclip/supoclip.git
+cd supoclip
+
+# Run this single command to start everything:
+./start.sh
+```
+
+That's it! The script will:
+- ✅ Auto-create `.env` from `.env.example` (no API keys needed!)
+- ✅ Check and install Python dependencies
+- ✅ Check and install Node dependencies
+- ✅ Verify KoboldCPP is running (optional, warns if not)
+- ✅ Start backend and frontend automatically
+- ✅ Show you the URLs to access
+
+Then open your browser:
+- **Frontend**: http://localhost:3000
+- **API Docs**: http://localhost:8000/docs
+
+### Manual Setup (If Preferred)
+
+#### 1. Install Dependencies
 
 ```bash
 # Install system dependencies
@@ -96,31 +121,31 @@ cd ../frontend
 npm install
 ```
 
-### 2. Configure Environment (Optional)
+#### 2. Configure Environment (Optional)
 
 ```bash
-# Copy environment template
+# Copy environment template (now uses local-first defaults!)
 cp .env.example .env
 
-# Edit .env to add API keys (only needed for AI analysis)
+# No API keys needed for local operation!
 # - MLX Whisper works completely offline for transcription
-# - LLM keys only needed for segment selection (optional)
+# - KoboldCPP provides local AI without any cloud services
 ```
 
-### 3. Run the Application
+#### 3. Run the Application
 
 ```bash
 # Terminal 1: Start Backend
 cd backend
 source .venv/bin/activate
-uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # Terminal 2: Start Frontend (in a new terminal)
 cd frontend
 npm run dev
 ```
 
-### 4. Access the Application
+#### 4. Access the Application
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
@@ -279,6 +304,9 @@ For production use:
 
 ## Getting Help
 
-- Check logs: `docker-compose logs -f`
+- Check logs:
+  - Backend: `tail -f /tmp/supoclip_backend.log`
+  - Frontend: `tail -f /tmp/supoclip_frontend.log`
 - View API documentation: http://localhost:8000/docs
 - Report issues: Create a GitHub issue with logs and error messages
+- No .env file needed anymore! The app works with local-first defaults

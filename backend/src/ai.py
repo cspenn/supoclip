@@ -63,27 +63,59 @@ TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 
 Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity - choose segments that would genuinely engage viewers and have proper time ranges."""
 
-# Create simplified agent with local-first model selection
-llm_model = config.get_llm_model()
+# Module-level caches for lazy initialization
+_llm_model = None
+_transcript_agent = None
 
-# Log which LLM mode is active
-if config.local_llm_enabled:
-    logger.info(f"🤖 Using local LLM: {config.local_llm_base_url}")
-else:
-    logger.info(f"☁️ Using cloud LLM: {config.llm}")
 
-transcript_agent = Agent(
-    model=llm_model,
-    output_type=TranscriptAnalysis,
-    system_prompt=simplified_system_prompt
-)
+def _get_llm_model():
+    """Lazy initialization of LLM model (only when needed).
+
+    This allows the backend to start even if:
+    - Local LLM (KoboldCPP) is not running
+    - Cloud API keys are not configured
+
+    The error only occurs when actually processing videos.
+    """
+    global _llm_model
+    if _llm_model is None:
+        try:
+            _llm_model = config.get_llm_model()
+            # Log which LLM mode is active
+            if config.local_llm_enabled:
+                logger.info(f"🤖 Using local LLM: {config.local_llm_base_url}")
+            else:
+                logger.info(f"☁️ Using cloud LLM: {config.llm}")
+        except ValueError as e:
+            logger.error(f"LLM configuration error: {e}")
+            raise
+    return _llm_model
+
+
+def _get_transcript_agent():
+    """Lazy initialization of transcript agent (only when needed).
+
+    Creates the Pydantic AI agent with the configured LLM model.
+    This is deferred until the agent is actually used for analysis.
+    """
+    global _transcript_agent
+    if _transcript_agent is None:
+        model = _get_llm_model()
+        _transcript_agent = Agent(
+            model=model,
+            output_type=TranscriptAnalysis,
+            system_prompt=simplified_system_prompt
+        )
+    return _transcript_agent
 
 async def get_most_relevant_parts_by_transcript(transcript: str) -> TranscriptAnalysis:
     """Get the most relevant parts of a transcript for creating clips - simplified version."""
     logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
 
     try:
-        result = await transcript_agent.run(
+        # Lazy initialize agent on first use
+        agent = _get_transcript_agent()
+        result = await agent.run(
             f"""Analyze this video transcript and identify the most engaging segments for short-form content.
 
 Find segments that would be compelling as standalone clips for social media.

@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# SupoClip - Quick Start Script
-# This script helps you start SupoClip with a single command
+# SupoClip - Native macOS Quick Start Script
+# This script starts SupoClip with local-first configuration
+# No .env file or API keys required for offline operation
 
 set -e  # Exit on error
 
@@ -9,6 +10,7 @@ set -e  # Exit on error
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "============================================"
@@ -16,99 +18,160 @@ echo "  SupoClip - AI Video Clipping Tool"
 echo "============================================"
 echo ""
 
-# Check if .env file exists
+# Check if we're in the right directory
+if [ ! -f "start.sh" ] && [ ! -f "./start.sh" ]; then
+    echo -e "${RED}Error: This script must be run from the SupoClip root directory${NC}"
+    exit 1
+fi
+
+# Create .env from .env.example if missing (don't error)
 if [ ! -f .env ]; then
-    echo -e "${RED}Error: .env file not found!${NC}"
-    echo ""
-    echo "Please create a .env file with your API keys:"
-    echo "  1. Copy the template: cp .env.example .env"
-    echo "  2. Or use the provided .env file"
-    echo "  3. Edit .env and add your API keys:"
-    echo "     - ASSEMBLY_AI_API_KEY (required)"
-    echo "     - OPENAI_API_KEY or GOOGLE_API_KEY or ANTHROPIC_API_KEY"
-    echo ""
-    exit 1
-fi
-
-# Check if required API keys are set
-source .env
-
-if [ -z "$ASSEMBLY_AI_API_KEY" ]; then
-    echo -e "${YELLOW}Warning: ASSEMBLY_AI_API_KEY is not set in .env${NC}"
-    echo "Video transcription will not work without this key."
-    echo ""
-fi
-
-if [ -z "$OPENAI_API_KEY" ] && [ -z "$GOOGLE_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
-    echo -e "${YELLOW}Warning: No AI provider API key is set in .env${NC}"
-    echo "You need at least one of: OPENAI_API_KEY, GOOGLE_API_KEY, or ANTHROPIC_API_KEY"
-    echo ""
-fi
-
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-    echo -e "${RED}Error: Docker is not running!${NC}"
-    echo "Please start Docker Desktop and try again."
-    echo ""
-    exit 1
-fi
-
-# Check if docker-compose is available
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}Error: docker-compose is not installed!${NC}"
-    echo "Please install Docker Compose and try again."
-    echo ""
-    exit 1
-fi
-
-# Determine which docker compose command to use
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+    echo -e "${BLUE}Creating .env from .env.example...${NC}"
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        echo -e "${GREEN}✓ .env created with local-first defaults${NC}"
+        echo ""
+    else
+        echo -e "${YELLOW}Note: No .env file found. Using built-in defaults.${NC}"
+        echo ""
+    fi
 else
-    DOCKER_COMPOSE="docker-compose"
-fi
-
-echo -e "${GREEN}Starting SupoClip...${NC}"
-echo ""
-
-# Build and start containers
-echo "Building and starting Docker containers..."
-echo "(This may take a few minutes on the first run)"
-echo ""
-
-$DOCKER_COMPOSE up -d --build
-
-echo ""
-echo -e "${GREEN}SupoClip is starting up!${NC}"
-echo ""
-echo "Services will be available at:"
-echo "  - Frontend:  http://localhost:3000"
-echo "  - Backend:   http://localhost:8000"
-echo "  - API Docs:  http://localhost:8000/docs"
-echo ""
-echo "To view logs, run:"
-echo "  $DOCKER_COMPOSE logs -f"
-echo ""
-echo "To stop all services, run:"
-echo "  $DOCKER_COMPOSE down"
-echo ""
-echo "Waiting for services to be healthy..."
-
-# Wait for services to be healthy
-sleep 5
-
-# Check if services are running
-if $DOCKER_COMPOSE ps | grep -q "Up"; then
-    echo -e "${GREEN}Services are starting successfully!${NC}"
+    echo -e "${GREEN}✓ Using existing .env configuration${NC}"
     echo ""
-    echo "You can now:"
-    echo "  1. Open http://localhost:3000 in your browser"
-    echo "  2. View logs: $DOCKER_COMPOSE logs -f"
-    echo "  3. Stop services: $DOCKER_COMPOSE down"
-else
-    echo -e "${YELLOW}Services are starting... Check logs if you encounter issues:${NC}"
-    echo "  $DOCKER_COMPOSE logs -f"
 fi
 
+# Check Python prerequisites
+echo "Checking Python prerequisites..."
+if [ ! -d "backend/.venv" ]; then
+    echo -e "${YELLOW}Virtual environment not found. Setting up...${NC}"
+    cd backend
+    if command -v uv &> /dev/null; then
+        uv venv .venv
+        echo -e "${GREEN}✓ Virtual environment created${NC}"
+    else
+        echo -e "${YELLOW}uv not found. Trying python3 -m venv...${NC}"
+        python3 -m venv .venv
+        echo -e "${GREEN}✓ Virtual environment created${NC}"
+    fi
+    cd ..
+    echo ""
+fi
+
+# Check if dependencies are installed
+if [ ! -d "backend/.venv/lib" ]; then
+    echo -e "${YELLOW}Installing Python dependencies...${NC}"
+    cd backend
+    source .venv/bin/activate
+    if command -v uv &> /dev/null; then
+        uv sync
+    else
+        pip install -r requirements.txt 2>/dev/null || pip install -e . 2>/dev/null
+    fi
+    cd ..
+    echo -e "${GREEN}✓ Python dependencies installed${NC}"
+    echo ""
+fi
+
+# Check Node prerequisites
+echo "Checking Node.js prerequisites..."
+if [ ! -d "frontend/node_modules" ]; then
+    echo -e "${YELLOW}Node dependencies not found. Installing...${NC}"
+    cd frontend
+    npm install --legacy-peer-deps
+    cd ..
+    echo -e "${GREEN}✓ Node dependencies installed${NC}"
+    echo ""
+fi
+
+# Optional: Check if KoboldCPP is running (warn if not, don't block)
+echo "Checking for local LLM service..."
+if nc -z localhost 6969 2>/dev/null; then
+    echo -e "${GREEN}✓ KoboldCPP is running on localhost:6969${NC}"
+    echo ""
+else
+    echo -e "${YELLOW}⚠ KoboldCPP not detected on localhost:6969${NC}"
+    echo "  For local AI processing, start KoboldCPP:"
+    echo "    brew install koboldcpp"
+    echo "    koboldcpp --port 6969 --model <path-to-model.gguf>"
+    echo "  (Video processing will still work with cloud LLM fallback)"
+    echo ""
+fi
+
+# Summary
+echo "============================================"
+echo -e "${GREEN}Ready to start SupoClip!${NC}"
+echo "============================================"
+echo ""
+echo "Services will run at:"
+echo "  Frontend:  http://localhost:3000"
+echo "  Backend:   http://localhost:8000"
+echo "  API Docs:  http://localhost:8000/docs"
+echo ""
+echo "Starting services..."
+echo ""
+
+# Start backend in background
+echo -e "${BLUE}Starting backend...${NC}"
+cd backend
+source .venv/bin/activate
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000 > /tmp/supoclip_backend.log 2>&1 &
+BACKEND_PID=$!
+cd ..
+sleep 2
+
+# Check if backend started successfully
+if ! kill -0 $BACKEND_PID 2>/dev/null; then
+    echo -e "${RED}✗ Backend failed to start. Check logs:${NC}"
+    cat /tmp/supoclip_backend.log
+    exit 1
+fi
+echo -e "${GREEN}✓ Backend started (PID: $BACKEND_PID)${NC}"
+echo ""
+
+# Start frontend in background
+echo -e "${BLUE}Starting frontend...${NC}"
+cd frontend
+npm run dev > /tmp/supoclip_frontend.log 2>&1 &
+FRONTEND_PID=$!
+cd ..
+sleep 3
+
+# Check if frontend started successfully
+if ! kill -0 $FRONTEND_PID 2>/dev/null; then
+    echo -e "${RED}✗ Frontend failed to start. Check logs:${NC}"
+    cat /tmp/supoclip_frontend.log
+    kill $BACKEND_PID
+    exit 1
+fi
+echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
+echo ""
+
+# Success message
+echo "============================================"
+echo -e "${GREEN}SupoClip is running!${NC}"
+echo "============================================"
+echo ""
+echo "📱 Frontend:  http://localhost:3000"
+echo "🔧 API Docs:  http://localhost:8000/docs"
+echo "⚙️  Backend:   http://localhost:8000"
+echo ""
+echo "Configuration:"
+echo "  - Transcription: MLX Whisper (local)"
+echo "  - LLM: KoboldCPP (localhost:6969) or Cloud Fallback"
+echo "  - Database: SQLite (local)"
+echo "  - Job Queue: Local AsyncIO"
+echo ""
+echo "Logs:"
+echo "  Backend:  tail -f /tmp/supoclip_backend.log"
+echo "  Frontend: tail -f /tmp/supoclip_frontend.log"
+echo ""
+echo "To stop services:"
+echo "  kill $BACKEND_PID $FRONTEND_PID"
 echo ""
 echo "============================================"
+
+# Keep script running and forward signals to child processes
+trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
+
+# Wait for both processes
+wait $BACKEND_PID $FRONTEND_PID
