@@ -55,6 +55,11 @@ class Config:
         self.max_workers = int(os.getenv("MAX_WORKERS", "2"))
         self.worker_timeout = int(os.getenv("WORKER_TIMEOUT", "3600"))
 
+        # Authentication bypass for local development (no sign-in required)
+        # Set to true to disable authentication and use default user_id for all requests
+        self.disable_auth = os.getenv("DISABLE_AUTH", "false").lower() == "true"
+        self.default_user_id = os.getenv("DEFAULT_USER_ID", "local-user")
+
     def get_llm_model(self) -> OpenAIChatModel | str:
         """Get configured LLM model (local-first, cloud fallback).
 

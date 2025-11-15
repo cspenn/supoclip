@@ -29,8 +29,12 @@ async def list_tasks(request: Request, db: AsyncSession = Depends(get_db), limit
     headers = request.headers
     user_id = headers.get("user_id")
 
+    # Use default user_id if auth is disabled
     if not user_id:
-        raise HTTPException(status_code=401, detail="User authentication required")
+        if config.disable_auth:
+            user_id = config.default_user_id
+        else:
+            raise HTTPException(status_code=401, detail="User authentication required")
 
     try:
         task_service = TaskService(db)
@@ -67,8 +71,12 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
+    # Use default user_id if auth is disabled
     if not user_id:
-        raise HTTPException(status_code=401, detail="User authentication required")
+        if config.disable_auth:
+            user_id = config.default_user_id
+        else:
+            raise HTTPException(status_code=401, detail="User authentication required")
 
     try:
         task_service = TaskService(db)
@@ -258,8 +266,12 @@ async def delete_task(task_id: str, request: Request, db: AsyncSession = Depends
         headers = request.headers
         user_id = headers.get("user_id")
 
+        # Use default user_id if auth is disabled
         if not user_id:
-            raise HTTPException(status_code=401, detail="User authentication required")
+            if config.disable_auth:
+                user_id = config.default_user_id
+            else:
+                raise HTTPException(status_code=401, detail="User authentication required")
 
         task_service = TaskService(db)
 
@@ -290,8 +302,12 @@ async def delete_clip(task_id: str, clip_id: str, request: Request, db: AsyncSes
         headers = request.headers
         user_id = headers.get("user_id")
 
+        # Use default user_id if auth is disabled
         if not user_id:
-            raise HTTPException(status_code=401, detail="User authentication required")
+            if config.disable_auth:
+                user_id = config.default_user_id
+            else:
+                raise HTTPException(status_code=401, detail="User authentication required")
 
         task_service = TaskService(db)
 

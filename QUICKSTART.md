@@ -152,14 +152,38 @@ npm run dev
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
+## Authentication (No Sign-In Required!)
+
+By default, authentication is **disabled** for local development. You can immediately start using the application without creating an account or signing in:
+
+- ✅ No sign-up form blocking you
+- ✅ No email verification needed
+- ✅ Direct access to video processing
+- ✅ All features available as "local-user"
+
+**How it works:**
+- Frontend automatically uses a mock user when `DISABLE_AUTH=true`
+- Backend accepts requests without authentication headers
+- Both default to `local-user` as the user ID
+
+**To enable authentication (for production):**
+
+1. Set `DISABLE_AUTH=false` in `backend/.env`
+2. Set `NEXT_PUBLIC_DISABLE_AUTH=false` in `frontend/.env.local`
+3. Configure Better Auth properly with a valid database connection
+4. Restart the application
+
+Authentication code is fully preserved - just toggle the environment variables to enable it!
+
 ## What's Offline vs Online?
 
 ✅ **Works Completely Offline (Default):**
 - Video transcription (parakeet-mlx - no internet needed)
 - AI segment analysis (Local LLM via KoboldCPP - no internet needed)
 - Video processing and clip generation (MoviePy, OpenCV)
-- Database operations (SQLite)
-- Authentication (Better Auth)
+- Database operations (SQLite - local file)
+- Authentication (disabled by default - no sign-in needed!)
+- User management (mock local user)
 
 ⚙️ **Requires Internet/API Keys (Optional Cloud Mode):**
 - Cloud AI analysis (uses OpenAI/Google/Anthropic LLMs) - optional if you prefer cloud
@@ -190,10 +214,13 @@ npm run dev
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PARAKEET_MODEL` | `mlx-community/parakeet-tdt-0.6b-v2` | parakeet-mlx model identifier |
-| `BETTER_AUTH_SECRET` | dev secret | Auth secret (change in production!) |
-| `DATABASE_URL` | `file:./supoclip.db` | SQLite database path |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./supoclip.db` | SQLite database path |
 | `MAX_WORKERS` | `2` | Local job queue workers |
 | `TEMP_DIR` | `./temp` | Temporary directory for video processing |
+| `DISABLE_AUTH` | `true` | Disable authentication for local dev (no sign-in needed) |
+| `DEFAULT_USER_ID` | `local-user` | User ID to use when auth is disabled |
+| `NEXT_PUBLIC_DISABLE_AUTH` | `true` | Frontend: disable auth (must match backend) |
+| `NEXT_PUBLIC_MOCK_USER_ID` | `local-user` | Frontend: mock user ID |
 
 ## Supported AI Models
 
