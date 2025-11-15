@@ -20,11 +20,17 @@ class Config:
         """Initialize configuration from environment variables."""
         # parakeet-mlx transcription model
         # Default: mlx-community/parakeet-tdt-0.6b-v2
-        self.parakeet_model = os.getenv("PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2")
+        self.parakeet_model = os.getenv(
+            "PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2"
+        )
 
         # Local LLM configuration (default - no API key required)
-        self.local_llm_enabled = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
-        self.local_llm_base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:6969/v1")
+        self.local_llm_enabled = (
+            os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
+        )
+        self.local_llm_base_url = os.getenv(
+            "LOCAL_LLM_BASE_URL", "http://localhost:6969/v1"
+        )
         self.local_llm_model = os.getenv("LOCAL_LLM_MODEL", "local-model")
         self.local_llm_api_key = os.getenv("LOCAL_LLM_API_KEY", "not-needed")
 
@@ -47,8 +53,7 @@ class Config:
 
         # Database URL (SQLite)
         self.database_url = os.getenv(
-            "DATABASE_URL",
-            "sqlite+aiosqlite:///./supoclip.db"
+            "DATABASE_URL", "sqlite+aiosqlite:///./supoclip.db"
         )
 
         # Local job queue settings
@@ -59,6 +64,11 @@ class Config:
         # Set to true to disable authentication and use default user_id for all requests
         self.disable_auth = os.getenv("DISABLE_AUTH", "false").lower() == "true"
         self.default_user_id = os.getenv("DEFAULT_USER_ID", "local-user")
+
+        # Logging configuration
+        self.log_level = os.getenv("LOG_LEVEL", "INFO")
+        self.log_dir = os.getenv("LOG_DIR", "logs")
+        self.log_retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
 
     def get_llm_model(self) -> OpenAIChatModel | str:
         """Get configured LLM model (local-first, cloud fallback).
@@ -94,8 +104,7 @@ class Config:
         )
 
         return OpenAIChatModel(
-            self.local_llm_model,
-            provider=OpenAIProvider(openai_client=client)
+            self.local_llm_model, provider=OpenAIProvider(openai_client=client)
         )
 
     def _has_cloud_api_key(self) -> bool:
@@ -105,7 +114,23 @@ class Config:
             True if at least one cloud API key is set.
         """
         return bool(
-            self.openai_api_key or
-            self.anthropic_api_key or
-            self.google_api_key
+            self.openai_api_key or self.anthropic_api_key or self.google_api_key
         )
+
+    def get_log_level(self) -> str:
+        """Get validated log level.
+
+        Returns:
+            Validated log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+
+        Raises:
+            ValueError: If log level is invalid.
+        """
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        level = self.log_level.upper()
+        if level not in valid_levels:
+            raise ValueError(
+                f"Invalid log level: {level}. "
+                f"Must be one of: {', '.join(valid_levels)}"
+            )
+        return level
