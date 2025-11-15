@@ -83,6 +83,49 @@ if [ ! -d "frontend/node_modules" ]; then
     echo ""
 fi
 
+# Function to find available port
+find_available_port() {
+    local start_port=$1
+    local max_attempts=${2:-10}
+    local port=$start_port
+
+    for ((i = 0; i < max_attempts; i++)); do
+        # Check if port is in use
+        if ! lsof -i ":$port" >/dev/null 2>&1; then
+            echo $port
+            return 0
+        fi
+        port=$((port + 1))
+    done
+
+    # No available port found
+    return 1
+}
+
+# Check for available ports
+echo "Checking for available ports..."
+BACKEND_PORT=$(find_available_port 8000)
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Could not find available port starting from 8000${NC}"
+    exit 1
+fi
+
+FRONTEND_PORT=$(find_available_port 3000)
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Could not find available port starting from 3000${NC}"
+    exit 1
+fi
+
+if [ "$BACKEND_PORT" != "8000" ]; then
+    echo -e "${YELLOW}⚠ Port 8000 in use, using port $BACKEND_PORT instead${NC}"
+fi
+
+if [ "$FRONTEND_PORT" != "3000" ]; then
+    echo -e "${YELLOW}⚠ Port 3000 in use, using port $FRONTEND_PORT instead${NC}"
+fi
+
+echo ""
+
 # Optional: Check if KoboldCPP is running (warn if not, don't block)
 echo "Checking for local LLM service..."
 if nc -z localhost 6969 2>/dev/null; then
@@ -103,18 +146,18 @@ echo -e "${GREEN}Ready to start SupoClip!${NC}"
 echo "============================================"
 echo ""
 echo "Services will run at:"
-echo "  Frontend:  http://localhost:3000"
-echo "  Backend:   http://localhost:8000"
-echo "  API Docs:  http://localhost:8000/docs"
+echo "  Frontend:  http://localhost:$FRONTEND_PORT"
+echo "  Backend:   http://localhost:$BACKEND_PORT"
+echo "  API Docs:  http://localhost:$BACKEND_PORT/docs"
 echo ""
 echo "Starting services..."
 echo ""
 
 # Start backend in background
-echo -e "${BLUE}Starting backend...${NC}"
+echo -e "${BLUE}Starting backend on port $BACKEND_PORT...${NC}"
 cd backend
 source .venv/bin/activate
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000 > /tmp/supoclip_backend.log 2>&1 &
+uvicorn src.main:app --reload --host 0.0.0.0 --port $BACKEND_PORT > /tmp/supoclip_backend.log 2>&1 &
 BACKEND_PID=$!
 cd ..
 sleep 2
@@ -125,13 +168,13 @@ if ! kill -0 $BACKEND_PID 2>/dev/null; then
     cat /tmp/supoclip_backend.log
     exit 1
 fi
-echo -e "${GREEN}✓ Backend started (PID: $BACKEND_PID)${NC}"
+echo -e "${GREEN}✓ Backend started on port $BACKEND_PORT (PID: $BACKEND_PID)${NC}"
 echo ""
 
 # Start frontend in background
-echo -e "${BLUE}Starting frontend...${NC}"
+echo -e "${BLUE}Starting frontend on port $FRONTEND_PORT...${NC}"
 cd frontend
-npm run dev > /tmp/supoclip_frontend.log 2>&1 &
+PORT=$FRONTEND_PORT npm run dev > /tmp/supoclip_frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 sleep 3
@@ -143,7 +186,7 @@ if ! kill -0 $FRONTEND_PID 2>/dev/null; then
     kill $BACKEND_PID
     exit 1
 fi
-echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
+echo -e "${GREEN}✓ Frontend started on port $FRONTEND_PORT (PID: $FRONTEND_PID)${NC}"
 echo ""
 
 # Success message
@@ -151,9 +194,9 @@ echo "============================================"
 echo -e "${GREEN}SupoClip is running!${NC}"
 echo "============================================"
 echo ""
-echo "📱 Frontend:  http://localhost:3000"
-echo "🔧 API Docs:  http://localhost:8000/docs"
-echo "⚙️  Backend:   http://localhost:8000"
+echo "📱 Frontend:  http://localhost:$FRONTEND_PORT"
+echo "🔧 API Docs:  http://localhost:$BACKEND_PORT/docs"
+echo "⚙️  Backend:   http://localhost:$BACKEND_PORT"
 echo ""
 echo "Configuration:"
 echo "  - Transcription: MLX Whisper (local)"
