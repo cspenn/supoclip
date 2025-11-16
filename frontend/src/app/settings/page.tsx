@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { FontSelector } from "@/components/FontSelector";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
-import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings, Clock, Sparkles } from "lucide-react";
+import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
 
 interface UserPreferences {
   fontFamily: string;
@@ -40,6 +40,10 @@ export default function SettingsPage() {
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoCornerPosition, setLogoCornerPosition] = useState<"top-left" | "top-right" | "bottom-left" | "bottom-right">("top-right");
+  const [logoUploadProgress, setLogoUploadProgress] = useState(false);
   const { data: session, isPending } = useSession();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -147,6 +151,52 @@ export default function SettingsPage() {
       setError(error instanceof Error ? error.message : 'Failed to save preferences');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleLogoUpload = async () => {
+    if (!logoFile) return;
+
+    setLogoUploadProgress(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("logo", logoFile);
+      formData.append("corner_position", logoCornerPosition);
+
+      const response = await fetch(`${apiUrl}/upload-logo`, {
+        method: "POST",
+        headers: {
+          "user_id": session!.user.id,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload logo");
+      }
+
+      setSuccess(true);
+      setLogoFile(null);
+      setLogoPreview(null);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to upload logo");
+    } finally {
+      setLogoUploadProgress(false);
     }
   };
 
@@ -474,6 +524,82 @@ export default function SettingsPage() {
                   </p>
                 </div>
               )}
+            </div>
+
+            <Separator className="my-8" />
+
+            {/* Logo Branding Section */}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-black mb-1 flex items-center gap-2">
+                  <Image className="w-5 h-5" />
+                  Logo Branding
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Add your logo to all generated clips
+                </p>
+              </div>
+
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Upload Logo (PNG/JPG)
+                </Label>
+                <Input
+                  type="file"
+                  accept=".png,.jpg,.jpeg"
+                  onChange={handleLogoFileChange}
+                  disabled={logoUploadProgress}
+                  className="cursor-pointer"
+                />
+                <p className="text-xs text-gray-500">
+                  Logo will be resized to 60px on the longest side
+                </p>
+              </div>
+
+              {/* Logo Preview */}
+              {logoPreview && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-black">Preview</Label>
+                  <div className="p-4 bg-gray-100 rounded-lg inline-block">
+                    <img src={logoPreview} alt="Logo preview" className="max-h-16" />
+                  </div>
+                </div>
+              )}
+
+              {/* Corner Position Selector */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Logo Position
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: "top-left", label: "Top Left" },
+                    { value: "top-right", label: "Top Right" },
+                    { value: "bottom-left", label: "Bottom Left" },
+                    { value: "bottom-right", label: "Bottom Right" },
+                  ].map((position) => (
+                    <Button
+                      key={position.value}
+                      type="button"
+                      variant={logoCornerPosition === position.value ? "default" : "outline"}
+                      onClick={() => setLogoCornerPosition(position.value as any)}
+                      disabled={logoUploadProgress}
+                    >
+                      {position.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Upload Button */}
+              <Button
+                onClick={handleLogoUpload}
+                disabled={!logoFile || logoUploadProgress}
+                className="w-full"
+              >
+                {logoUploadProgress ? "Uploading..." : "Upload Logo"}
+              </Button>
             </div>
 
             {/* Success/Error Messages */}

@@ -168,7 +168,8 @@ async def start_task(request: Request):
         user_prefs_result = await db.execute(
             text("""
                 SELECT default_font_family, default_font_size, default_font_color,
-                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt
+                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt,
+                       logo_file_path, logo_corner_position
                 FROM users WHERE id = :user_id
             """),
             {"user_id": user_id}
@@ -188,6 +189,11 @@ async def start_task(request: Request):
     clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
     clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
     custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
+
+    # Get logo if available
+    logo_file_path = user_prefs.logo_file_path
+    logo_corner_position = user_prefs.logo_corner_position or "top-right"
+    logo_path = Path(logo_file_path) if logo_file_path else None
 
     source = Source()
     source.type = source.decide_source_type(raw_source["url"])
@@ -301,6 +307,8 @@ async def start_task(request: Request):
                 font_family,
                 font_size,
                 font_color,
+                logo_path,
+                logo_corner_position,
             )
             logger.info(f"Generated {len(clips_info)} video clips with transitions")
 
@@ -389,7 +397,8 @@ async def start_task_with_progress(request: Request):
         user_prefs_result = await db.execute(
             text("""
                 SELECT default_font_family, default_font_size, default_font_color,
-                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt
+                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt,
+                       logo_file_path, logo_corner_position
                 FROM users WHERE id = :user_id
             """),
             {"user_id": user_id}
@@ -407,6 +416,11 @@ async def start_task_with_progress(request: Request):
         clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
         clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
         custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
+
+        # Get logo if available
+        logo_file_path = user_prefs.logo_file_path
+        logo_corner_position = user_prefs.logo_corner_position or "top-right"
+        logo_path = Path(logo_file_path) if logo_file_path else None
 
         source = Source()
         source.type = source.decide_source_type(raw_source["url"])
@@ -447,7 +461,8 @@ async def start_task_with_progress(request: Request):
         asyncio.create_task(
             process_video_task(
                 task.id, raw_source, user_id, font_family, font_size, font_color,
-                clip_min_length, clip_target_length, clip_max_length, custom_ai_prompt
+                clip_min_length, clip_target_length, clip_max_length, custom_ai_prompt,
+                logo_path, logo_corner_position
             )
         )
 
@@ -477,6 +492,8 @@ async def process_video_task(
     clip_target_length: int = 30,
     clip_max_length: int = 45,
     custom_ai_prompt: str | None = None,
+    logo_path: Optional[Path] = None,
+    logo_corner_position: str = "top-right",
 ):
     """Background task to process video and update task status"""
 
@@ -554,6 +571,8 @@ async def process_video_task(
                 font_family,
                 font_size,
                 font_color,
+                logo_path,
+                logo_corner_position,
             )
             logger.info(f"Generated {len(clips_info)} video clips with transitions")
 

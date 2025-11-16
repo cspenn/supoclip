@@ -777,6 +777,8 @@ def create_optimized_clip(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
+    logo_path: Optional[Path] = None,
+    logo_position: str = "top-right",
 ) -> bool:
     """Create optimized 9:16 clip with AssemblyAI subtitles."""
     try:
@@ -827,6 +829,44 @@ def create_optimized_clip(
             )
             final_clips.extend(subtitle_clips)
 
+        # Add logo overlay if provided
+        if logo_path and logo_path.exists():
+            try:
+                from moviepy import ImageClip
+
+                logo_clip = ImageClip(str(logo_path))
+
+                # Calculate logo position based on corner
+                logo_width, logo_height = logo_clip.size
+                padding = 20  # pixels from edge
+
+                position_map = {
+                    "top-left": (padding, padding),
+                    "top-right": (new_width - logo_width - padding, padding),
+                    "bottom-left": (padding, new_height - logo_height - padding),
+                    "bottom-right": (
+                        new_width - logo_width - padding,
+                        new_height - logo_height - padding,
+                    ),
+                }
+
+                logo_position_coords = position_map.get(
+                    logo_position, position_map["top-right"]
+                )
+
+                logo_clip = (
+                    logo_clip.with_duration(cropped_clip.duration).with_position(
+                        logo_position_coords
+                    )
+                )
+
+                final_clips.append(logo_clip)
+
+                logger.info(f"Added logo overlay at {logo_position}")
+
+            except Exception as e:
+                logger.warning(f"Failed to add logo overlay: {e}")
+
         # Compose and encode
         final_clip = (
             CompositeVideoClip(final_clips) if len(final_clips) > 1 else cropped_clip
@@ -863,6 +903,8 @@ def create_clips_from_segments(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
+    logo_path: Optional[Path] = None,
+    logo_position: str = "top-right",
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments."""
     logger.info(f"Creating {len(segments)} clips")
@@ -903,6 +945,8 @@ def create_clips_from_segments(
                 font_family,
                 font_size,
                 font_color,
+                logo_path,
+                logo_position,
             )
 
             if success:
@@ -1011,13 +1055,22 @@ def create_clips_with_transitions(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
+    logo_path: Optional[Path] = None,
+    logo_position: str = "top-right",
 ) -> List[Dict[str, Any]]:
     """Create video clips with transition effects between them."""
     logger.info(f"Creating {len(segments)} clips with transitions")
 
     # First create individual clips
     clips_info = create_clips_from_segments(
-        video_path, segments, output_dir, font_family, font_size, font_color
+        video_path,
+        segments,
+        output_dir,
+        font_family,
+        font_size,
+        font_color,
+        logo_path,
+        logo_position,
     )
 
     if len(clips_info) < 2:
