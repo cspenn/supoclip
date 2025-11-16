@@ -11,25 +11,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FontSelector } from "@/components/FontSelector";
+import { FontCustomization } from "@/components/FontCustomization";
 import { useSession } from "@/lib/auth-client";
+import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { useApiUrl } from "@/hooks/useApiUrl";
+import { UserPreferences } from "@/types/preferences";
 import Link from "next/link";
-import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
-
-interface UserPreferences {
-  fontFamily: string;
-  fontSize: number;
-  fontColor: string;
-  clipMinLength: number;
-  clipTargetLength: number;
-  clipMaxLength: number;
-  customAiPrompt: string | null;
-}
+import { PlayCircle, CheckCircle, AlertCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
 
 export default function SettingsPage() {
-  const [fontFamily, setFontFamily] = useState("TikTokSans-Regular");
-  const [fontSize, setFontSize] = useState(24);
-  const [fontColor, setFontColor] = useState("#FFFFFF");
   const [clipMinLength, setClipMinLength] = useState(10);
   const [clipTargetLength, setClipTargetLength] = useState(30);
   const [clipMaxLength, setClipMaxLength] = useState(45);
@@ -37,7 +27,6 @@ export default function SettingsPage() {
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [defaultPrompt, setDefaultPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -45,8 +34,8 @@ export default function SettingsPage() {
   const [logoCornerPosition, setLogoCornerPosition] = useState<"top-left" | "top-right" | "bottom-left" | "bottom-right">("top-right");
   const [logoUploadProgress, setLogoUploadProgress] = useState(false);
   const { data: session, isPending } = useSession();
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const { preferences, isLoading: isLoadingPrefs, error: prefsError, updatePreferences } = useUserPreferences();
+  const apiUrl = useApiUrl();
 
   // Validate clip lengths to ensure min < target < max
   const validateClipLengths = (): boolean => {
@@ -82,34 +71,16 @@ export default function SettingsPage() {
     loadDefaultPrompt();
   }, [apiUrl]);
 
-  // Load user preferences
+  // Load initial state from preferences
   useEffect(() => {
-    const loadPreferences = async () => {
-      if (!session?.user?.id) return;
-
-      setIsFetching(true);
-      try {
-        const response = await fetch('/api/preferences');
-        if (response.ok) {
-          const data: UserPreferences = await response.json();
-          setFontFamily(data.fontFamily);
-          setFontSize(data.fontSize);
-          setFontColor(data.fontColor);
-          setClipMinLength(data.clipMinLength);
-          setClipTargetLength(data.clipTargetLength);
-          setClipMaxLength(data.clipMaxLength);
-          setCustomAiPrompt(data.customAiPrompt || "");
-          setUseCustomPrompt(!!data.customAiPrompt);
-        }
-      } catch (error) {
-        console.error('Failed to load preferences:', error);
-      } finally {
-        setIsFetching(false);
-      }
-    };
-
-    loadPreferences();
-  }, [session?.user?.id]);
+    if (preferences) {
+      setClipMinLength(preferences.clipMinLength);
+      setClipTargetLength(preferences.clipTargetLength);
+      setClipMaxLength(preferences.clipMaxLength);
+      setCustomAiPrompt(preferences.customAiPrompt || "");
+      setUseCustomPrompt(!!preferences.customAiPrompt);
+    }
+  }, [preferences]);
 
   const handleSavePreferences = async () => {
     setIsLoading(true);
@@ -129,9 +100,6 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fontFamily,
-          fontSize,
-          fontColor,
           clipMinLength,
           clipTargetLength,
           clipMaxLength,
@@ -200,7 +168,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isPending || isFetching) {
+  if (isPending || isLoadingPrefs) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="space-y-4">
@@ -290,98 +258,22 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Font Family Selector */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-black flex items-center gap-2">
-                  <Type className="w-4 h-4" />
-                  Font Family
-                </Label>
-                <FontSelector
-                  value={fontFamily}
-                  onChange={setFontFamily}
-                  placeholder="Select a font..."
-                />
-              </div>
-
-              {/* Font Size Slider */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-black">
-                  Font Size: {fontSize}px
-                </Label>
-                <div className="px-2">
-                  <Slider
-                    value={[fontSize]}
-                    onValueChange={(value) => setFontSize(value[0])}
-                    max={48}
-                    min={12}
-                    step={2}
-                    disabled={isLoading}
-                    className="w-full"
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>12px</span>
-                  <span>48px</span>
-                </div>
-              </div>
-
-              {/* Font Color Picker */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-black flex items-center gap-2">
-                  <Palette className="w-4 h-4" />
-                  Font Color
-                </Label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={fontColor}
-                    onChange={(e) => setFontColor(e.target.value)}
-                    disabled={isLoading}
-                    className="w-12 h-10 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
-                  />
-                  <Input
-                    type="text"
-                    value={fontColor}
-                    onChange={(e) => setFontColor(e.target.value)}
-                    disabled={isLoading}
-                    placeholder="#FFFFFF"
-                    className="flex-1 h-10"
-                    pattern="^#[0-9A-Fa-f]{6}$"
-                  />
-                </div>
-                <div className="flex gap-2 mt-2">
-                  {["#FFFFFF", "#000000", "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1"].map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setFontColor(color)}
-                      disabled={isLoading}
-                      className="w-8 h-8 rounded border-2 border-gray-300 cursor-pointer hover:scale-110 transition-transform disabled:cursor-not-allowed"
-                      style={{ backgroundColor: color }}
-                      title={color}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-black">Preview</Label>
-                <div className="p-6 bg-black rounded-lg flex items-center justify-center min-h-[100px]">
-                  <p
-                    style={{
-                      color: fontColor,
-                      fontSize: `${Math.min(fontSize, 32)}px`,
-                      fontFamily: `'${fontFamily}', system-ui, -apple-system, sans-serif`,
-                      textAlign: 'center',
-                      lineHeight: '1.4'
-                    }}
-                    className="font-medium"
-                  >
-                    Your subtitle will look like this
-                  </p>
-                </div>
-              </div>
+              <FontCustomization
+                value={{
+                  family: preferences?.fontFamily || "TikTokSans-Regular",
+                  size: preferences?.fontSize || 24,
+                  color: preferences?.fontColor || "#FFFFFF",
+                }}
+                onChange={(fontOptions) => {
+                  updatePreferences({
+                    fontFamily: fontOptions.family,
+                    fontSize: fontOptions.size,
+                    fontColor: fontOptions.color,
+                  }).catch(err => console.error("Failed to update fonts:", err));
+                }}
+                disabled={isLoadingPrefs}
+                showPreview={true}
+              />
             </div>
 
             <Separator className="my-8" />

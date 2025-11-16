@@ -2,19 +2,12 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, RefreshCw, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-interface Font {
-  id: string;
-  name: string;
-  family: string;
-  style?: string;
-  weight?: number;
-  source: "bundled" | "system";
-}
+import { useFonts } from "@/hooks/useFonts";
+import { Font } from "@/types/font";
 
 interface FontSelectorProps {
   value?: string;
@@ -27,22 +20,13 @@ export function FontSelector({
   onChange,
   placeholder = "Select a font...",
 }: FontSelectorProps) {
-  const [fonts, setFonts] = useState<Font[]>([]);
+  const { fonts, isLoading, error, refreshFonts } = useFonts();
   const [filteredFonts, setFilteredFonts] = useState<Font[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-  // Fetch fonts on mount
-  useEffect(() => {
-    fetchFonts();
-  }, []);
-
-  // Filter fonts when search query changes
+  // Filter fonts when search query or fonts list changes
   useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredFonts(fonts);
@@ -57,48 +41,11 @@ export function FontSelector({
     }
   }, [searchQuery, fonts]);
 
-  const fetchFonts = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const response = await fetch(`${apiUrl}/fonts`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch fonts: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setFonts(data);
-      setFilteredFonts(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
-      console.error("Font fetch error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       setIsRefreshing(true);
-      setError(null);
-
-      const response = await fetch(`${apiUrl}/fonts/refresh`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Refresh failed: ${response.statusText}`);
-      }
-
-      // Refetch font list after refresh
-      await fetchFonts();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
-      console.error("Font refresh error:", err);
+      await refreshFonts();
     } finally {
       setIsRefreshing(false);
     }
