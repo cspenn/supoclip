@@ -24,7 +24,7 @@ from .services.font_service import FontService
 from .services.video_service_legacy import LegacySyncVideoService
 from .services.video_service_async import AsyncVideoProcessingService
 from .services.user_preferences_service import UserPreferencesService
-from .dependencies import set_font_service
+from .dependencies import set_font_service, get_current_user
 from .utils.font_options import parse_font_options
 
 # Configure configuration and logging
@@ -133,15 +133,15 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/start")
-async def start_task(request: Request):
+async def start_task(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
     """Start a new task for authenticated users (legacy synchronous endpoint)"""
-    logger.info("Starting new task request")
+    logger.info(f"Starting new task request for user {user_id}")
 
     data = await request.json()
-    headers = request.headers
-
     raw_source = data.get("source")
-    user_id = headers.get("user_id")
 
     # Get font customization options from request using centralized utility
     parsed_font_opts = parse_font_options(data)
@@ -154,16 +154,7 @@ async def start_task(request: Request):
         logger.error("Source URL is missing")
         raise HTTPException(status_code=400, detail="Source URL is required")
 
-    if not user_id:
-        logger.error("User ID is missing")
-        raise HTTPException(status_code=401, detail="User authentication required")
-
-    # Validate user_id is a valid string and user exists
-    if not user_id or len(user_id.strip()) == 0:
-        logger.error(f"Invalid user ID format: {user_id}")
-        raise HTTPException(status_code=400, detail="Invalid user ID format")
-
-    logger.info(f"Checking if user {user_id} exists in database")
+    logger.info(f"Processing request for authenticated user {user_id}")
     # Load and merge user preferences with request options
     async with AsyncSessionLocal() as db:
         try:
@@ -207,13 +198,16 @@ async def start_task(request: Request):
 
 
 @app.post("/start-with-progress")
-async def start_task_with_progress(request: Request):
+async def start_task_with_progress(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
     """Start a new task and return task ID for SSE tracking (async endpoint)"""
 
+    logger.info(f"Starting async task request for user {user_id}")
+
     data = await request.json()
-    headers = request.headers
     raw_source = data.get("source")
-    user_id = headers.get("user_id")
 
     # Get font customization options from request using centralized utility
     parsed_font_opts = parse_font_options(data)
@@ -225,10 +219,6 @@ async def start_task_with_progress(request: Request):
     if not raw_source or not raw_source.get("url"):
         logger.error("Source URL is missing")
         raise HTTPException(status_code=400, detail="Source URL is required")
-
-    if not user_id:
-        logger.error("User ID is missing")
-        raise HTTPException(status_code=401, detail="User authentication required")
 
     # Validate user_id and load preferences
     async with AsyncSessionLocal() as db:
@@ -478,20 +468,21 @@ async def upload_video(request: Request):
 
 
 @app.post("/upload-logo")
-async def upload_logo(request: Request):
+async def upload_logo(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
     """Upload logo image for user branding"""
     try:
         from PIL import Image
         import aiofiles
         import uuid
 
+        logger.info(f"Logo upload request from user {user_id}")
+
         form_data = await request.form()
         logo_file = form_data.get("logo")
         corner_position = form_data.get("corner_position", "top-right")
-        user_id = request.headers.get("user_id")
-
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User authentication required")
 
         if not logo_file or not hasattr(logo_file, "filename"):
             raise HTTPException(status_code=400, detail="No logo file provided")
