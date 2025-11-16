@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ import { FontOptions } from "@/types/font";
 import { useSession } from "@/lib/auth-client";
 import { formatSimpleDate } from "@/lib/date-utils";
 import Link from "next/link";
-import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Paintbrush, Clock } from "lucide-react";
+import { PlayCircle, ArrowRight, Youtube, CheckCircle, Loader2, Clock } from "lucide-react";
 
 interface ProcessingStatus {
   step: string;
@@ -529,12 +530,7 @@ export default function Home() {
             )}
 
             {error && (
-              <Alert className="mt-6 border-red-200 bg-red-50">
-                <AlertCircle className="h-4 w-4 text-red-500" />
-                <AlertDescription className="text-sm text-red-700">
-                  {error}
-                </AlertDescription>
-              </Alert>
+              <ErrorAlert message={error} className="mt-6" />
             )}
 
             <Button

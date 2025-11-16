@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/alerts/ErrorAlert";
+import { SuccessAlert } from "@/components/alerts/SuccessAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +18,7 @@ import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
 import { UserPreferences } from "@/types/preferences";
 import Link from "next/link";
-import { PlayCircle, CheckCircle, AlertCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
+import { PlayCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
 
 export default function SettingsPage() {
   const [clipMinLength, setClipMinLength] = useState(10);
@@ -496,21 +497,11 @@ export default function SettingsPage() {
 
             {/* Success/Error Messages */}
             {success && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <AlertDescription className="text-sm text-green-700">
-                  Preferences saved successfully!
-                </AlertDescription>
-              </Alert>
+              <SuccessAlert message="Preferences saved successfully!" />
             )}
 
             {error && (
-              <Alert className="border-red-200 bg-red-50">
-                <AlertCircle className="h-4 w-4 text-red-500" />
-                <AlertDescription className="text-sm text-red-700">
-                  {error}
-                </AlertDescription>
-              </Alert>
+              <ErrorAlert message={error} />
             )}
 
             {/* Save Button */}

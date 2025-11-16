@@ -5,12 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
+import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { useSession } from "@/lib/auth-client";
 import { formatDate } from "@/lib/date-utils";
-import { ArrowLeft, Clock, PlayCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Clock, PlayCircle } from "lucide-react";
 import Link from "next/link";
 
 interface Task {
@@ -132,10 +132,7 @@ export default function ListPage() {
             ))}
           </div>
         ) : error ? (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <ErrorAlert message={error} />
         ) : tasks.length === 0 ? (
           <EmptyState
             icon={PlayCircle}

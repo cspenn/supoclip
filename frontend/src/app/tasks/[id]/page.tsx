@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -314,9 +314,7 @@ export default function TaskPage() {
     return (
       <div className="min-h-screen bg-white p-4">
         <div className="max-w-6xl mx-auto">
-          <Alert>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <ErrorAlert message={error} />
           <Link href="/" className="mt-4 inline-block">
             <Button variant="outline">
               <ArrowLeft className="w-4 h-4" />
