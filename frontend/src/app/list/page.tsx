@@ -3,14 +3,12 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/StatusBadge";
+import { TaskCard } from "@/components/TaskCard";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { useSession } from "@/lib/auth-client";
-import { formatDate } from "@/lib/date-utils";
-import { ArrowLeft, Clock, PlayCircle } from "lucide-react";
+import { ArrowLeft, PlayCircle } from "lucide-react";
 import Link from "next/link";
 
 interface Task {
@@ -147,34 +145,7 @@ export default function ListPage() {
         ) : (
           <div className="space-y-4">
             {tasks.map((task) => (
-              <Card key={task.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <Link href={`/tasks/${task.id}`}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-black mb-2 truncate">
-                          {task.source_title}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                          <Badge variant="outline" className="capitalize">
-                            {task.source_type}
-                          </Badge>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {formatDate(task.created_at)}
-                          </span>
-                          <span>
-                            {task.clips_count} {task.clips_count === 1 ? "clip" : "clips"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0">
-                        <StatusBadge status={task.status} />
-                      </div>
-                    </div>
-                  </Link>
-                </CardContent>
-              </Card>
+              <TaskCard key={task.id} task={task} />
             ))}
           </div>
         )}

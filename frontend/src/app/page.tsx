@@ -10,18 +10,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FontCustomization } from "@/components/FontCustomization";
-import { StatusBadge } from "@/components/StatusBadge";
+import { TaskCard } from "@/components/TaskCard";
 import { useFonts } from "@/hooks/useFonts";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
 import { FontOptions } from "@/types/font";
 import { useSession } from "@/lib/auth-client";
-import { formatSimpleDate } from "@/lib/date-utils";
 import Link from "next/link";
-import { PlayCircle, ArrowRight, Youtube, CheckCircle, Loader2, Clock } from "lucide-react";
+import { PlayCircle, ArrowRight, Youtube, CheckCircle, Loader2 } from "lucide-react";
 
 interface ProcessingStatus {
   step: string;
@@ -335,34 +333,7 @@ export default function Home() {
                 </Link>
               </div>
 
-              <Link href={`/tasks/${latestTask.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-black mb-2 truncate">
-                          {latestTask.source_title}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                          <Badge variant="outline" className="capitalize">
-                            {latestTask.source_type}
-                          </Badge>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {formatSimpleDate(latestTask.created_at)}
-                          </span>
-                          <span>
-                            {latestTask.clips_count} {latestTask.clips_count === 1 ? "clip" : "clips"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0">
-                        <StatusBadge status={latestTask.status} />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+              <TaskCard task={latestTask} dateFormat="simple" />
 
               <Separator className="my-8" />
             </div>
