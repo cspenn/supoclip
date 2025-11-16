@@ -22,6 +22,7 @@ from .api.routes.fonts import router as fonts_router
 from .workers.local_queue import get_job_queue
 from .services.font_service import FontService
 from .services.video_service_legacy import LegacySyncVideoService
+from .services.video_service_async import AsyncVideoProcessingService
 from .dependencies import set_font_service
 from .utils.font_options import parse_font_options
 
@@ -214,7 +215,7 @@ async def start_task(request: Request):
 
 @app.post("/start-with-progress")
 async def start_task_with_progress(request: Request):
-    """Start a new task and return task ID for SSE tracking"""
+    """Start a new task and return task ID for SSE tracking (async endpoint)"""
 
     data = await request.json()
     headers = request.headers
@@ -267,197 +268,35 @@ async def start_task_with_progress(request: Request):
         logo_corner_position = user_prefs.logo_corner_position or "top-right"
         logo_path = Path(logo_file_path) if logo_file_path else None
 
-        source = Source()
-        source.type = source.decide_source_type(raw_source["url"])
-
-        # Get actual title based on source type
-        if source.type == "youtube":
-            try:
-                source.title = get_youtube_video_title(raw_source["url"])
-                if not source.title:
-                    logger.warning("Could not get YouTube title, using default")
-                    source.title = "YouTube Video"
-                logger.info(f"YouTube video title: {source.title}")
-            except Exception as e:
-                logger.warning(f"Could not get YouTube title, using default: {str(e)}")
-                source.title = "YouTube Video"
-        else:
-            source.title = raw_source.get("title", "Uploaded Video")
-
-        db.add(source)
-        await db.flush()
-
-        task = Task(
+        # Use async video processing service
+        service = AsyncVideoProcessingService(db, config)
+        task_id = await service.create_task(
+            raw_source=raw_source,
             user_id=user_id,
-            source_id=source.id,
-            generated_clips_ids=None,
-            status="processing",
             font_family=font_family,
             font_size=font_size,
             font_color=font_color,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
         )
-
-        db.add(task)
-        await db.commit()
 
         # Start processing in background
         asyncio.create_task(
-            process_video_task(
-                task.id, raw_source, user_id, font_family, font_size, font_color,
-                clip_min_length, clip_target_length, clip_max_length, custom_ai_prompt,
-                logo_path, logo_corner_position
+            service.process_video_async(
+                task_id=task_id,
+                raw_source=raw_source,
+                user_id=user_id,
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                clip_min_length=clip_min_length,
+                clip_target_length=clip_target_length,
+                clip_max_length=clip_max_length,
+                custom_ai_prompt=custom_ai_prompt,
+                logo_path=logo_path,
+                logo_corner_position=logo_corner_position,
             )
         )
 
-        return {"task_id": task.id, "message": "Task started successfully"}
-
-
-async def update_task_status(task_id: str, status: str):
-    """Update task status in database"""
-    async with AsyncSessionLocal() as db:
-        await db.execute(
-            text(
-                "UPDATE tasks SET status = :status WHERE id = :task_id"
-            ),
-            {"status": status, "task_id": task_id},
-        )
-        await db.commit()
-
-
-async def process_video_task(
-    task_id: str,
-    raw_source: dict,
-    user_id: str,
-    font_family: str = "TikTokSans-Regular",
-    font_size: int = 24,
-    font_color: str = "#FFFFFF",
-    clip_min_length: int = 10,
-    clip_target_length: int = 30,
-    clip_max_length: int = 45,
-    custom_ai_prompt: str | None = None,
-    logo_path: Optional[Path] = None,
-    logo_corner_position: str = "top-right",
-):
-    """Background task to process video and update task status"""
-
-    try:
-        logger.info(f"Starting background processing for task {task_id}")
-        await update_task_status(task_id, "processing")
-
-        # Get source from database
-        async with AsyncSessionLocal() as db:
-            source_result = await db.execute(
-                text(
-                    "SELECT * FROM sources WHERE id IN (SELECT source_id FROM tasks WHERE id = :task_id)"
-                ),
-                {"task_id": task_id},
-            )
-            source_data = source_result.fetchone()
-            if not source_data:
-                raise Exception("Source not found")
-
-        logger.info(f"Task {task_id}: Analyzing video source...")
-
-        # Determine video path based on source type
-        video_path = None
-        if source_data.type == "youtube":
-            logger.info(f"Task {task_id}: Downloading YouTube video...")
-            video_path = download_youtube_video(raw_source["url"])
-            if not video_path:
-                raise Exception("Failed to download video")
-            logger.info(f"Video downloaded to: {video_path}")
-        else:
-            video_path = raw_source["url"]
-            if not Path(video_path).exists():
-                raise Exception("Uploaded video file not found")
-
-        # Process video
-        if video_path:
-            logger.info(f"Task {task_id}: Generating transcript with AssemblyAI...")
-            transcript = get_video_transcript(video_path)
-            logger.info(f"Transcript generated (length: {len(transcript)} characters)")
-
-            logger.info(f"Task {task_id}: AI analyzing content for best clips...")
-            relevant_parts = await get_most_relevant_parts_by_transcript(
-                transcript,
-                min_length=clip_min_length,
-                max_length=clip_max_length,
-                custom_prompt=custom_ai_prompt
-            )
-            logger.info(
-                f"AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
-            )
-
-            # Convert to JSON format
-            relevant_segments_json = [
-                {
-                    "start_time": segment.start_time,
-                    "end_time": segment.end_time,
-                    "text": segment.text,
-                    "relevance_score": segment.relevance_score,
-                    "reasoning": segment.reasoning,
-                }
-                for segment in relevant_parts.most_relevant_segments
-            ]
-
-            logger.info(
-                f"Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions..."
-            )
-            clips_output_dir = Path(config.temp_dir) / "clips"
-            logger.info(
-                f"Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
-            )
-            clips_info = create_clips_with_transitions(
-                video_path,
-                relevant_segments_json,
-                clips_output_dir,
-                font_family,
-                font_size,
-                font_color,
-                logo_path,
-                logo_corner_position,
-            )
-            logger.info(f"Generated {len(clips_info)} video clips with transitions")
-
-            logger.info(f"Task {task_id}: Saving clips to database...")
-            async with AsyncSessionLocal() as db:
-                clip_ids = []
-                for i, clip_info in enumerate(clips_info):
-                    clip_record = GeneratedClip(
-                        task_id=task_id,
-                        filename=clip_info["filename"],
-                        file_path=clip_info["path"],
-                        start_time=clip_info["start_time"],
-                        end_time=clip_info["end_time"],
-                        duration=clip_info["duration"],
-                        text=clip_info["text"],
-                        relevance_score=clip_info["relevance_score"],
-                        reasoning=clip_info["reasoning"],
-                        clip_order=i + 1,
-                    )
-                    db.add(clip_record)
-                    await db.flush()
-                    clip_ids.append(clip_record.id)
-
-                # Update task with clip IDs
-                await db.execute(
-                    text(
-                        "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
-                    ),
-                    {"clip_ids": json.dumps(clip_ids), "task_id": task_id},
-                )
-                await db.commit()
-
-        # Mark as completed
-        await update_task_status(task_id, "completed")
-        logger.info(f"Task {task_id} completed successfully!")
-
-    except Exception as e:
-        logger.error(f"Error processing task {task_id}: {str(e)}")
-        await update_task_status(task_id, "error")
-        logger.error(f"Task {task_id} marked as error: {str(e)}")
+        return {"task_id": task_id, "message": "Task started successfully"}
 
 
 @app.get("/tasks/{task_id}/clips")
