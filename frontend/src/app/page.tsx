@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FontCustomization } from "@/components/FontCustomization";
 import { TaskCard } from "@/components/TaskCard";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useFonts } from "@/hooks/useFonts";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
@@ -48,7 +49,7 @@ export default function Home() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [sourceTitle, setSourceTitle] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { data: session, isPending } = useSession();
+  const { data: session } = useSession();
 
   // Font customization states
   const { fonts } = useFonts(); // Just to ensure fonts are injected
@@ -217,72 +218,8 @@ export default function Home() {
     }
   };
 
-  if (isPending) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-4">
-        <div className="space-y-4">
-          <Skeleton className="h-4 w-32 mx-auto" />
-          <Skeleton className="h-4 w-48 mx-auto" />
-          <Skeleton className="h-4 w-24 mx-auto" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!session?.user) {
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="max-w-4xl mx-auto px-4 py-24">
-          <div className="text-center mb-16">
-            <h1 className="text-5xl font-bold text-black mb-4">
-              SupoClip
-            </h1>
-            <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-              Professional video clipping platform powered by AI
-            </p>
-
-            <div className="flex gap-4 justify-center mb-16">
-              <Link href="/sign-up">
-                <Button size="lg" className="px-8 py-3">
-                  Get Started
-                </Button>
-              </Link>
-              <Link href="/sign-in">
-                <Button variant="outline" size="lg" className="px-8 py-3">
-                  Sign In
-                </Button>
-              </Link>
-            </div>
-          </div>
-
-          <Separator className="my-16" />
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-black mb-2">AI Analysis</h3>
-              <p className="text-gray-600">
-                Advanced content analysis for optimal clip extraction
-              </p>
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-black mb-2">Fast Processing</h3>
-              <p className="text-gray-600">
-                Enterprise-grade infrastructure for rapid video processing
-              </p>
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-black mb-2">Secure Platform</h3>
-              <p className="text-gray-600">
-                Enterprise security standards with private processing
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
+    <AuthGuard>
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="border-b bg-white">
@@ -530,5 +467,6 @@ export default function Home() {
         </div>
       </div>
     </div>
+    </AuthGuard>
   );
 }

@@ -13,6 +13,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FontCustomization } from "@/components/FontCustomization";
+import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
 import { useSession } from "@/lib/auth-client";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
@@ -34,8 +35,8 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoCornerPosition, setLogoCornerPosition] = useState<"top-left" | "top-right" | "bottom-left" | "bottom-right">("top-right");
   const [logoUploadProgress, setLogoUploadProgress] = useState(false);
-  const { data: session, isPending } = useSession();
-  const { preferences, isLoading: isLoadingPrefs, error: prefsError, updatePreferences } = useUserPreferences();
+  const { data: session } = useSession();
+  const { preferences, isLoading: isLoadingPrefs, updatePreferences } = useUserPreferences();
   const apiUrl = useApiUrl();
 
   // Validate clip lengths to ensure min < target < max
@@ -169,7 +170,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isPending || isLoadingPrefs) {
+  if (isLoadingPrefs) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="space-y-4">
@@ -181,27 +182,8 @@ export default function SettingsPage() {
     );
   }
 
-  if (!session?.user) {
-    return (
-      <div className="min-h-screen bg-white">
-        <div className="max-w-4xl mx-auto px-4 py-24">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-black mb-4">
-              Sign In Required
-            </h1>
-            <p className="text-gray-600 mb-8">
-              You need to sign in to access your settings
-            </p>
-            <Link href="/sign-in">
-              <Button size="lg">Sign In</Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
+    <AuthGuard fallback={<SimpleUnauthenticatedView />}>
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="border-b bg-white">
@@ -516,5 +498,6 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+    </AuthGuard>
   );
 }

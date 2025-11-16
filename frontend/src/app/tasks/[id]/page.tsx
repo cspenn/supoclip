@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
+import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
 import { useSession } from "@/lib/auth-client";
 import { ArrowLeft, Download, Clock, Star, AlertCircle, Trash2, Edit2, X, Check } from "lucide-react";
 import Link from "next/link";
@@ -327,6 +328,7 @@ export default function TaskPage() {
   }
 
   return (
+    <AuthGuard fallback={<SimpleUnauthenticatedView />}>
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="border-b bg-white">
@@ -678,5 +680,6 @@ export default function TaskPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </AuthGuard>
   );
 }
