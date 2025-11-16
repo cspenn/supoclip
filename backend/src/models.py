@@ -28,6 +28,19 @@ class User(Base):
     last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Default font preferences
+    default_font_family: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, server_default=text("'TikTokSans-Regular'"))
+    default_font_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, server_default=text("'24'"))
+    default_font_color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True, server_default=text("'#FFFFFF'"))
+
+    # Clip length preferences
+    default_clip_min_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, server_default=text("'10'"))
+    default_clip_target_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, server_default=text("'30'"))
+    default_clip_max_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, server_default=text("'45'"))
+
+    # Custom AI prompt
+    custom_ai_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Relationships
     tasks: Mapped[List["Task"]] = relationship("Task", back_populates="user", cascade="all, delete-orphan")
 
@@ -101,3 +114,24 @@ class GeneratedClip(Base):
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="generated_clips")
+
+class SystemFont(Base):
+    __tablename__ = "system_fonts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid_string)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    family: Mapped[str] = mapped_column(String(255), nullable=False)
+    style: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 'normal', 'italic', etc.
+    weight: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 100, 400, 700, etc.
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    detection_timestamp: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # ISO8601 string
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # 'bundled' or 'system'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("source IN ('bundled', 'system')", name="check_system_fonts_source"),
+    )
