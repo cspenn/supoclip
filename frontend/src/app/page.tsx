@@ -18,6 +18,7 @@ import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
 import { FontOptions } from "@/types/font";
 import { useSession } from "@/lib/auth-client";
+import { formatSimpleDate } from "@/lib/date-utils";
 import Link from "next/link";
 import { PlayCircle, ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Paintbrush, Clock } from "lucide-react";
 
@@ -347,7 +348,7 @@ export default function Home() {
                           </Badge>
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {new Date(latestTask.created_at).toLocaleDateString()}
+                            {formatSimpleDate(latestTask.created_at)}
                           </span>
                           <span>
                             {latestTask.clips_count} {latestTask.clips_count === 1 ? "clip" : "clips"}

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSession } from "@/lib/auth-client";
+import { formatDate } from "@/lib/date-utils";
 import { ArrowLeft, Clock, PlayCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
@@ -59,17 +60,6 @@ export default function ListPage() {
 
     fetchTasks();
   }, [session?.user?.id, apiUrl]);
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  };
 
   if (isPending) {
     return (
