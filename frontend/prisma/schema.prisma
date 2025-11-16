@@ -35,6 +35,14 @@ model User {
   default_font_size   Int?      @default(24)
   default_font_color  String?   @default("#FFFFFF")
 
+  // Clip length preferences
+  default_clip_min_length    Int?    @default(10)
+  default_clip_target_length Int?    @default(30)
+  default_clip_max_length    Int?    @default(45)
+
+  // Custom AI prompt
+  custom_ai_prompt          String?
+
   // Relationships
   tasks         Task[]
   sessions      Session[]
@@ -81,6 +89,24 @@ model Source {
 
   @@index([created_at])
   @@map("sources")
+}
+
+model SystemFont {
+  id                  String   @id
+  name                String   @unique
+  family              String
+  style               String?
+  weight              Int?
+  filePath            String?  @map("file_path")
+  fileHash            String?  @map("file_hash")
+  isValid             Boolean  @default(true) @map("is_valid")
+  detectionTimestamp  String?  @map("detection_timestamp")
+  metadataJson        Json?    @map("metadata_json")
+  source              String   // 'bundled' or 'system'
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("system_fonts")
 }
 
 // Better Auth Session management
