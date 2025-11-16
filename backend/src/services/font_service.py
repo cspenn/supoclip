@@ -13,6 +13,8 @@ import uuid
 import matplotlib.font_manager as fm
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.ttFont import TTLibError
+from sqlalchemy import select, delete, func as db_func, or_
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -296,12 +298,76 @@ class FontService:
     async def cache_fonts(self, fonts: List[FontMetadata]) -> None:
         """
         Cache detected fonts in SQLite database.
-        
+
         Args:
             fonts: List of FontMetadata to cache
         """
-        # TODO: Implement database caching
-        logger.info(f"💾 Caching {len(fonts)} fonts...")
+        if not self.db_session:
+            logger.warning("⚠️ No database session available, skipping font caching")
+            return
+
+        if not fonts:
+            logger.info("No fonts to cache")
+            return
+
+        try:
+            from ..models import SystemFont
+
+            logger.info(f"💾 Caching {len(fonts)} fonts to database...")
+
+            for font in fonts:
+                try:
+                    # Check if font already exists
+                    existing = await self.db_session.execute(
+                        select(SystemFont).where(SystemFont.name == font.name)
+                    )
+                    existing_font = existing.scalar()
+
+                    if existing_font:
+                        # Update existing entry
+                        existing_font.family = font.family
+                        existing_font.style = font.style
+                        existing_font.weight = font.weight
+                        existing_font.file_path = font.file_path
+                        existing_font.file_hash = font.file_hash
+                        existing_font.is_valid = font.is_valid
+                        existing_font.detection_timestamp = font.detection_timestamp
+                        existing_font.metadata_json = font.metadata_json
+                        existing_font.source = font.source
+                        logger.debug(f"✏️ Updated cached font: {font.name}")
+                    else:
+                        # Create new entry
+                        db_font = SystemFont(
+                            id=str(uuid.uuid4()),
+                            name=font.name,
+                            family=font.family,
+                            style=font.style,
+                            weight=font.weight,
+                            file_path=font.file_path,
+                            file_hash=font.file_hash,
+                            is_valid=font.is_valid,
+                            detection_timestamp=font.detection_timestamp,
+                            metadata_json=font.metadata_json,
+                            source=font.source
+                        )
+                        self.db_session.add(db_font)
+                        logger.debug(f"✨ Cached new font: {font.name}")
+
+                except IntegrityError as e:
+                    # Handle duplicate name (e.g., bundled + system with same name)
+                    logger.warning(f"⚠️ Font {font.name} duplicate, skipping: {e}")
+                    await self.db_session.rollback()
+                except Exception as e:
+                    logger.error(f"❌ Failed to cache font {font.name}: {e}")
+
+            # Commit all changes
+            await self.db_session.commit()
+            logger.info(f"✅ Successfully cached fonts")
+
+        except Exception as e:
+            logger.error(f"❌ Font caching failed: {e}")
+            if self.db_session:
+                await self.db_session.rollback()
     
     async def get_all_fonts(
         self,
@@ -310,17 +376,66 @@ class FontService:
     ) -> List[FontMetadata]:
         """
         Get all available fonts with optional filtering.
-        
+
         Args:
             search_query: Search term for fuzzy matching (name, family)
             source_filter: Filter by source ('bundled' or 'system')
-            
+
         Returns:
             List of matching FontMetadata objects
         """
-        # TODO: Implement font retrieval
-        logger.debug("📋 Getting all fonts...")
-        return []
+        if not self.db_session:
+            logger.warning("⚠️ No database session, returning empty list")
+            return []
+
+        try:
+            from ..models import SystemFont
+
+            # Build query
+            query = select(SystemFont)
+
+            # Add source filter
+            if source_filter:
+                query = query.where(SystemFont.source == source_filter)
+
+            # Add search filter
+            if search_query:
+                search_term = f"%{search_query.lower()}%"
+                query = query.where(
+                    or_(
+                        db_func.lower(SystemFont.name).like(search_term),
+                        db_func.lower(SystemFont.family).like(search_term)
+                    )
+                )
+
+            # Execute query
+            result = await self.db_session.execute(query)
+            db_fonts = result.scalars().all()
+
+            # Convert to FontMetadata
+            fonts = [
+                FontMetadata(
+                    id=f.id,
+                    name=f.name,
+                    family=f.family,
+                    style=f.style,
+                    weight=f.weight,
+                    file_path=f.file_path,
+                    file_hash=f.file_hash,
+                    is_valid=bool(f.is_valid),
+                    detection_timestamp=f.detection_timestamp,
+                    metadata_json=f.metadata_json,
+                    source=f.source
+                )
+                for f in db_fonts
+            ]
+
+            logger.debug(f"📋 Retrieved {len(fonts)} fonts from database")
+            return fonts
+
+        except Exception as e:
+            logger.error(f"❌ Failed to retrieve fonts: {e}")
+            return []
     
     async def get_font_by_name(self, font_name: str) -> Optional[FontMetadata]:
         """
