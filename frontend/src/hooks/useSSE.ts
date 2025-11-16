@@ -10,7 +10,8 @@ export interface SSEData {
   status: string;
   progress?: number;
   message?: string;
-  [key: string]: any; // Allow additional fields
+  // Allow additional fields with unknown type
+  [key: string]: unknown;
 }
 
 /**
