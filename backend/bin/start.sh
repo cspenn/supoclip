@@ -28,12 +28,12 @@ echo "  - LLM: Local-first (KoboldCPP) with cloud fallback"
 echo "  - Database: SQLite"
 echo "  - Job Queue: Local AsyncIO"
 echo ""
-echo "Starting server on http://localhost:8000"
-echo "API Docs: http://localhost:8000/docs"
+echo "Starting server on http://localhost:8008"
+echo "API Docs: http://localhost:8008/docs"
 echo ""
 echo "Press Ctrl+C to stop"
 echo "============================================"
 echo ""
 
 # Start the application
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn src.main:app --host 0.0.0.0 --port 8008 --reload

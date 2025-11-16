@@ -77,8 +77,22 @@ class ClipRepository:
         return clip_id
 
     @staticmethod
-    async def get_clips_by_task(db: AsyncSession, task_id: str) -> List[Dict[str, Any]]:
-        """Get all clips for a specific task, ordered by clip_order."""
+    async def get_clips_by_task(
+        db: AsyncSession,
+        task_id: str,
+        backend_url: str = "http://localhost:8008"
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all clips for a specific task, ordered by clip_order.
+
+        Args:
+            db: Database session
+            task_id: Task ID to get clips for
+            backend_url: Base URL of the backend server (for constructing full clip URLs)
+
+        Returns:
+            List of clip dictionaries with full video URLs
+        """
         result = await db.execute(
             text("""
                 SELECT id, filename, file_path, start_time, end_time, duration,
@@ -104,7 +118,7 @@ class ClipRepository:
                 "reasoning": row.reasoning,
                 "clip_order": row.clip_order,
                 "created_at": parse_sqlite_datetime(row.created_at),
-                "video_url": f"/clips/{row.filename}"
+                "video_url": f"{backend_url}/clips/{row.filename}"
             })
 
         return clips

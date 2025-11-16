@@ -71,6 +71,9 @@ class Config:
         self.log_dir = os.getenv("LOG_DIR", "logs")
         self.log_retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
 
+        # Backend URL (for generating full URLs to clips)
+        self.backend_url = os.getenv("BACKEND_URL", "http://localhost:8008")
+
     def get_llm_model(self) -> OpenAIModel | str:
         """Get configured LLM model (local-first, cloud fallback).
 

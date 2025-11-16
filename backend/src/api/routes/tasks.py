@@ -36,7 +36,7 @@ async def list_tasks(request: Request, db: AsyncSession = Depends(get_db), limit
             raise HTTPException(status_code=401, detail="User authentication required")
 
     try:
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
         tasks = await task_service.get_user_tasks(user_id, limit)
 
         return {
@@ -78,7 +78,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=401, detail="User authentication required")
 
     try:
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
 
         # Create task
         task_id = await task_service.create_task_with_source(
@@ -124,7 +124,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
 async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
     """Get task details."""
     try:
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
         task = await task_service.get_task_with_clips(task_id)
 
         if not task:
@@ -143,7 +143,7 @@ async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
 async def get_task_clips(task_id: str, db: AsyncSession = Depends(get_db)):
     """Get all clips for a task."""
     try:
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
         task = await task_service.get_task_with_clips(task_id)
 
         if not task:
@@ -173,7 +173,7 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
     async def event_generator():
         """Generate SSE events for task progress."""
         # First, check if task exists
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
         task = await task_service.task_repo.get_task_by_id(db, task_id)
 
         if not task:
@@ -247,7 +247,7 @@ async def update_task(task_id: str, request: Request, db: AsyncSession = Depends
         if not title:
             raise HTTPException(status_code=400, detail="Title is required")
 
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
 
         # Get task to verify it exists
         task = await task_service.task_repo.get_task_by_id(db, task_id)
@@ -280,7 +280,7 @@ async def delete_task(task_id: str, request: Request, db: AsyncSession = Depends
             else:
                 raise HTTPException(status_code=401, detail="User authentication required")
 
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
 
         # Get task to verify ownership
         task = await task_service.task_repo.get_task_by_id(db, task_id)
@@ -316,7 +316,7 @@ async def delete_clip(task_id: str, clip_id: str, request: Request, db: AsyncSes
             else:
                 raise HTTPException(status_code=401, detail="User authentication required")
 
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
 
         # Verify task ownership
         task = await task_service.task_repo.get_task_by_id(db, task_id)

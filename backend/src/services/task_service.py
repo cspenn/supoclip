@@ -9,6 +9,7 @@ from ..repositories.task_repository import TaskRepository
 from ..repositories.source_repository import SourceRepository
 from ..repositories.clip_repository import ClipRepository
 from .video_service import VideoService
+from ..config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,9 @@ logger = logging.getLogger(__name__)
 class TaskService:
     """Service for task workflow orchestration."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, config: Optional[Config] = None):
         self.db = db
+        self.config = config or Config()
         self.task_repo = TaskRepository()
         self.source_repo = SourceRepository()
         self.clip_repo = ClipRepository()
@@ -166,8 +168,12 @@ class TaskService:
         if not task:
             return None
 
-        # Get clips
-        clips = await self.clip_repo.get_clips_by_task(self.db, task_id)
+        # Get clips with full backend URL
+        clips = await self.clip_repo.get_clips_by_task(
+            self.db,
+            task_id,
+            backend_url=self.config.backend_url
+        )
         task["clips"] = clips
         task["clips_count"] = len(clips)
 

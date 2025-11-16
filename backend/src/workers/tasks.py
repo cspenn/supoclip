@@ -39,14 +39,16 @@ async def process_video_task(
     from ..database import AsyncSessionLocal
     from ..services.task_service import TaskService
     from ..workers.local_progress import get_progress_tracker
+    from ..config import Config
 
     logger.info(f"Worker processing task {task_id}")
 
     # Create progress tracker (local in-memory version)
     progress = get_progress_tracker()
+    config = Config()
 
     async with AsyncSessionLocal() as db:
-        task_service = TaskService(db)
+        task_service = TaskService(db, config)
 
         try:
             # Progress callback
