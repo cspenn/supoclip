@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import { EmptyState } from "@/components/EmptyState";
 import { useSession } from "@/lib/auth-client";
 import { ArrowLeft, Download, Clock, Star, AlertCircle, Trash2, Edit2, X, Check } from "lucide-react";
 import Link from "next/link";
@@ -502,54 +503,39 @@ export default function TaskPage() {
             ))}
           </div>
         ) : task?.status === "error" ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <div className="text-red-600 mb-4">
-                <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                <h2 className="text-xl font-semibold">Processing Failed</h2>
-              </div>
-              <p className="text-gray-600 mb-4">There was an error processing your video. Please try again.</p>
-              <Link href="/">
-                <Button>
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to Home
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={AlertCircle}
+            iconStyle="error"
+            title="Processing Failed"
+            description="There was an error processing your video. Please try again."
+            action={{
+              label: "Back to Home",
+              href: "/",
+              icon: ArrowLeft,
+            }}
+          />
         ) : clips.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              {task?.status === "completed" ? (
-                <>
-                  <div className="text-yellow-600 mb-4">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                    <h2 className="text-xl font-semibold">No Clips Generated</h2>
-                  </div>
-                  <p className="text-gray-600 mb-4">
-                    The task completed but no clips were generated. The video may not have had suitable content for
-                    clipping.
-                  </p>
-                  <Link href="/">
-                    <Button>
-                      <ArrowLeft className="w-4 h-4 mr-2" />
-                      Try Another Video
-                    </Button>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock className="w-8 h-8 text-blue-500 animate-pulse" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-black mb-2">Still Generating...</h2>
-                  <p className="text-gray-600">
-                    Your clips are being generated. This page will refresh automatically when they're ready.
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          task?.status === "completed" ? (
+            <EmptyState
+              icon={AlertCircle}
+              iconStyle="warning"
+              title="No Clips Generated"
+              description="The task completed but no clips were generated. The video may not have had suitable content for clipping."
+              action={{
+                label: "Try Another Video",
+                href: "/",
+                icon: ArrowLeft,
+              }}
+            />
+          ) : (
+            <EmptyState
+              icon={Clock}
+              iconStyle="info"
+              title="Still Generating..."
+              description="Your clips are being generated. This page will refresh automatically when they're ready."
+              animateIcon={true}
+            />
+          )
         ) : (
           <div className="grid gap-6">
             {/* Font Settings Display */}

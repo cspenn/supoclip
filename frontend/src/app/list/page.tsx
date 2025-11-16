@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/StatusBadge";
+import { EmptyState } from "@/components/EmptyState";
 import { useSession } from "@/lib/auth-client";
 import { formatDate } from "@/lib/date-utils";
 import { ArrowLeft, Clock, PlayCircle, AlertCircle } from "lucide-react";
@@ -136,23 +137,16 @@ export default function ListPage() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : tasks.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <PlayCircle className="w-8 h-8 text-gray-400" />
-              </div>
-              <h2 className="text-xl font-semibold text-black mb-2">No generations yet</h2>
-              <p className="text-gray-600 mb-6">
-                Start by processing your first video to create clips.
-              </p>
-              <Link href="/">
-                <Button>
-                  <PlayCircle className="w-4 h-4 mr-2" />
-                  Create New Generation
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={PlayCircle}
+            title="No generations yet"
+            description="Start by processing your first video to create clips."
+            action={{
+              label: "Create New Generation",
+              href: "/",
+              icon: PlayCircle,
+            }}
+          />
         ) : (
           <div className="space-y-4">
             {tasks.map((task) => (
