@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StatusBadge } from "@/components/StatusBadge";
 import { useSession } from "@/lib/auth-client";
-import { ArrowLeft, Clock, PlayCircle, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, PlayCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 interface Task {
@@ -58,41 +59,6 @@ export default function ListPage() {
 
     fetchTasks();
   }, [session?.user?.id, apiUrl]);
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return (
-          <Badge className="bg-green-100 text-green-800">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            Completed
-          </Badge>
-        );
-      case "processing":
-        return (
-          <Badge className="bg-blue-100 text-blue-800">
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            Processing
-          </Badge>
-        );
-      case "queued":
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800">
-            <Clock className="w-3 h-3 mr-1" />
-            Queued
-          </Badge>
-        );
-      case "error":
-        return (
-          <Badge className="bg-red-100 text-red-800">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Error
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -222,7 +188,7 @@ export default function ListPage() {
                         </div>
                       </div>
                       <div className="flex-shrink-0">
-                        {getStatusBadge(task.status)}
+                        <StatusBadge status={task.status} />
                       </div>
                     </div>
                   </Link>

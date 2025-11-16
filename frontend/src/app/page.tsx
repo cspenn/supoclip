@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FontCustomization } from "@/components/FontCustomization";
+import { StatusBadge } from "@/components/StatusBadge";
 import { useFonts } from "@/hooks/useFonts";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
@@ -354,19 +355,7 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="flex-shrink-0">
-                        {latestTask.status === "completed" ? (
-                          <Badge className="bg-green-100 text-green-800">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Completed
-                          </Badge>
-                        ) : latestTask.status === "processing" ? (
-                          <Badge className="bg-blue-100 text-blue-800">
-                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            Processing
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">{latestTask.status}</Badge>
-                        )}
+                        <StatusBadge status={latestTask.status} />
                       </div>
                     </div>
                   </CardContent>

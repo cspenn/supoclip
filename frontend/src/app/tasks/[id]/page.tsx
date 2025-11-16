@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { StatusBadge } from "@/components/StatusBadge";
 import { useSession } from "@/lib/auth-client";
 import { ArrowLeft, Download, Clock, Star, AlertCircle, Trash2, Edit2, X, Check } from "lucide-react";
 import Link from "next/link";
@@ -401,14 +402,8 @@ export default function TaskPage() {
                   <span>
                     {clips.length} {clips.length === 1 ? "clip" : "clips"} generated
                   </span>
-                ) : task.status === "processing" ? (
-                  <Badge className="bg-blue-100 text-blue-800">Processing</Badge>
-                ) : task.status === "queued" ? (
-                  <Badge className="bg-yellow-100 text-yellow-800">Queued</Badge>
                 ) : (
-                  <Badge variant="outline" className="capitalize">
-                    {task.status}
-                  </Badge>
+                  <StatusBadge status={task.status} />
                 )}
               </div>
             </div>
