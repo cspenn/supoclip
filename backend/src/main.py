@@ -21,6 +21,7 @@ from .api.routes.tasks import router as tasks_router
 from .api.routes.fonts import router as fonts_router
 from .workers.local_queue import get_job_queue
 from .services.font_service import FontService
+from .services.video_service_legacy import LegacySyncVideoService
 from .dependencies import set_font_service
 from .utils.font_options import parse_font_options
 
@@ -131,7 +132,7 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
 
 @app.post("/start")
 async def start_task(request: Request):
-    """Start a new task for authenticated users"""
+    """Start a new task for authenticated users (legacy synchronous endpoint)"""
     logger.info("Starting new task request")
 
     data = await request.json()
@@ -142,9 +143,6 @@ async def start_task(request: Request):
 
     # Get font customization options from request using centralized utility
     parsed_font_opts = parse_font_options(data)
-    font_family = parsed_font_opts["font_family"]
-    font_size = parsed_font_opts["font_size"]
-    font_color = parsed_font_opts["font_color"]
 
     logger.info(
         f"Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
@@ -182,191 +180,36 @@ async def start_task(request: Request):
 
         logger.info(f"User {user_id} found in database")
 
-    # Merge settings: request body > user prefs > system defaults
-    font_family = font_options.get("font_family") or user_prefs.default_font_family or "TikTokSans-Regular"
-    font_size = font_options.get("font_size") or user_prefs.default_font_size or 24
-    font_color = font_options.get("font_color") or user_prefs.default_font_color or "#FFFFFF"
-    clip_min_length = data.get("clip_min_length") or user_prefs.default_clip_min_length or 10
-    clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
-    clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
-    custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
+        # Merge settings: request body > user prefs > system defaults
+        font_family = parsed_font_opts["font_family"] if parsed_font_opts["font_family"] != "TikTokSans-Regular" else (user_prefs.default_font_family or "TikTokSans-Regular")
+        font_size = parsed_font_opts["font_size"] if parsed_font_opts["font_size"] != 24 else (user_prefs.default_font_size or 24)
+        font_color = parsed_font_opts["font_color"] if parsed_font_opts["font_color"] != "#FFFFFF" else (user_prefs.default_font_color or "#FFFFFF")
+        clip_min_length = data.get("clip_min_length") or user_prefs.default_clip_min_length or 10
+        clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
+        clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
+        custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
 
-    # Get logo if available
-    logo_file_path = user_prefs.logo_file_path
-    logo_corner_position = user_prefs.logo_corner_position or "top-right"
-    logo_path = Path(logo_file_path) if logo_file_path else None
+        # Get logo if available
+        logo_file_path = user_prefs.logo_file_path
+        logo_corner_position = user_prefs.logo_corner_position or "top-right"
+        logo_path = Path(logo_file_path) if logo_file_path else None
 
-    source = Source()
-    source.type = source.decide_source_type(raw_source["url"])
-    logger.info(f"Source type detected: {source.type}")
-
-    if source.type == "youtube":
-        logger.info("Getting YouTube video title")
-        source.title = get_youtube_video_title(raw_source["url"])
-        if not source.title:
-            logger.warning("Could not get YouTube title, using default")
-            source.title = "YouTube Video"
-        logger.info(f"Video title: {source.title}")
-    else:
-        source.title = raw_source.get("title", "Uploaded Video")
-        logger.info(f"Custom title: {source.title}")
-
-    relevant_segments_json = []
-    clips_info = []
-    relevant_parts = None
-
-    logger.info("Saving source and creating task in database")
-    async with AsyncSessionLocal() as db:
-        db.add(source)
-        await db.flush()
-        logger.info(f"Source saved with ID: {source.id}")
-
-        task = Task(
+        # Use legacy sync service
+        service = LegacySyncVideoService(db, config)
+        result = await service.process_video(
+            raw_source=raw_source,
             user_id=user_id,
-            source_id=source.id,
-            generated_clips_ids=None,
             font_family=font_family,
             font_size=font_size,
             font_color=font_color,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            clip_min_length=clip_min_length,
+            clip_target_length=clip_target_length,
+            clip_max_length=clip_max_length,
+            custom_ai_prompt=custom_ai_prompt,
+            logo_path=logo_path,
+            logo_corner_position=logo_corner_position,
         )
-
-        db.add(task)
-        await db.commit()
-        logger.info(f"Task created with ID: {task.id}")
-
-        # Determine video path based on source type
-        video_path = None
-        if source.type == "youtube":
-            logger.info("Starting YouTube video download")
-            video_path = download_youtube_video(raw_source["url"])
-            if not video_path:
-                logger.error("Failed to download video")
-                raise HTTPException(
-                    status_code=500, detail="Failed to download video"
-                )
-            logger.info(f"Video downloaded to: {video_path}")
-        else:
-            # For uploaded videos, the URL is actually the file path
-            video_path = raw_source["url"]
-            logger.info(f"Using uploaded video at: {video_path}")
-
-            # Verify the uploaded file exists
-            if not Path(video_path).exists():
-                logger.error(f"Uploaded video file not found: {video_path}")
-                raise HTTPException(
-                    status_code=404, detail="Uploaded video file not found"
-                )
-
-        # Process video (same for both YouTube and uploaded videos)
-        if video_path:
-            logger.info(
-                "Starting transcript generation with AssemblyAI + SRT equalization"
-            )
-            transcript = get_video_transcript(video_path)
-            logger.info(
-                f"AssemblyAI transcript generated with 10-char line equalization (length: {len(transcript)} characters)"
-            )
-
-            logger.info("Starting AI analysis for relevant segments")
-            relevant_parts = await get_most_relevant_parts_by_transcript(
-                transcript,
-                min_length=clip_min_length,
-                max_length=clip_max_length,
-                custom_prompt=custom_ai_prompt
-            )
-            logger.info(
-                f"AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
-            )
-
-            # Convert to JSON format for response
-            logger.info("Converting AI results to JSON format")
-            relevant_segments_json = [
-                {
-                    "start_time": segment.start_time,
-                    "end_time": segment.end_time,
-                    "text": segment.text,
-                    "relevance_score": segment.relevance_score,
-                    "reasoning": segment.reasoning,
-                }
-                for segment in relevant_parts.most_relevant_segments
-            ]
-            logger.info(f"Created {len(relevant_segments_json)} segment records")
-
-            # Create clips from relevant segments with transitions and custom fonts
-            logger.info("Starting video clip generation with transitions")
-            clips_output_dir = Path(config.temp_dir) / "clips"
-            logger.info(f"Output directory: {clips_output_dir}")
-            logger.info(
-                f"Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
-            )
-            clips_info = create_clips_with_transitions(
-                video_path,
-                relevant_segments_json,
-                clips_output_dir,
-                font_family,
-                font_size,
-                font_color,
-                logo_path,
-                logo_corner_position,
-            )
-            logger.info(f"Generated {len(clips_info)} video clips with transitions")
-
-            # Save clips to database
-            logger.info("Saving clips to database")
-            async with AsyncSessionLocal() as db:
-                clip_ids = []
-                for i, clip_info in enumerate(clips_info):
-                    logger.info(
-                        f"Saving clip {i+1}/{len(clips_info)}: {clip_info['filename']}"
-                    )
-                    clip_record = GeneratedClip(
-                        task_id=task.id,
-                        filename=clip_info["filename"],
-                        file_path=clip_info["path"],
-                        start_time=clip_info["start_time"],
-                        end_time=clip_info["end_time"],
-                        duration=clip_info["duration"],
-                        text=clip_info["text"],
-                        relevance_score=clip_info["relevance_score"],
-                        reasoning=clip_info["reasoning"],
-                        clip_order=i + 1,
-                    )
-                    db.add(clip_record)
-                    await db.flush()
-                    clip_ids.append(clip_record.id)
-                    logger.info(f"Clip {i+1} saved with ID: {clip_record.id}")
-
-                # Update task with clip IDs
-                logger.info(f"Updating task with {len(clip_ids)} clip IDs")
-                task_update = await db.execute(
-                    text(
-                        "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
-                    ),
-                    {"clip_ids": json.dumps(clip_ids), "task_id": task.id},
-                )
-                await db.commit()
-                logger.info("Task updated with clip IDs")
-        else:
-            logger.error("No video path available for processing")
-            raise HTTPException(
-                status_code=500, detail="No video available for processing"
-            )
-
-        logger.info(f"Task completed successfully! Task ID: {task.id}")
-        logger.info(
-            f"Final results - Segments: {len(relevant_segments_json)}, Clips: {len(clips_info)}"
-        )
-
-    return {
-        "message": "Task started successfully",
-        "task_id": task.id,
-        "relevant_segments": relevant_segments_json,
-        "clips": clips_info,
-        "summary": relevant_parts.summary if relevant_parts else None,
-        "key_topics": relevant_parts.key_topics if relevant_parts else None,
-    }
+        return result
 
 
 @app.post("/start-with-progress")
