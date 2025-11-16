@@ -8,10 +8,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FontSelector } from "@/components/FontSelector";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
 import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings, Clock, Sparkles } from "lucide-react";
@@ -36,7 +36,6 @@ export default function SettingsPage() {
   const [customAiPrompt, setCustomAiPrompt] = useState("");
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [defaultPrompt, setDefaultPrompt] = useState("");
-  const [availableFonts, setAvailableFonts] = useState<Array<{ name: string, display_name: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,48 +76,6 @@ export default function SettingsPage() {
     };
 
     loadDefaultPrompt();
-  }, [apiUrl]);
-
-  // Load available fonts from backend and inject them into the page
-  useEffect(() => {
-    const loadFonts = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/fonts`);
-        if (response.ok) {
-          const data = await response.json();
-          setAvailableFonts(data.fonts || []);
-
-          // Dynamically load fonts using @font-face
-          const fontFaceStyles = data.fonts.map((font: { name: string }) => {
-            return `
-              @font-face {
-                font-family: '${font.name}';
-                src: url('${apiUrl}/fonts/${font.name}') format('truetype');
-                font-weight: normal;
-                font-style: normal;
-              }
-            `;
-          }).join('\n');
-
-          // Inject font styles into the page
-          const styleElement = document.createElement('style');
-          styleElement.id = 'custom-fonts';
-          styleElement.innerHTML = fontFaceStyles;
-
-          // Remove existing custom fonts style if present
-          const existingStyle = document.getElementById('custom-fonts');
-          if (existingStyle) {
-            existingStyle.remove();
-          }
-
-          document.head.appendChild(styleElement);
-        }
-      } catch (error) {
-        console.error('Failed to load fonts:', error);
-      }
-    };
-
-    loadFonts();
   }, [apiUrl]);
 
   // Load user preferences
@@ -289,21 +246,11 @@ export default function SettingsPage() {
                   <Type className="w-4 h-4" />
                   Font Family
                 </Label>
-                <Select value={fontFamily} onValueChange={setFontFamily} disabled={isLoading}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select font" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFonts.map((font) => (
-                      <SelectItem key={font.name} value={font.name}>
-                        {font.display_name}
-                      </SelectItem>
-                    ))}
-                    {availableFonts.length === 0 && (
-                      <SelectItem value="TikTokSans-Regular">TikTok Sans Regular</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <FontSelector
+                  value={fontFamily}
+                  onChange={setFontFamily}
+                  placeholder="Select a font..."
+                />
               </div>
 
               {/* Font Size Slider */}
