@@ -11,6 +11,25 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+def parse_sqlite_datetime(dt_value: str | datetime | None) -> datetime | None:
+    """
+    Convert SQLite TEXT datetime to Python datetime object.
+
+    SQLite stores DATETIME as TEXT in ISO 8601 format. When using raw SQL
+    via SQLAlchemy's text() wrapper, these values are returned as strings
+    instead of datetime objects. This function handles the conversion.
+
+    Args:
+        dt_value: Either a datetime string, datetime object, or None
+
+    Returns:
+        datetime object or None
+    """
+    if dt_value is None or isinstance(dt_value, datetime):
+        return dt_value
+    return datetime.fromisoformat(dt_value)
+
+
 class TaskRepository:
     """Repository for task-related database operations."""
 
@@ -76,8 +95,8 @@ class TaskRepository:
             "font_family": row.font_family,
             "font_size": row.font_size,
             "font_color": row.font_color,
-            "created_at": row.created_at,
-            "updated_at": row.updated_at
+            "created_at": parse_sqlite_datetime(row.created_at),
+            "updated_at": parse_sqlite_datetime(row.updated_at)
         }
 
     @staticmethod
@@ -152,8 +171,8 @@ class TaskRepository:
                 "source_type": row.source_type,
                 "status": row.status,
                 "clips_count": row.clips_count,
-                "created_at": row.created_at,
-                "updated_at": row.updated_at
+                "created_at": parse_sqlite_datetime(row.created_at),
+                "updated_at": parse_sqlite_datetime(row.updated_at)
             })
 
         return tasks

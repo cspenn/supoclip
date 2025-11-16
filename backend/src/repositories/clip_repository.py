@@ -4,10 +4,30 @@ Clip repository - handles all database operations for generated clips.
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import List, Dict, Any
+from datetime import datetime
 import logging
 import uuid
 
 logger = logging.getLogger(__name__)
+
+
+def parse_sqlite_datetime(dt_value: str | datetime | None) -> datetime | None:
+    """
+    Convert SQLite TEXT datetime to Python datetime object.
+
+    SQLite stores DATETIME as TEXT in ISO 8601 format. When using raw SQL
+    via SQLAlchemy's text() wrapper, these values are returned as strings
+    instead of datetime objects. This function handles the conversion.
+
+    Args:
+        dt_value: Either a datetime string, datetime object, or None
+
+    Returns:
+        datetime object or None
+    """
+    if dt_value is None or isinstance(dt_value, datetime):
+        return dt_value
+    return datetime.fromisoformat(dt_value)
 
 
 class ClipRepository:
@@ -83,7 +103,7 @@ class ClipRepository:
                 "relevance_score": row.relevance_score,
                 "reasoning": row.reasoning,
                 "clip_order": row.clip_order,
-                "created_at": row.created_at.isoformat(),
+                "created_at": parse_sqlite_datetime(row.created_at),
                 "video_url": f"/clips/{row.filename}"
             })
 
