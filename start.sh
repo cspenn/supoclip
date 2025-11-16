@@ -189,10 +189,8 @@ echo ""
 
 # Start frontend in background
 echo -e "${BLUE}Starting frontend on port $FRONTEND_PORT...${NC}"
-cd frontend
-PORT=$FRONTEND_PORT npm run dev > /tmp/supoclip_frontend.log 2>&1 &
+(cd frontend && PORT=$FRONTEND_PORT npm run dev) > /tmp/supoclip_frontend.log 2>&1 &
 FRONTEND_PID=$!
-cd ..
 sleep 3
 
 # Check if frontend started successfully

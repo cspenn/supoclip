@@ -1,20 +1,18 @@
 """
-AI-related functions for transcript analysis with enhanced precision.
+AI analysis using Groq's Structured Outputs API (for Llama 4 Scout compatibility).
+
+This bypasses Pydantic AI's tool calling mechanism which has compatibility issues
+with Llama 4 Scout, and instead uses Groq's native Structured Outputs feature.
 """
 
-from pathlib import Path
-from typing import List, Dict, Any
-import asyncio
 import logging
-import re
-
-from pydantic_ai import Agent
+import json
+import os
+from typing import List
+from groq import AsyncGroq
 from pydantic import BaseModel, Field
 
-from .config import Config
-
 logger = logging.getLogger(__name__)
-config = Config()
 
 
 class TranscriptSegment(BaseModel):
@@ -37,8 +35,8 @@ class TranscriptAnalysis(BaseModel):
     key_topics: List[str] = Field(description="List of main topics discussed")
 
 
-# Simplified system prompt that trusts AssemblyAI timing
-simplified_system_prompt = """You are an expert at analyzing video transcripts to find the most engaging segments for short-form content creation.
+# System prompt for Groq API
+SYSTEM_PROMPT = """You are an expert at analyzing video transcripts to find the most engaging segments for short-form content creation.
 
 CORE OBJECTIVES:
 1. Identify segments that would be compelling on social media platforms
@@ -68,106 +66,116 @@ TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 - NEVER use the same timestamp for both start_time and end_time
 - Example: start_time: "02:25", end_time: "02:35" (NOT "02:25" and "02:25")
 
+OUTPUT FORMAT:
+Return a JSON object with this exact structure:
+{
+  "most_relevant_segments": [
+    {
+      "start_time": "MM:SS",
+      "end_time": "MM:SS",
+      "text": "segment text",
+      "relevance_score": 0.85,
+      "reasoning": "why this is relevant"
+    }
+  ],
+  "summary": "brief summary",
+  "key_topics": ["topic1", "topic2"]
+}
+
 Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity - choose segments that would genuinely engage viewers and have proper time ranges."""
 
-# Module-level caches for lazy initialization
-_llm_model = None
-_transcript_agent = None
 
-
-def _get_llm_model():
-    """Lazy initialization of LLM model (only when needed).
-
-    This allows the backend to start even if:
-    - Local LLM (KoboldCPP) is not running
-    - Cloud API keys are not configured
-
-    The error only occurs when actually processing videos.
+async def analyze_transcript_structured(
+    transcript: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+) -> TranscriptAnalysis:
     """
-    global _llm_model
-    if _llm_model is None:
-        try:
-            _llm_model = config.get_llm_model()
-            # Log which LLM mode is active
-            if config.local_llm_enabled:
-                logger.info(f"Using local LLM: {config.local_llm_base_url}")
-            else:
-                logger.info(f"Using cloud LLM: {config.llm}")
-        except ValueError as e:
-            logger.error(f"LLM configuration error: {e}")
-            raise
-    return _llm_model
+    Analyze transcript using Groq's Structured Outputs API.
 
+    This function uses Groq's native structured outputs feature instead of
+    Pydantic AI's tool calling, which has compatibility issues with Llama 4 Scout.
 
-def _get_transcript_agent():
-    """Lazy initialization of transcript agent (only when needed).
+    Args:
+        transcript: The video transcript to analyze
+        model: Groq model to use (default: Llama 4 Scout)
 
-    Creates the Pydantic AI agent with the configured LLM model.
-    This is deferred until the agent is actually used for analysis.
+    Returns:
+        TranscriptAnalysis with validated segments
+
+    Raises:
+        ValueError: If transcript is empty or too short
+        Exception: If API call fails
     """
-    global _transcript_agent
-    if _transcript_agent is None:
-        model = _get_llm_model()
-        _transcript_agent = Agent(
-            model=model,
-            output_type=TranscriptAnalysis,
-            system_prompt=simplified_system_prompt,
-        )
-    return _transcript_agent
-
-
-async def get_most_relevant_parts_by_transcript(transcript: str) -> TranscriptAnalysis:
-    """Get the most relevant parts of a transcript for creating clips - simplified version."""
-    logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
-
-    # Guard against empty transcripts to prevent AI hallucination
+    # Guard against empty transcripts
     if not transcript or len(transcript.strip()) == 0:
         logger.error("Cannot analyze empty transcript")
         raise ValueError("Cannot analyze empty transcript - transcription may have failed")
 
-    # Additional safety check: transcript should have reasonable length
     if len(transcript.strip()) < 50:
-        logger.error(f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure")
+        logger.error(f"Transcript too short ({len(transcript)} chars)")
         raise ValueError(f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required")
 
-    try:
-        # Check if using Llama 4 Scout - use Groq Structured Outputs instead of tool calling
-        model_str = config.llm if not config.local_llm_enabled else ""
-        if "llama-4-scout" in model_str or "llama-4-maverick" in model_str:
-            logger.info("Using Groq Structured Outputs API for Llama 4 Scout compatibility")
-            from .ai_structured import analyze_transcript_structured
-            return await analyze_transcript_structured(transcript)
+    # Initialize Groq client
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY environment variable not set")
 
-        # For all other models, use Pydantic AI (tool calling)
-        # Lazy initialize agent on first use
-        agent = _get_transcript_agent()
-        result = await agent.run(
-            f"""Analyze this video transcript and identify the most engaging segments for short-form content.
+    client = AsyncGroq(api_key=api_key)
+
+    try:
+        logger.info(f"Analyzing transcript with Groq Structured Outputs ({len(transcript)} chars)")
+        logger.info(f"Using model: {model}")
+
+        # Create the completion with structured outputs
+        completion = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": f"""Analyze this video transcript and identify the most engaging segments for short-form content.
 
 Find segments that would be compelling as standalone clips for social media.
 
 Transcript:
 {transcript}"""
+                }
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "transcript_analysis",
+                    "strict": True,
+                    "schema": TranscriptAnalysis.model_json_schema()
+                }
+            },
+            temperature=0.7,
+            max_tokens=4096
         )
 
-        analysis = result.data
-        logger.info(
-            f"AI analysis found {len(analysis.most_relevant_segments)} segments"
-        )
+        # Extract and parse the response
+        response_content = completion.choices[0].message.content
+        logger.info(f"Received response from Groq ({len(response_content)} chars)")
 
-        # Simple validation - just ensure segments have content
+        # Parse JSON response
+        analysis_data = json.loads(response_content)
+        analysis = TranscriptAnalysis(**analysis_data)
+
+        logger.info(f"AI analysis found {len(analysis.most_relevant_segments)} segments")
+
+        # Validate segments
         validated_segments = []
         for segment in analysis.most_relevant_segments:
             # Validate text content
-            if (
-                not segment.text.strip() or len(segment.text.split()) < 3
-            ):  # At least 3 words
+            if not segment.text.strip() or len(segment.text.split()) < 3:
                 logger.warning(
                     f"Skipping segment with insufficient content: '{segment.text[:50]}...'"
                 )
                 continue
 
-            # Validate timestamps - CRITICAL: start and end must be different
+            # Validate timestamps
             if segment.start_time == segment.end_time:
                 logger.warning(
                     f"Skipping segment with identical start/end times: {segment.start_time}"
@@ -190,7 +198,7 @@ Transcript:
                     )
                     continue
 
-                if duration < 5:  # Minimum 5 seconds
+                if duration < 5:
                     logger.warning(
                         f"Skipping segment too short: {duration}s (min 5s required)"
                     )
@@ -218,21 +226,14 @@ Transcript:
 
         logger.info(f"Selected {len(validated_segments)} segments for processing")
         if validated_segments:
-            logger.info(
-                f"Top segment score: {validated_segments[0].relevance_score:.2f}"
-            )
+            logger.info(f"Top segment score: {validated_segments[0].relevance_score:.2f}")
 
         return final_analysis
 
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON response: {e}")
+        logger.error(f"Response content: {response_content[:500]}...")
+        raise Exception(f"Invalid JSON response from Groq: {e}")
     except Exception as e:
-        logger.error(f"Error in transcript analysis: {e}")
-        return TranscriptAnalysis(
-            most_relevant_segments=[],
-            summary=f"Analysis failed: {str(e)}",
-            key_topics=[],
-        )
-
-
-def get_most_relevant_parts_sync(transcript: str) -> TranscriptAnalysis:
-    """Synchronous wrapper for the async function."""
-    return asyncio.run(get_most_relevant_parts_by_transcript(transcript))
+        logger.error(f"Error in Groq structured analysis: {e}")
+        raise

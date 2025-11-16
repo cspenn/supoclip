@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 import asyncio
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -281,7 +282,7 @@ async def start_task(request: Request):
                         text(
                             "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
                         ),
-                        {"clip_ids": clip_ids, "task_id": task.id},
+                        {"clip_ids": json.dumps(clip_ids), "task_id": task.id},
                     )
                     await db.commit()
                     logger.info("Task updated with clip IDs")
@@ -506,7 +507,7 @@ async def process_video_task(
                     text(
                         "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
                     ),
-                    {"clip_ids": clip_ids, "task_id": task_id},
+                    {"clip_ids": json.dumps(clip_ids), "task_id": task_id},
                 )
                 await db.commit()
 
