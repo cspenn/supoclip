@@ -116,9 +116,17 @@ def _get_transcript_agent():
     return _transcript_agent
 
 
-async def get_most_relevant_parts_by_transcript(transcript: str) -> TranscriptAnalysis:
+async def get_most_relevant_parts_by_transcript(
+    transcript: str,
+    min_length: int = 10,
+    max_length: int = 45,
+    custom_prompt: str | None = None
+) -> TranscriptAnalysis:
     """Get the most relevant parts of a transcript for creating clips - simplified version."""
     logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
+    logger.info(f"Clip length settings - Min: {min_length}s, Max: {max_length}s")
+    if custom_prompt:
+        logger.info(f"Using custom AI prompt: {custom_prompt[:100]}...")
 
     # Guard against empty transcripts to prevent AI hallucination
     if not transcript or len(transcript.strip()) == 0:
@@ -131,24 +139,36 @@ async def get_most_relevant_parts_by_transcript(transcript: str) -> TranscriptAn
         raise ValueError(f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required")
 
     try:
+        # Build the dynamic prompt
+        prompt_parts = [
+            "Analyze this video transcript and identify the most engaging segments for short-form content.",
+            f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
+        ]
+
+        if custom_prompt:
+            prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
+
+        prompt_parts.append("\nFind segments that would be compelling as standalone clips for social media.")
+        prompt_parts.append(f"\nTranscript:\n{transcript}")
+
+        analysis_prompt = "\n".join(prompt_parts)
+
         # Check if using Llama 4 Scout - use Groq Structured Outputs instead of tool calling
         model_str = config.llm if not config.local_llm_enabled else ""
         if "llama-4-scout" in model_str or "llama-4-maverick" in model_str:
             logger.info("Using Groq Structured Outputs API for Llama 4 Scout compatibility")
             from .ai_structured import analyze_transcript_structured
-            return await analyze_transcript_structured(transcript)
+            return await analyze_transcript_structured(
+                transcript,
+                min_length=min_length,
+                max_length=max_length,
+                custom_prompt=custom_prompt
+            )
 
         # For all other models, use Pydantic AI (tool calling)
         # Lazy initialize agent on first use
         agent = _get_transcript_agent()
-        result = await agent.run(
-            f"""Analyze this video transcript and identify the most engaging segments for short-form content.
-
-Find segments that would be compelling as standalone clips for social media.
-
-Transcript:
-{transcript}"""
-        )
+        result = await agent.run(analysis_prompt)
 
         analysis = result.data
         logger.info(

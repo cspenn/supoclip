@@ -10,20 +10,32 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
-import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings } from "lucide-react";
+import { PlayCircle, Type, Palette, CheckCircle, AlertCircle, Settings, Clock, Sparkles } from "lucide-react";
 
 interface UserPreferences {
   fontFamily: string;
   fontSize: number;
   fontColor: string;
+  clipMinLength: number;
+  clipTargetLength: number;
+  clipMaxLength: number;
+  customAiPrompt: string | null;
 }
 
 export default function SettingsPage() {
   const [fontFamily, setFontFamily] = useState("TikTokSans-Regular");
   const [fontSize, setFontSize] = useState(24);
   const [fontColor, setFontColor] = useState("#FFFFFF");
+  const [clipMinLength, setClipMinLength] = useState(10);
+  const [clipTargetLength, setClipTargetLength] = useState(30);
+  const [clipMaxLength, setClipMaxLength] = useState(45);
+  const [customAiPrompt, setCustomAiPrompt] = useState("");
+  const [useCustomPrompt, setUseCustomPrompt] = useState(false);
+  const [defaultPrompt, setDefaultPrompt] = useState("");
   const [availableFonts, setAvailableFonts] = useState<Array<{ name: string, display_name: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
@@ -32,6 +44,40 @@ export default function SettingsPage() {
   const { data: session, isPending } = useSession();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  // Validate clip lengths to ensure min < target < max
+  const validateClipLengths = (): boolean => {
+    if (clipMinLength >= clipTargetLength) {
+      setError("Minimum length must be less than target length");
+      return false;
+    }
+    if (clipTargetLength >= clipMaxLength) {
+      setError("Target length must be less than maximum length");
+      return false;
+    }
+    if (clipMinLength < 5 || clipMaxLength > 60) {
+      setError("Clip lengths must be between 5 and 60 seconds");
+      return false;
+    }
+    return true;
+  };
+
+  // Load default AI prompt from backend
+  useEffect(() => {
+    const loadDefaultPrompt = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/default-prompt`);
+        if (response.ok) {
+          const data = await response.json();
+          setDefaultPrompt(data.prompt || "");
+        }
+      } catch (error) {
+        console.error('Failed to load default prompt:', error);
+      }
+    };
+
+    loadDefaultPrompt();
+  }, [apiUrl]);
 
   // Load available fonts from backend and inject them into the page
   useEffect(() => {
@@ -88,6 +134,11 @@ export default function SettingsPage() {
           setFontFamily(data.fontFamily);
           setFontSize(data.fontSize);
           setFontColor(data.fontColor);
+          setClipMinLength(data.clipMinLength);
+          setClipTargetLength(data.clipTargetLength);
+          setClipMaxLength(data.clipMaxLength);
+          setCustomAiPrompt(data.customAiPrompt || "");
+          setUseCustomPrompt(!!data.customAiPrompt);
         }
       } catch (error) {
         console.error('Failed to load preferences:', error);
@@ -104,6 +155,12 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(false);
 
+    // Validate clip lengths
+    if (!validateClipLengths()) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/preferences', {
         method: 'PATCH',
@@ -114,6 +171,10 @@ export default function SettingsPage() {
           fontFamily,
           fontSize,
           fontColor,
+          clipMinLength,
+          clipTargetLength,
+          clipMaxLength,
+          customAiPrompt: useCustomPrompt ? customAiPrompt : null,
         }),
       });
 
@@ -324,6 +385,148 @@ export default function SettingsPage() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            <Separator className="my-8" />
+
+            {/* Clip Length Settings Section */}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-black mb-1 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Clip Length Settings
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Control the duration of generated video clips
+                </p>
+              </div>
+
+              {/* Minimum Length Slider */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Minimum Length: {clipMinLength}s
+                </Label>
+                <div className="px-2">
+                  <Slider
+                    value={[clipMinLength]}
+                    onValueChange={(value) => setClipMinLength(value[0])}
+                    max={45}
+                    min={5}
+                    step={1}
+                    disabled={isLoading}
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>5s</span>
+                  <span>45s</span>
+                </div>
+              </div>
+
+              {/* Target Length Slider */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Target Length: {clipTargetLength}s
+                </Label>
+                <div className="px-2">
+                  <Slider
+                    value={[clipTargetLength]}
+                    onValueChange={(value) => setClipTargetLength(value[0])}
+                    max={50}
+                    min={10}
+                    step={1}
+                    disabled={isLoading}
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>10s</span>
+                  <span>50s</span>
+                </div>
+              </div>
+
+              {/* Maximum Length Slider */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Maximum Length: {clipMaxLength}s
+                </Label>
+                <div className="px-2">
+                  <Slider
+                    value={[clipMaxLength]}
+                    onValueChange={(value) => setClipMaxLength(value[0])}
+                    max={60}
+                    min={15}
+                    step={1}
+                    disabled={isLoading}
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>15s</span>
+                  <span>60s</span>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-8" />
+
+            {/* AI Prompt Customization Section */}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-black mb-1 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  AI Prompt Customization
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Customize how AI selects video clips
+                </p>
+              </div>
+
+              {/* Use Custom Prompt Checkbox */}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="useCustomPrompt"
+                  checked={useCustomPrompt}
+                  onCheckedChange={(checked) => {
+                    const isChecked = checked as boolean;
+                    setUseCustomPrompt(isChecked);
+                    // Prefill with default prompt if enabling and textarea is empty
+                    if (isChecked && !customAiPrompt && defaultPrompt) {
+                      setCustomAiPrompt(defaultPrompt);
+                    }
+                  }}
+                  disabled={isLoading}
+                />
+                <Label
+                  htmlFor="useCustomPrompt"
+                  className="text-sm font-medium text-black cursor-pointer"
+                >
+                  Use custom AI prompt
+                </Label>
+              </div>
+
+              {/* Custom Prompt Textarea */}
+              {useCustomPrompt && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-black">
+                    Custom Prompt
+                  </Label>
+                  <Textarea
+                    value={customAiPrompt}
+                    onChange={(e) => setCustomAiPrompt(e.target.value)}
+                    disabled={isLoading}
+                    placeholder="Enter your custom instructions for the AI to select clips... (e.g., 'Focus on educational content and actionable tips')"
+                    className="min-h-[240px] resize-y"
+                    maxLength={2000}
+                  />
+                  <p className="text-xs text-gray-500">
+                    {customAiPrompt.length}/2000 characters
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    This prompt will be used to guide the AI in selecting video clips. Leave as-is to use the default, or customize to match your content style.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Success/Error Messages */}

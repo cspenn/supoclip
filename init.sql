@@ -19,7 +19,13 @@ CREATE TABLE users (
     -- Default font preferences
     default_font_family VARCHAR(100) DEFAULT 'TikTokSans-Regular',
     default_font_size INTEGER DEFAULT 24,
-    default_font_color VARCHAR(7) DEFAULT '#FFFFFF'
+    default_font_color VARCHAR(7) DEFAULT '#FFFFFF',
+    -- Clip length preferences (in seconds)
+    default_clip_min_length INTEGER DEFAULT 10,
+    default_clip_target_length INTEGER DEFAULT 30,
+    default_clip_max_length INTEGER DEFAULT 45,
+    -- Custom AI prompt (NULL = use system default)
+    custom_ai_prompt TEXT DEFAULT NULL
 );
 
 -- Source table (created before tasks since tasks reference sources)

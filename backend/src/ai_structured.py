@@ -86,7 +86,11 @@ Find 3-7 compelling segments that would work well as standalone clips. Quality o
 
 
 async def analyze_transcript_structured(
-    transcript: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    transcript: str,
+    min_length: int = 10,
+    max_length: int = 45,
+    custom_prompt: str | None = None,
+    model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 ) -> TranscriptAnalysis:
     """
     Analyze transcript using Groq's Structured Outputs API.
@@ -96,6 +100,9 @@ async def analyze_transcript_structured(
 
     Args:
         transcript: The video transcript to analyze
+        min_length: Minimum clip length in seconds
+        max_length: Maximum clip length in seconds
+        custom_prompt: Custom instructions for AI analysis
         model: Groq model to use (default: Llama 4 Scout)
 
     Returns:
@@ -124,6 +131,23 @@ async def analyze_transcript_structured(
     try:
         logger.info(f"Analyzing transcript with Groq Structured Outputs ({len(transcript)} chars)")
         logger.info(f"Using model: {model}")
+        logger.info(f"Clip length settings - Min: {min_length}s, Max: {max_length}s")
+        if custom_prompt:
+            logger.info(f"Using custom AI prompt: {custom_prompt[:100]}...")
+
+        # Build the dynamic user prompt
+        user_prompt_parts = [
+            "Analyze this video transcript and identify the most engaging segments for short-form content.",
+            f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
+        ]
+
+        if custom_prompt:
+            user_prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
+
+        user_prompt_parts.append("\nFind segments that would be compelling as standalone clips for social media.")
+        user_prompt_parts.append(f"\nTranscript:\n{transcript}")
+
+        user_prompt = "\n".join(user_prompt_parts)
 
         # Create the completion with structured outputs
         completion = await client.chat.completions.create(
@@ -135,12 +159,7 @@ async def analyze_transcript_structured(
                 },
                 {
                     "role": "user",
-                    "content": f"""Analyze this video transcript and identify the most engaging segments for short-form content.
-
-Find segments that would be compelling as standalone clips for social media.
-
-Transcript:
-{transcript}"""
+                    "content": user_prompt
                 }
             ],
             response_format={

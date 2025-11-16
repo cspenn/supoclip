@@ -666,29 +666,56 @@ def create_assemblyai_subtitles(
         text = " ".join(word["text"] for word in word_group)
 
         try:
-            # Create high-quality text clip with custom font settings
-            text_clip = (
-                TextClip(
+            # Constants for text wrapping
+            MAX_SUBTITLE_LINES = 2
+            HORIZONTAL_PADDING = 0.1  # 10% padding on each side
+            MAX_TEXT_WIDTH = int(video_width * (1 - 2 * HORIZONTAL_PADDING))
+
+            # Create text clip with wrapping
+            current_font_size = final_font_size
+            text_clip = None
+            max_attempts = 3
+
+            for attempt in range(max_attempts):
+                text_clip = TextClip(
                     text=text,
                     font=processor.font_path,
-                    font_size=final_font_size,
+                    font_size=current_font_size,
                     color=font_color,
                     stroke_color="black",
                     stroke_width=1,
-                    method="label",
+                    method="caption",           # Enable multi-line wrapping
+                    size=(MAX_TEXT_WIDTH, None), # Constrain width
                     text_align="center",
                 )
+
+                # Check if text fits in 2 lines
+                text_height = text_clip.size[1] if text_clip.size else 40
+                estimated_line_height = current_font_size * 1.5
+                estimated_lines = text_height / estimated_line_height
+
+                if estimated_lines <= MAX_SUBTITLE_LINES:
+                    break  # Text fits
+
+                # Reduce font size by 15% and try again
+                current_font_size = int(current_font_size * 0.85)
+                if current_font_size < 16:
+                    current_font_size = 16  # Minimum readable size
+                    break
+
+            # Finalize clip with timing
+            text_clip = (
+                text_clip
                 .with_duration(segment_duration)
                 .with_start(segment_start)
             )
 
-            # Position in lower middle (not full bottom, not center)
+            # Position in lower middle (accounting for multi-line height)
             text_height = text_clip.size[1] if text_clip.size else 40
-            # Place at about 75% of the way down the video (lower middle)
             vertical_position = int(video_height * 0.75 - text_height // 2)
             text_clip = text_clip.with_position(("center", vertical_position))
 
-            subtitle_clips.extend([text_clip])
+            subtitle_clips.append(text_clip)
 
         except Exception as e:
             logger.warning(f"Failed to create subtitle for '{text}': {e}")
