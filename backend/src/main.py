@@ -22,6 +22,7 @@ from .api.routes.fonts import router as fonts_router
 from .workers.local_queue import get_job_queue
 from .services.font_service import FontService
 from .dependencies import set_font_service
+from .utils.font_options import parse_font_options
 
 # Configure configuration and logging
 config = Config()
@@ -139,11 +140,11 @@ async def start_task(request: Request):
     raw_source = data.get("source")
     user_id = headers.get("user_id")
 
-    # Get font customization options from request
-    font_options = data.get("font_options", {})
-    font_family = font_options.get("font_family", "TikTokSans-Regular")
-    font_size = font_options.get("font_size", 24)
-    font_color = font_options.get("font_color", "#FFFFFF")
+    # Get font customization options from request using centralized utility
+    parsed_font_opts = parse_font_options(data)
+    font_family = parsed_font_opts["font_family"]
+    font_size = parsed_font_opts["font_size"]
+    font_color = parsed_font_opts["font_color"]
 
     logger.info(
         f"Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
@@ -377,8 +378,8 @@ async def start_task_with_progress(request: Request):
     raw_source = data.get("source")
     user_id = headers.get("user_id")
 
-    # Get font customization options from request
-    font_options = data.get("font_options", {})
+    # Get font customization options from request using centralized utility
+    parsed_font_opts = parse_font_options(data)
 
     logger.info(
         f"Request data - URL: {raw_source.get('url') if raw_source else 'None'}, User ID: {user_id}"
@@ -409,9 +410,10 @@ async def start_task_with_progress(request: Request):
             raise HTTPException(status_code=404, detail="User not found")
 
         # Merge settings: request body > user prefs > system defaults
-        font_family = font_options.get("font_family") or user_prefs.default_font_family or "TikTokSans-Regular"
-        font_size = font_options.get("font_size") or user_prefs.default_font_size or 24
-        font_color = font_options.get("font_color") or user_prefs.default_font_color or "#FFFFFF"
+        # Use parsed font options (which already have system defaults) and merge with user prefs
+        font_family = parsed_font_opts["font_family"] if parsed_font_opts["font_family"] != "TikTokSans-Regular" else (user_prefs.default_font_family or "TikTokSans-Regular")
+        font_size = parsed_font_opts["font_size"] if parsed_font_opts["font_size"] != 24 else (user_prefs.default_font_size or 24)
+        font_color = parsed_font_opts["font_color"] if parsed_font_opts["font_color"] != "#FFFFFF" else (user_prefs.default_font_color or "#FFFFFF")
         clip_min_length = data.get("clip_min_length") or user_prefs.default_clip_min_length or 10
         clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
         clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
