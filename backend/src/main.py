@@ -786,3 +786,91 @@ async def upload_video(request: Request):
     except Exception as e:
         logger.error(f"Error uploading video: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading video: {str(e)}")
+
+
+@app.post("/upload-logo")
+async def upload_logo(request: Request):
+    """Upload logo image for user branding"""
+    try:
+        from PIL import Image
+        import aiofiles
+        import uuid
+
+        form_data = await request.form()
+        logo_file = form_data.get("logo")
+        corner_position = form_data.get("corner_position", "top-right")
+        user_id = request.headers.get("user_id")
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User authentication required")
+
+        if not logo_file or not hasattr(logo_file, "filename"):
+            raise HTTPException(status_code=400, detail="No logo file provided")
+
+        # Validate file type
+        allowed_extensions = {".png", ".jpg", ".jpeg"}
+        file_extension = Path(logo_file.filename).suffix.lower()
+        if file_extension not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Only PNG and JPG files allowed")
+
+        # Create logos directory
+        logos_dir = Path(config.temp_dir) / "logos"
+        logos_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save original file temporarily
+        temp_filename = f"{user_id}_original{file_extension}"
+        temp_path = logos_dir / temp_filename
+
+        async with aiofiles.open(temp_path, "wb") as f:
+            content = await logo_file.read()
+            await f.write(content)
+
+        # Resize logo to 60px on longest side (preserve aspect ratio)
+        with Image.open(temp_path) as img:
+            # Convert to RGBA for transparency support
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+
+            # Calculate resize dimensions
+            width, height = img.size
+            longest_side = max(width, height)
+            scale_factor = 60 / longest_side
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+
+            # Resize
+            resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # Save resized logo
+            logo_filename = f"{user_id}_logo.png"
+            logo_path = logos_dir / logo_filename
+            resized.save(logo_path, "PNG")
+
+        # Delete temp file
+        temp_path.unlink()
+
+        # Update user record
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                text(
+                    "UPDATE users SET logo_file_path = :logo_path, logo_corner_position = :position WHERE id = :user_id"
+                ),
+                {
+                    "logo_path": str(logo_path),
+                    "position": corner_position,
+                    "user_id": user_id,
+                },
+            )
+            await db.commit()
+
+        logger.info(f"Logo uploaded for user {user_id}: {logo_path}")
+
+        return {
+            "message": "Logo uploaded successfully",
+            "logo_path": str(logo_path),
+            "corner_position": corner_position,
+        }
+
+    except Exception as e:
+        logger.error(f"Error uploading logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading logo: {str(e)}")

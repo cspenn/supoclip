@@ -87,7 +87,7 @@ def get_video_transcript(video_path: Path) -> str:
     Get transcript using parakeet-mlx (offline, Apple Silicon optimized).
 
     Replaces AssemblyAI with local processing for privacy and offline capability.
-    Formats transcript with timestamps for AI analysis.
+    Formats transcript with precise word-level timestamps (SRT-style) for AI analysis.
     """
     logger.info(f"Getting transcript for: {video_path}")
 
@@ -96,55 +96,20 @@ def get_video_transcript(video_path: Path) -> str:
         logger.info("Starting parakeet-mlx transcription (offline)")
         result = transcribe_video_mlx(video_path, model_id=config.parakeet_model)
 
-        # Format transcript with timestamps for AI analysis
-        formatted_lines = []
+        # Format transcript with precise word-level timing for AI analysis
         if result.get("words"):
             words = result["words"]
             logger.info(f"Processing {len(words)} words with precise timing")
 
-            # Group words into logical segments for readability
-            current_segment = []
-            current_start = None
-            segment_word_count = 0
-            max_words_per_segment = 8  # ~3-4 seconds of speech
-
-            for word in words:
-                if current_start is None:
-                    current_start = word["start"]
-
-                current_segment.append(word["text"])
-                segment_word_count += 1
-
-                # End segment at natural breaks or word limit
-                word_text = word["text"]
-                if (
-                    segment_word_count >= max_words_per_segment
-                    or word_text.endswith(".")
-                    or word_text.endswith("!")
-                    or word_text.endswith("?")
-                ):
-                    if current_segment:
-                        start_time = format_ms_to_timestamp(current_start)
-                        end_time = format_ms_to_timestamp(word["end"])
-                        text = " ".join(current_segment)
-                        formatted_lines.append(f"[{start_time} - {end_time}] {text}")
-
-                    current_segment = []
-                    current_start = None
-                    segment_word_count = 0
-
-            # Handle any remaining words
-            if current_segment and current_start is not None:
-                start_time = format_ms_to_timestamp(current_start)
-                end_time = format_ms_to_timestamp(words[-1]["end"])
-                text = " ".join(current_segment)
-                formatted_lines.append(f"[{start_time} - {end_time}] {text}")
-
-        result_text = "\n".join(formatted_lines)
-        logger.info(
-            f"Transcript formatted: {len(formatted_lines)} segments, {len(result_text)} chars"
-        )
-        return result_text
+            # Use SRT-style format with millisecond precision for AI analysis
+            result_text = format_transcript_for_ai(result)
+            logger.info(
+                f"Transcript formatted with SRT: {len(result_text)} chars"
+            )
+            return result_text
+        else:
+            logger.error("No words found in transcription result")
+            return ""
 
     except Exception as e:
         logger.error(f"Error in transcription: {e}")
@@ -199,6 +164,84 @@ def format_ms_to_timestamp(ms: int) -> str:
     minutes = seconds // 60
     seconds = seconds % 60
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def format_ms_to_timestamp_precise(ms: int) -> str:
+    """Format milliseconds to MM:SS.mmm format with millisecond precision."""
+    total_seconds = ms / 1000.0
+    minutes = int(total_seconds) // 60
+    seconds = int(total_seconds) % 60
+    milliseconds = ms % 1000
+    return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+
+def format_transcript_for_ai(transcript_data: Dict[str, Any]) -> str:
+    """
+    Format transcript with SRT-style precise timing for AI analysis.
+
+    Each line shows exact word timing for AI to select precise clip boundaries.
+    Format: [MM:SS.mmm - MM:SS.mmm] word
+
+    Args:
+        transcript_data: Dictionary with 'words' array containing word objects with 'text', 'start', 'end' keys
+
+    Returns:
+        Formatted string with word-level timestamps for AI analysis
+    """
+    if not transcript_data or "words" not in transcript_data:
+        return ""
+
+    words = transcript_data["words"]
+    if not words:
+        return ""
+
+    formatted_lines = []
+    current_line = []
+    current_start = None
+    line_word_count = 0
+    max_words_per_line = 6  # Group 6 words per line for readability
+
+    for word_data in words:
+        word_text = word_data.get("text", "")
+        start_ms = word_data.get("start", 0)
+        end_ms = word_data.get("end", 0)
+
+        if not word_text:
+            continue
+
+        if current_start is None:
+            current_start = start_ms
+
+        current_line.append((word_text, start_ms, end_ms))
+        line_word_count += 1
+
+        # End line at word limit or natural breaks
+        should_break = (
+            line_word_count >= max_words_per_line
+            or word_text.endswith(".")
+            or word_text.endswith("!")
+            or word_text.endswith("?")
+            or word_text.endswith(",")
+        )
+
+        if should_break and current_line:
+            start_time = format_ms_to_timestamp_precise(current_start)
+            end_time = format_ms_to_timestamp_precise(current_line[-1][2])
+            line_text = " ".join(word[0] for word in current_line)
+            formatted_lines.append(f"[{start_time} - {end_time}] {line_text}")
+
+            current_line = []
+            current_start = None
+            line_word_count = 0
+
+    # Handle any remaining words
+    if current_line and current_start is not None:
+        start_time = format_ms_to_timestamp_precise(current_start)
+        end_time = format_ms_to_timestamp_precise(current_line[-1][2])
+        line_text = " ".join(word[0] for word in current_line)
+        formatted_lines.append(f"[{start_time} - {end_time}] {line_text}")
+
+    return "\n".join(formatted_lines)
 
 
 def round_to_even(value: int) -> int:

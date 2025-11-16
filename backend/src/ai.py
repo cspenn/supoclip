@@ -2,11 +2,9 @@
 AI-related functions for transcript analysis with enhanced precision.
 """
 
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 import asyncio
 import logging
-import re
 
 from pydantic_ai import Agent
 from pydantic import BaseModel, Field
@@ -54,10 +52,20 @@ SEGMENT SELECTION CRITERIA:
 5. ENTERTAINING: Content people would want to share
 
 TIMING GUIDELINES:
-- Segments MUST be between 10-45 seconds for optimal engagement
-- CRITICAL: start_time MUST be different from end_time (minimum 10 seconds apart)
+- Segments MUST respect the configured duration range for optimal engagement
+- CRITICAL: start_time MUST be different from end_time (minimum duration requirement enforced)
 - Focus on natural content boundaries rather than arbitrary time limits
 - Include enough context for the segment to be understandable
+- Note: Exact duration constraints will be specified in the analysis prompt based on user preferences
+
+CLEAN START RULE - CRITICAL FOR VIRAL CLIPS:
+- NEVER start clips with transition words, fillers, or verbal disfluencies
+- Forbidden starts: "And...", "But...", "So...", "Well...", "Because...", "Also...", "Um...", "Uh...", "You know...", "I mean...", "Like..."
+- If original segment starts with a forbidden word, MUST adjust start point to first strong word
+- Strong opening words: nouns, verbs, action words, attention-grabbing phrases
+- IN YOUR REASONING FIELD, MUST state: "Original start: '[weak phrase]' → Clean start: '[strong phrase]'"
+- First word of final clip MUST be powerful, commanding attention, not transitional
+- Example: ❌ "So the main thing you need..." → ✅ "The main thing you need..." (reasoning: "Original start: 'So the' → Clean start: 'The main'")
 
 TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 - Use EXACT timestamps as they appear in the transcript
@@ -114,6 +122,26 @@ def _get_transcript_agent():
             system_prompt=simplified_system_prompt,
         )
     return _transcript_agent
+
+
+def validate_clean_start(segment_text: str) -> tuple[bool, str]:
+    """
+    Validate clip doesn't start with transition words/fillers.
+
+    Returns:
+        Tuple of (is_valid, reason)
+    """
+    forbidden_starts = [
+        "and ", "but ", "so ", "well ", "because ", "also ",
+        "um ", "uh ", "you know", "i mean", "like ",
+    ]
+
+    text_lower = segment_text.lower().strip()
+    for forbidden in forbidden_starts:
+        if text_lower.startswith(forbidden):
+            return False, f"Starts with forbidden word: '{forbidden.strip()}'"
+
+    return True, "Clean start"
 
 
 async def get_most_relevant_parts_by_transcript(
@@ -184,6 +212,14 @@ async def get_most_relevant_parts_by_transcript(
             ):  # At least 3 words
                 logger.warning(
                     f"Skipping segment with insufficient content: '{segment.text[:50]}...'"
+                )
+                continue
+
+            # Validate clean start (no transition words/fillers)
+            is_clean, reason = validate_clean_start(segment.text)
+            if not is_clean:
+                logger.warning(
+                    f"Skipping segment with unclean start: {reason} - '{segment.text[:50]}...'"
                 )
                 continue
 

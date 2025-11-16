@@ -41,6 +41,18 @@ class User(Base):
     # Custom AI prompt
     custom_ai_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Logo branding preferences
+    logo_file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    logo_corner_position: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, server_default=text("'top-right'"))
+
+    # Table constraints
+    __table_args__ = (
+        CheckConstraint(
+            "logo_corner_position IN ('top-left', 'top-right', 'bottom-left', 'bottom-right')",
+            name="check_logo_corner_position",
+        ),
+    )
+
     # Relationships
     tasks: Mapped[List["Task"]] = relationship("Task", back_populates="user", cascade="all, delete-orphan")
 
