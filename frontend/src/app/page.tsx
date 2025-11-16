@@ -17,6 +17,7 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useFonts } from "@/hooks/useFonts";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
+import { useTasks } from "@/hooks/useTasks";
 import { FontOptions } from "@/types/font";
 import { useSession } from "@/lib/auth-client";
 import Link from "next/link";
@@ -26,15 +27,6 @@ interface ProcessingStatus {
   step: string;
   message: string;
   progress: number;
-}
-
-interface LatestTask {
-  id: string;
-  source_title: string;
-  source_type: string;
-  status: string;
-  clips_count: number;
-  created_at: string;
 }
 
 export default function Home() {
@@ -61,9 +53,9 @@ export default function Home() {
     color: "#FFFFFF",
   });
 
-  // Latest task state
-  const [latestTask, setLatestTask] = useState<LatestTask | null>(null);
-  const [isLoadingLatest, setIsLoadingLatest] = useState(false);
+  // Use useTasks hook to get latest task
+  const { tasks, isLoading: isLoadingLatest } = useTasks();
+  const latestTask = tasks.length > 0 ? tasks[0] : null;
 
   // Load user preferences and apply to font options
   useEffect(() => {
@@ -75,35 +67,6 @@ export default function Home() {
       });
     }
   }, [preferences]);
-
-  // Load latest task
-  useEffect(() => {
-    const fetchLatestTask = async () => {
-      if (!session?.user?.id) return;
-
-      try {
-        setIsLoadingLatest(true);
-        const response = await fetch(`${apiUrl}/tasks/`, {
-          headers: {
-            'user_id': session.user.id,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.tasks && data.tasks.length > 0) {
-            setLatestTask(data.tasks[0]); // Get the first (latest) task
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load latest task:', error);
-      } finally {
-        setIsLoadingLatest(false);
-      }
-    };
-
-    fetchLatestTask();
-  }, [session?.user?.id, apiUrl]);
 
   // Always treat file input as uncontrolled, and store file in a ref
   const fileRef = useRef<File | null>(null);

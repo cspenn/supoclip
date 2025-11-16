@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,58 +7,12 @@ import { TaskCard } from "@/components/TaskCard";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorAlert } from "@/components/alerts/ErrorAlert";
 import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
-import { useSession } from "@/lib/auth-client";
+import { useTasks } from "@/hooks/useTasks";
 import { ArrowLeft, PlayCircle } from "lucide-react";
 import Link from "next/link";
 
-interface Task {
-  id: string;
-  user_id: string;
-  source_id: string;
-  source_title: string;
-  source_type: string;
-  status: string;
-  clips_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 export default function ListPage() {
-  const { data: session } = useSession();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-  useEffect(() => {
-    const fetchTasks = async () => {
-      if (!session?.user?.id) return;
-
-      try {
-        setIsLoading(true);
-        const response = await fetch(`${apiUrl}/tasks/`, {
-          headers: {
-            'user_id': session.user.id,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch tasks: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setTasks(data.tasks || []);
-      } catch (err) {
-        console.error("Error fetching tasks:", err);
-        setError(err instanceof Error ? err.message : "Failed to load tasks");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchTasks();
-  }, [session?.user?.id, apiUrl]);
+  const { tasks, isLoading, error } = useTasks();
 
   return (
     <AuthGuard fallback={<SimpleUnauthenticatedView />}>

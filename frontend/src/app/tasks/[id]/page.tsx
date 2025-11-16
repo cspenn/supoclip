@@ -21,51 +21,26 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
+import { useTask } from "@/hooks/useTask";
 import { useSession } from "@/lib/auth-client";
 import { ArrowLeft, Download, Clock, Star, AlertCircle, Trash2, Edit2, X, Check } from "lucide-react";
 import Link from "next/link";
 import DynamicVideoPlayer from "@/components/dynamic-video-player";
 
-interface Clip {
-  id: string;
-  filename: string;
-  file_path: string;
-  start_time: string;
-  end_time: string;
-  duration: number;
-  text: string;
-  relevance_score: number;
-  reasoning: string;
-  clip_order: number;
-  created_at: string;
-  video_url: string;
-}
-
-interface TaskDetails {
-  id: string;
-  user_id: string;
-  source_id: string;
-  source_title: string;
-  source_type: string;
-  status: string;
-  progress?: number;
-  progress_message?: string;
-  clips_count: number;
-  created_at: string;
-  updated_at: string;
-  font_family?: string;
-  font_size?: number;
-  font_color?: string;
-}
-
 export default function TaskPage() {
   const params = useParams();
   const router = useRouter();
   const { data: session } = useSession();
-  const [task, setTask] = useState<TaskDetails | null>(null);
-  const [clips, setClips] = useState<Clip[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  // Use custom hook for task fetching with retry logic
+  const {
+    task,
+    clips,
+    isLoading,
+    error,
+    fetchTaskStatus // Exposed for SSE polling
+  } = useTask(params.id as string);
+
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [isEditing, setIsEditing] = useState(false);
@@ -73,82 +48,10 @@ export default function TaskPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [sseError, setSseError] = useState<string | null>(null);
 
   // API URL from environment variable or fallback to default
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-  const fetchTaskStatus = async (retryCount = 0, maxRetries = 5) => {
-    if (!params.id) return false;
-
-    try {
-
-      // Fetch task details (including status)
-      // Don't wait for session - fetch immediately with user_id if available
-      const headers: HeadersInit = {};
-      if (session?.user?.id) {
-        headers["user_id"] = session.user.id;
-      }
-
-      const taskResponse = await fetch(`${apiUrl}/tasks/${params.id}`, {
-        headers,
-      });
-
-      // Handle 404 with retry logic (task might not be persisted yet)
-      if (taskResponse.status === 404 && retryCount < maxRetries) {
-        console.log(`Task not found yet, retrying in ${(retryCount + 1) * 500}ms... (${retryCount + 1}/${maxRetries})`);
-        await new Promise((resolve) => setTimeout(resolve, (retryCount + 1) * 500));
-        return fetchTaskStatus(retryCount + 1, maxRetries);
-      }
-
-      if (!taskResponse.ok) {
-        throw new Error(`Failed to fetch task: ${taskResponse.status}`);
-      }
-
-      const taskData = await taskResponse.json();
-      setTask(taskData);
-
-      // Only fetch clips if task is completed
-      if (taskData.status === "completed") {
-        const clipsHeaders: HeadersInit = {};
-        if (session?.user?.id) {
-          clipsHeaders["user_id"] = session.user.id;
-        }
-
-        const clipsResponse = await fetch(`${apiUrl}/tasks/${params.id}/clips`, {
-          headers: clipsHeaders,
-        });
-
-        if (!clipsResponse.ok) {
-          throw new Error(`Failed to fetch clips: ${clipsResponse.status}`);
-        }
-
-        const clipsData = await clipsResponse.json();
-        setClips(clipsData.clips || []);
-      }
-
-      return true;
-    } catch (err) {
-      console.error("Error fetching task data:", err);
-      setError(err instanceof Error ? err.message : "Failed to load task");
-      return false;
-    }
-  };
-
-  // Initial fetch - runs immediately, doesn't wait for session
-  useEffect(() => {
-    if (!params.id) return;
-
-    const fetchTaskData = async () => {
-      try {
-        setIsLoading(true);
-        await fetchTaskStatus();
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchTaskData();
-  }, [params.id]); // Only run once when params change
 
   // SSE effect - real-time progress updates
   useEffect(() => {
@@ -174,10 +77,7 @@ export default function TaskPage() {
       setProgress(data.progress || 0);
       setProgressMessage(data.message || "");
 
-      // Update task status if provided
-      if (data.status && task) {
-        setTask({ ...task, status: data.status });
-      }
+      // Status will be refreshed when SSE closes or via polling
     });
 
     eventSource.addEventListener("close", async (e) => {
@@ -191,7 +91,7 @@ export default function TaskPage() {
 
     eventSource.addEventListener("error", (e) => {
       console.error("❌ SSE error:", e);
-      setError("Connection error - real-time updates unavailable");
+      setSseError("Connection error - real-time updates unavailable");
       eventSource.close();
     });
 
@@ -227,7 +127,8 @@ export default function TaskPage() {
       });
 
       if (response.ok) {
-        setTask(task ? { ...task, source_title: editedTitle } : null);
+        // Refresh task data to get updated title
+        await fetchTaskStatus();
         setIsEditing(false);
       } else {
         alert("Failed to update title");
@@ -276,7 +177,8 @@ export default function TaskPage() {
       });
 
       if (response.ok) {
-        setClips(clips.filter((clip) => clip.id !== clipId));
+        // Refresh task data to get updated clips
+        await fetchTaskStatus();
         setDeletingClipId(null);
       } else {
         alert("Failed to delete clip");
@@ -574,7 +476,7 @@ export default function TaskPage() {
                     {/* Video Player */}
                     <div className="bg-black relative flex-shrink-0 flex items-center justify-center">
                       <DynamicVideoPlayer
-                        src={clip.video_url}
+                        src={clip.video_url || ""}
                         poster="/placeholder-video.jpg"
                       />
                     </div>
@@ -593,9 +495,9 @@ export default function TaskPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge className={getScoreColor(clip.relevance_score)}>
+                          <Badge className={getScoreColor(clip.relevance_score || 0)}>
                             <Star className="w-3 h-3 mr-1" />
-                            {(clip.relevance_score * 100).toFixed(0)}%
+                            {((clip.relevance_score || 0) * 100).toFixed(0)}%
                           </Badge>
                         </div>
                       </div>
@@ -616,7 +518,7 @@ export default function TaskPage() {
 
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" asChild>
-                          <a href={clip.video_url} download={clip.filename}>
+                          <a href={clip.video_url || ""} download={clip.filename}>
                             <Download className="w-4 h-4 mr-2" />
                             Download
                           </a>
