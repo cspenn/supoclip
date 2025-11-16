@@ -1,8 +1,7 @@
 """
-Media API routes (fonts, transitions, uploads).
+Media API routes (transitions, uploads).
 """
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
 from pathlib import Path
 import logging
 import uuid
@@ -13,60 +12,6 @@ from ...config import Config
 logger = logging.getLogger(__name__)
 config = Config()
 router = APIRouter(tags=["media"])
-
-
-@router.get("/fonts")
-async def get_available_fonts():
-    """Get list of available fonts."""
-    try:
-        fonts_dir = Path(__file__).parent.parent.parent.parent / "fonts"
-        if not fonts_dir.exists():
-            return {"fonts": [], "message": "Fonts directory not found"}
-
-        font_files = []
-        for font_file in fonts_dir.glob("*.ttf"):
-            font_name = font_file.stem
-            font_files.append(
-                {
-                    "name": font_name,
-                    "display_name": font_name.replace("-", " ")
-                    .replace("_", " ")
-                    .title(),
-                    "file_path": str(font_file),
-                }
-            )
-
-        logger.info(f"Found {len(font_files)} available fonts")
-        return {"fonts": font_files}
-
-    except Exception as e:
-        logger.error(f"Error retrieving fonts: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving fonts: {str(e)}")
-
-
-@router.get("/fonts/{font_name}")
-async def get_font_file(font_name: str):
-    """Serve a specific font file."""
-    try:
-        fonts_dir = Path(__file__).parent.parent.parent.parent / "fonts"
-        font_path = fonts_dir / f"{font_name}.ttf"
-
-        if not font_path.exists():
-            raise HTTPException(status_code=404, detail="Font not found")
-
-        return FileResponse(
-            path=str(font_path),
-            media_type="font/ttf",
-            headers={
-                "Cache-Control": "public, max-age=31536000",
-                "Access-Control-Allow-Origin": "*",
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error serving font {font_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error serving font: {str(e)}")
 
 
 @router.get("/transitions")
