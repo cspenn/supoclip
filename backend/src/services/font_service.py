@@ -3,7 +3,7 @@
 """Font detection and management service."""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -213,31 +213,60 @@ class FontService:
     
     async def validate_font(self, font_path: Path) -> bool:
         """
-        Validate that a font file is readable and usable.
+        Validate that a font file is readable and usable by MoviePy/ImageMagick.
+
+        Uses fonttools to validate font structure and required tables.
+        Supports both TTF and OTF formats.
 
         Args:
             font_path: Path to font file
 
         Returns:
-            True if font is valid, False otherwise
+            True if font is valid and usable, False otherwise
         """
         try:
             # Check file exists and is readable
             if not font_path.exists() or not font_path.is_file():
+                logger.debug(f"⚠️ Font file not found or not accessible: {font_path}")
                 return False
 
-            # Try to open with fontTools
-            font = TTFont(str(font_path))
+            # Check file is readable
+            if not font_path.stat().st_size > 0:
+                logger.debug(f"⚠️ Font file is empty: {font_path}")
+                return False
 
-            # Check for required tables
-            required_tables = ['name', 'cmap', 'glyf', 'head', 'hhea', 'hmtx', 'maxp']
-            has_required = all(table in font for table in required_tables)
+            # Try to load with fontTools TTFont
+            try:
+                font = TTFont(str(font_path))
+            except (TTLibError, Exception) as e:
+                logger.debug(f"⚠️ Failed to load font {font_path}: {e}")
+                return False
 
+            # Check for required tables (minimal set for valid TTF/OTF)
+            # head: font header
+            # hhea: horizontal header
+            # maxp: maximum profile
+            # hmtx: horizontal metrics
+            # cmap: character to glyph mapping (critical for text rendering)
+            required_tables = ['head', 'hhea', 'maxp', 'hmtx', 'cmap']
+
+            has_all_required = True
+            for table in required_tables:
+                if table not in font:
+                    logger.debug(f"⚠️ Font missing required table '{table}': {font_path}")
+                    has_all_required = False
+                    break
+
+            # Close font to free resources
             font.close()
-            return has_required
 
-        except (TTLibError, Exception) as e:
-            logger.debug(f"⚠️ Font validation failed for {font_path}: {e}")
+            if has_all_required:
+                logger.debug(f"✅ Font validated successfully: {font_path.name}")
+
+            return has_all_required
+
+        except Exception as e:
+            logger.debug(f"⚠️ Font validation exception for {font_path}: {e}")
             return False
     
     async def compute_file_hash(self, file_path: Path) -> str:
