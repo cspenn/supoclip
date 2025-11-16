@@ -18,8 +18,10 @@ from sqlalchemy import text
 from .models import Task, Source, GeneratedClip
 from .database import init_db, close_db, get_db, AsyncSessionLocal
 from .api.routes.tasks import router as tasks_router
+from .api.routes.fonts import router as fonts_router
 from .workers.local_queue import get_job_queue
 from .services.font_service import FontService
+from .dependencies import set_font_service
 
 # Configure configuration and logging
 config = Config()
@@ -30,37 +32,28 @@ cleanup_old_logs(config.log_dir, config.log_retention_days)
 
 logger = logging.getLogger(__name__)
 
-# Global font service instance
-_font_service: Optional[FontService] = None
-
-async def get_font_service() -> FontService:
-    """Get or create font service instance."""
-    global _font_service
-    if _font_service is None:
-        _font_service = FontService(db_session=None, temp_dir=Path(config.temp_dir))
-    return _font_service
 
 async def initialize_font_service(db_session: AsyncSession) -> None:
     """Initialize font service with database session."""
-    global _font_service
-    _font_service = FontService(db_session=db_session, temp_dir=Path(config.temp_dir))
+    font_service = FontService(db_session=db_session, temp_dir=Path(config.temp_dir))
+    set_font_service(font_service)
 
     logger.info("🚀 Initializing FontService...")
 
     # Load bundled fonts
-    bundled = await _font_service.get_bundled_fonts()
-    await _font_service.cache_fonts(bundled)
+    bundled = await font_service.get_bundled_fonts()
+    await font_service.cache_fonts(bundled)
     logger.info(f"✅ Loaded {len(bundled)} bundled fonts")
 
     # Detect and cache system fonts in background
-    asyncio.create_task(_detect_system_fonts_background())
+    asyncio.create_task(_detect_system_fonts_background(font_service))
 
-async def _detect_system_fonts_background() -> None:
+async def _detect_system_fonts_background(font_service: FontService) -> None:
     """Background task to detect and cache system fonts."""
     try:
         logger.info("🔍 Starting background system font detection...")
-        system_fonts = await _font_service.detect_system_fonts()
-        await _font_service.cache_fonts(system_fonts)
+        system_fonts = await font_service.detect_system_fonts()
+        await font_service.cache_fonts(system_fonts)
         logger.info(f"✅ Detected and cached {len(system_fonts)} system fonts")
     except Exception as e:
         logger.error(f"❌ Background font detection failed: {e}")
@@ -110,6 +103,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(tasks_router)
+app.include_router(fonts_router)
 
 # Mount static files for serving clips
 clips_dir = Path(config.temp_dir) / "clips"
