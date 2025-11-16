@@ -23,6 +23,7 @@ from .workers.local_queue import get_job_queue
 from .services.font_service import FontService
 from .services.video_service_legacy import LegacySyncVideoService
 from .services.video_service_async import AsyncVideoProcessingService
+from .services.user_preferences_service import UserPreferencesService
 from .dependencies import set_font_service
 from .utils.font_options import parse_font_options
 
@@ -163,52 +164,44 @@ async def start_task(request: Request):
         raise HTTPException(status_code=400, detail="Invalid user ID format")
 
     logger.info(f"Checking if user {user_id} exists in database")
-    # Check if user exists and fetch preferences
+    # Load and merge user preferences with request options
     async with AsyncSessionLocal() as db:
-        user_prefs_result = await db.execute(
-            text("""
-                SELECT default_font_family, default_font_size, default_font_color,
-                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt,
-                       logo_file_path, logo_corner_position
-                FROM users WHERE id = :user_id
-            """),
-            {"user_id": user_id}
-        )
-        user_prefs = user_prefs_result.fetchone()
-        if not user_prefs:
-            logger.error(f"User {user_id} not found in database")
+        try:
+            # Use UserPreferencesService to handle all preference logic
+            pref_service = UserPreferencesService(db)
+
+            # Merge preferences: request > user prefs > defaults
+            request_opts = {
+                **parsed_font_opts,
+                "clip_min_length": data.get("clip_min_length"),
+                "clip_target_length": data.get("clip_target_length"),
+                "clip_max_length": data.get("clip_max_length"),
+                "custom_ai_prompt": data.get("custom_ai_prompt"),
+            }
+
+            preferences = await pref_service.merge_with_request_options(user_id, request_opts)
+            logo_path = pref_service.get_logo_path(preferences)
+
+            logger.info(f"User {user_id} preferences loaded and merged")
+
+        except ValueError as e:
+            logger.error(f"Error loading user preferences: {e}")
             raise HTTPException(status_code=404, detail="User not found")
-
-        logger.info(f"User {user_id} found in database")
-
-        # Merge settings: request body > user prefs > system defaults
-        font_family = parsed_font_opts["font_family"] if parsed_font_opts["font_family"] != "TikTokSans-Regular" else (user_prefs.default_font_family or "TikTokSans-Regular")
-        font_size = parsed_font_opts["font_size"] if parsed_font_opts["font_size"] != 24 else (user_prefs.default_font_size or 24)
-        font_color = parsed_font_opts["font_color"] if parsed_font_opts["font_color"] != "#FFFFFF" else (user_prefs.default_font_color or "#FFFFFF")
-        clip_min_length = data.get("clip_min_length") or user_prefs.default_clip_min_length or 10
-        clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
-        clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
-        custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
-
-        # Get logo if available
-        logo_file_path = user_prefs.logo_file_path
-        logo_corner_position = user_prefs.logo_corner_position or "top-right"
-        logo_path = Path(logo_file_path) if logo_file_path else None
 
         # Use legacy sync service
         service = LegacySyncVideoService(db, config)
         result = await service.process_video(
             raw_source=raw_source,
             user_id=user_id,
-            font_family=font_family,
-            font_size=font_size,
-            font_color=font_color,
-            clip_min_length=clip_min_length,
-            clip_target_length=clip_target_length,
-            clip_max_length=clip_max_length,
-            custom_ai_prompt=custom_ai_prompt,
+            font_family=preferences["font_family"],
+            font_size=preferences["font_size"],
+            font_color=preferences["font_color"],
+            clip_min_length=preferences["clip_min_length"],
+            clip_target_length=preferences["clip_target_length"],
+            clip_max_length=preferences["clip_max_length"],
+            custom_ai_prompt=preferences["custom_ai_prompt"],
             logo_path=logo_path,
-            logo_corner_position=logo_corner_position,
+            logo_corner_position=preferences["logo_corner_position"],
         )
         return result
 
@@ -237,45 +230,38 @@ async def start_task_with_progress(request: Request):
         logger.error("User ID is missing")
         raise HTTPException(status_code=401, detail="User authentication required")
 
-    # Validate user_id and create initial task, fetch user preferences
+    # Validate user_id and load preferences
     async with AsyncSessionLocal() as db:
-        user_prefs_result = await db.execute(
-            text("""
-                SELECT default_font_family, default_font_size, default_font_color,
-                       default_clip_min_length, default_clip_target_length, default_clip_max_length, custom_ai_prompt,
-                       logo_file_path, logo_corner_position
-                FROM users WHERE id = :user_id
-            """),
-            {"user_id": user_id}
-        )
-        user_prefs = user_prefs_result.fetchone()
-        if not user_prefs:
-            logger.error(f"User {user_id} not found in database")
+        try:
+            # Use UserPreferencesService to handle all preference logic
+            pref_service = UserPreferencesService(db)
+
+            # Merge preferences: request > user prefs > defaults
+            request_opts = {
+                **parsed_font_opts,
+                "clip_min_length": data.get("clip_min_length"),
+                "clip_target_length": data.get("clip_target_length"),
+                "clip_max_length": data.get("clip_max_length"),
+                "custom_ai_prompt": data.get("custom_ai_prompt"),
+            }
+
+            preferences = await pref_service.merge_with_request_options(user_id, request_opts)
+            logo_path = pref_service.get_logo_path(preferences)
+
+            logger.info(f"User {user_id} preferences loaded and merged")
+
+        except ValueError as e:
+            logger.error(f"Error loading user preferences: {e}")
             raise HTTPException(status_code=404, detail="User not found")
-
-        # Merge settings: request body > user prefs > system defaults
-        # Use parsed font options (which already have system defaults) and merge with user prefs
-        font_family = parsed_font_opts["font_family"] if parsed_font_opts["font_family"] != "TikTokSans-Regular" else (user_prefs.default_font_family or "TikTokSans-Regular")
-        font_size = parsed_font_opts["font_size"] if parsed_font_opts["font_size"] != 24 else (user_prefs.default_font_size or 24)
-        font_color = parsed_font_opts["font_color"] if parsed_font_opts["font_color"] != "#FFFFFF" else (user_prefs.default_font_color or "#FFFFFF")
-        clip_min_length = data.get("clip_min_length") or user_prefs.default_clip_min_length or 10
-        clip_target_length = data.get("clip_target_length") or user_prefs.default_clip_target_length or 30
-        clip_max_length = data.get("clip_max_length") or user_prefs.default_clip_max_length or 45
-        custom_ai_prompt = data.get("custom_ai_prompt") or user_prefs.custom_ai_prompt or None
-
-        # Get logo if available
-        logo_file_path = user_prefs.logo_file_path
-        logo_corner_position = user_prefs.logo_corner_position or "top-right"
-        logo_path = Path(logo_file_path) if logo_file_path else None
 
         # Use async video processing service
         service = AsyncVideoProcessingService(db, config)
         task_id = await service.create_task(
             raw_source=raw_source,
             user_id=user_id,
-            font_family=font_family,
-            font_size=font_size,
-            font_color=font_color,
+            font_family=preferences["font_family"],
+            font_size=preferences["font_size"],
+            font_color=preferences["font_color"],
         )
 
         # Start processing in background
@@ -284,15 +270,15 @@ async def start_task_with_progress(request: Request):
                 task_id=task_id,
                 raw_source=raw_source,
                 user_id=user_id,
-                font_family=font_family,
-                font_size=font_size,
-                font_color=font_color,
-                clip_min_length=clip_min_length,
-                clip_target_length=clip_target_length,
-                clip_max_length=clip_max_length,
-                custom_ai_prompt=custom_ai_prompt,
+                font_family=preferences["font_family"],
+                font_size=preferences["font_size"],
+                font_color=preferences["font_color"],
+                clip_min_length=preferences["clip_min_length"],
+                clip_target_length=preferences["clip_target_length"],
+                clip_max_length=preferences["clip_max_length"],
+                custom_ai_prompt=preferences["custom_ai_prompt"],
                 logo_path=logo_path,
-                logo_corner_position=logo_corner_position,
+                logo_corner_position=preferences["logo_corner_position"],
             )
         )
 

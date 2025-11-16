@@ -74,6 +74,14 @@ class Config:
         # Backend URL (for generating full URLs to clips)
         self.backend_url = os.getenv("BACKEND_URL", "http://localhost:8008")
 
+        # Gradual rollout percentage for async service
+        # 0 = all traffic to legacy sync service
+        # 50 = 50% legacy, 50% async
+        # 100 = all traffic to async service
+        self.async_rollout_percentage = int(
+            os.getenv("ASYNC_ROLLOUT_PERCENTAGE", "0")
+        )
+
     def get_llm_model(self) -> OpenAIModel | str:
         """Get configured LLM model (local-first, cloud fallback).
 
