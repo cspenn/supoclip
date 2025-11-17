@@ -210,8 +210,8 @@ async def analyze_transcript_structured(
                 start_parts = segment.start_time.split(":")
                 end_parts = segment.end_time.split(":")
 
-                start_seconds = int(start_parts[0]) * 60 + int(start_parts[1])
-                end_seconds = int(end_parts[0]) * 60 + int(end_parts[1])
+                start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
+                end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
 
                 duration = end_seconds - start_seconds
 
