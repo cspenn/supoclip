@@ -26,7 +26,10 @@ class DownloadedFileLocator:
     def find_video_file(temp_dir: Path, video_id: str) -> Optional[Path]:
         """Find downloaded video file matching video_id."""
         for file_path in temp_dir.glob(f"{video_id}.*"):
-            if file_path.is_file() and file_path.suffix.lower() in DownloadedFileLocator.VALID_EXTENSIONS:
+            if (
+                file_path.is_file()
+                and file_path.suffix.lower() in DownloadedFileLocator.VALID_EXTENSIONS
+            ):
                 file_size = file_path.stat().st_size
                 logger.info(
                     f"Download successful: {file_path.name} ({file_size // 1024 // 1024}MB)"

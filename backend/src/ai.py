@@ -196,7 +196,10 @@ class TimestampParser:
         if duration <= 0:
             return False, f"Invalid duration: {duration}s (must be positive)"
         if duration < TimestampParser.MIN_DURATION_SECONDS:
-            return False, f"Too short: {duration}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)"
+            return (
+                False,
+                f"Too short: {duration}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)",
+            )
         return True, f"Valid: {duration}s"
 
 
@@ -211,7 +214,10 @@ class TranscriptSegmentValidator:
         if not text.strip():
             return False, "Empty text"
         if len(text.split()) < TranscriptSegmentValidator.MIN_WORD_COUNT:
-            return False, f"Too few words: {len(text.split())} (min {TranscriptSegmentValidator.MIN_WORD_COUNT} required)"
+            return (
+                False,
+                f"Too few words: {len(text.split())} (min {TranscriptSegmentValidator.MIN_WORD_COUNT} required)",
+            )
         return True, "Valid content"
 
     @staticmethod
@@ -343,9 +349,7 @@ async def get_most_relevant_parts_by_transcript(
             )
 
             if not is_valid:
-                logger.warning(
-                    f"Skipping segment: {reason} - '{segment.text[:50]}...'"
-                )
+                logger.warning(f"Skipping segment: {reason} - '{segment.text[:50]}...'")
                 continue
 
             validated_segments.append(segment)

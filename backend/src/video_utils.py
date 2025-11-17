@@ -215,8 +215,12 @@ class FaceCenteredCropCalculator:
         # Add slight bias towards upper portion for better face framing
         weighted_y = max(0, weighted_y - new_height * 0.1)
 
-        x_offset = max(0, min(int(weighted_x - new_width // 2), original_width - new_width))
-        y_offset = max(0, min(int(weighted_y - new_height // 2), original_height - new_height))
+        x_offset = max(
+            0, min(int(weighted_x - new_width // 2), original_width - new_width)
+        )
+        y_offset = max(
+            0, min(int(weighted_y - new_height // 2), original_height - new_height)
+        )
 
         return round_to_even(x_offset), round_to_even(y_offset)
 
@@ -229,8 +233,12 @@ class CenterCropCalculator:
         new_width: int, new_height: int, original_width: int, original_height: int
     ) -> Tuple[int, int]:
         """Calculate center crop offsets."""
-        x_offset = (original_width - new_width) // 2 if original_width > new_width else 0
-        y_offset = (original_height - new_height) // 2 if original_height > new_height else 0
+        x_offset = (
+            (original_width - new_width) // 2 if original_width > new_width else 0
+        )
+        y_offset = (
+            (original_height - new_height) // 2 if original_height > new_height else 0
+        )
         return round_to_even(x_offset), round_to_even(y_offset)
 
 
@@ -254,7 +262,8 @@ class TranscriptLineBreaker:
         if word_count >= TranscriptLineBreaker.MAX_WORDS_PER_LINE:
             return True
         if word_text and any(
-            word_text.endswith(punct) for punct in TranscriptLineBreaker.BREAK_PUNCTUATION
+            word_text.endswith(punct)
+            for punct in TranscriptLineBreaker.BREAK_PUNCTUATION
         ):
             return True
         return False
@@ -604,9 +613,7 @@ class FaceDetectionService:
             HaarCascadeFaceDetector(),
         ]
 
-    def detect_in_frame(
-        self, frame: np.ndarray
-    ) -> List[Tuple[int, int, int, float]]:
+    def detect_in_frame(self, frame: np.ndarray) -> List[Tuple[int, int, int, float]]:
         """Detect faces in single frame using detector chain.
 
         Args:
@@ -631,7 +638,11 @@ class FaceDetectionService:
                         area = w * h
                         relative_area = area / frame_area
 
-                        if self.MIN_RELATIVE_AREA < relative_area < self.MAX_RELATIVE_AREA:
+                        if (
+                            self.MIN_RELATIVE_AREA
+                            < relative_area
+                            < self.MAX_RELATIVE_AREA
+                        ):
                             face_centers.append((center_x, center_y, area, conf))
 
                     if face_centers:
@@ -737,12 +748,15 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         if ":" in timestamp_str:
             parts = timestamp_str.split(":")
             if len(parts) == 2:
-                minutes, seconds = map(int, parts)
+                minutes = int(parts[0])
+                seconds = float(parts[1])
                 result = minutes * 60 + seconds
                 logger.info(f"Parsed '{timestamp_str}' -> {result}s")
                 return result
             elif len(parts) == 3:  # HH:MM:SS format
-                hours, minutes, seconds = map(int, parts)
+                hours = int(parts[0])
+                minutes = int(parts[1])
+                seconds = float(parts[2])
                 result = hours * 3600 + minutes * 60 + seconds
                 logger.info(f"Parsed '{timestamp_str}' -> {result}s")
                 return result
@@ -806,7 +820,9 @@ class SubtitleTextClipCreator:
         video_width: int,
     ) -> Optional[TextClip]:
         """Create text clip with automatic size adjustment to fit lines."""
-        max_text_width = int(video_width * (1 - 2 * SubtitleTextClipCreator.HORIZONTAL_PADDING))
+        max_text_width = int(
+            video_width * (1 - 2 * SubtitleTextClipCreator.HORIZONTAL_PADDING)
+        )
         current_font_size = font_size
         max_attempts = 3
 
@@ -830,7 +846,9 @@ class SubtitleTextClipCreator:
             if estimated_lines <= SubtitleTextClipCreator.MAX_SUBTITLE_LINES:
                 return text_clip
 
-            current_font_size = int(current_font_size * SubtitleTextClipCreator.FONT_SIZE_REDUCTION)
+            current_font_size = int(
+                current_font_size * SubtitleTextClipCreator.FONT_SIZE_REDUCTION
+            )
             if current_font_size < SubtitleTextClipCreator.MIN_FONT_SIZE:
                 current_font_size = SubtitleTextClipCreator.MIN_FONT_SIZE
                 break
@@ -883,9 +901,13 @@ class SubtitleClipBuilder:
                 )
 
                 if text_clip:
-                    text_clip = text_clip.with_duration(segment_duration).with_start(segment_start)
+                    text_clip = text_clip.with_duration(segment_duration).with_start(
+                        segment_start
+                    )
                     text_height = text_clip.size[1] if text_clip.size else 40
-                    position = SubtitlePositioner.calculate_position(video_height, text_height)
+                    position = SubtitlePositioner.calculate_position(
+                        video_height, text_height
+                    )
                     text_clip = text_clip.with_position(position)
                     subtitle_clips.append(text_clip)
 
