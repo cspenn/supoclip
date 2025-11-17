@@ -17,6 +17,40 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class DownloadedFileLocator:
+    """Locate downloaded video files."""
+
+    VALID_EXTENSIONS = [".mp4", ".mkv", ".webm"]
+
+    @staticmethod
+    def find_video_file(temp_dir: Path, video_id: str) -> Optional[Path]:
+        """Find downloaded video file matching video_id."""
+        for file_path in temp_dir.glob(f"{video_id}.*"):
+            if file_path.is_file() and file_path.suffix.lower() in DownloadedFileLocator.VALID_EXTENSIONS:
+                file_size = file_path.stat().st_size
+                logger.info(
+                    f"Download successful: {file_path.name} ({file_size // 1024 // 1024}MB)"
+                )
+                return file_path
+        return None
+
+
+class DownloadRetryHandler:
+    """Handle download retry logic with exponential backoff."""
+
+    @staticmethod
+    def should_retry(attempt: int, max_retries: int) -> bool:
+        """Check if should retry download."""
+        return attempt < max_retries - 1
+
+    @staticmethod
+    def wait_before_retry(attempt: int) -> None:
+        """Wait with exponential backoff before retry."""
+        wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
+        logger.info(f"Retrying in {wait_time} seconds...")
+        time.sleep(wait_time)
+
+
 class YouTubeDownloader:
     """Enhanced YouTube downloader with optimized settings."""
 
@@ -189,6 +223,25 @@ def get_youtube_video_title(url: str) -> Optional[str]:
     return video_info.get("title") if video_info else None
 
 
+def _perform_download_attempt(
+    url: str, video_id: str, downloader: YouTubeDownloader, attempt: int
+) -> Optional[Path]:
+    """Perform a single download attempt."""
+    logger.info(f"Download attempt {attempt + 1}")
+    ydl_opts = downloader.get_optimal_download_options(video_id)
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    logger.info(f"Searching for downloaded file: {video_id}.*")
+    file_path = DownloadedFileLocator.find_video_file(downloader.temp_dir, video_id)
+
+    if not file_path:
+        logger.warning(f"No video file found after download attempt {attempt + 1}")
+
+    return file_path
+
+
 def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
     """
     Download YouTube video with optimized settings and retry logic.
@@ -219,47 +272,21 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
     # Retry download with exponential backoff
     for attempt in range(max_retries):
         try:
-            logger.info(f"Download attempt {attempt + 1}/{max_retries}")
-
-            ydl_opts = downloader.get_optimal_download_options(video_id)
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Download the video
-                ydl.download([url])
-
-                # Find the downloaded file
-                logger.info(f"Searching for downloaded file: {video_id}.*")
-                for file_path in downloader.temp_dir.glob(f"{video_id}.*"):
-                    if file_path.is_file() and file_path.suffix.lower() in [
-                        ".mp4",
-                        ".mkv",
-                        ".webm",
-                    ]:
-                        file_size = file_path.stat().st_size
-                        logger.info(
-                            f"Download successful: {file_path.name} ({file_size // 1024 // 1024}MB)"
-                        )
-                        return file_path
-
-                logger.warning(
-                    f"No video file found after download attempt {attempt + 1}"
-                )
+            file_path = _perform_download_attempt(url, video_id, downloader, attempt)
+            if file_path:
+                return file_path
 
         except yt_dlp.utils.DownloadError as e:
             logger.warning(f"Download attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
-                logger.info(f"Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
+            if DownloadRetryHandler.should_retry(attempt, max_retries):
+                DownloadRetryHandler.wait_before_retry(attempt)
             else:
                 logger.error(f"All download attempts failed for: {url}")
 
         except Exception as e:
             logger.error(f"Unexpected error during download attempt {attempt + 1}: {e}")
-            if attempt < max_retries - 1:
-                wait_time = 2**attempt
-                logger.info(f"Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
+            if DownloadRetryHandler.should_retry(attempt, max_retries):
+                DownloadRetryHandler.wait_before_retry(attempt)
             else:
                 logger.error(f"All download attempts failed for: {url}")
 
