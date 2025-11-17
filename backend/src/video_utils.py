@@ -168,6 +168,82 @@ def format_ms_to_timestamp_precise(ms: int) -> str:
     return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
 
+class TranscriptLineBreaker:
+    """Determine when to break lines in transcripts."""
+
+    MAX_WORDS_PER_LINE = 6
+    BREAK_PUNCTUATION = {".", "!", "?", ","}
+
+    @staticmethod
+    def should_break_line(word_text: str, word_count: int) -> bool:
+        """Determine if line should break at this word.
+
+        Args:
+            word_text: Text of current word
+            word_count: Number of words in current line
+
+        Returns:
+            True if line should break, False otherwise
+        """
+        if word_count >= TranscriptLineBreaker.MAX_WORDS_PER_LINE:
+            return True
+        if word_text and any(
+            word_text.endswith(punct) for punct in TranscriptLineBreaker.BREAK_PUNCTUATION
+        ):
+            return True
+        return False
+
+
+class TranscriptLineFormatter:
+    """Format transcript lines with timing information."""
+
+    def __init__(self):
+        """Initialize formatter with empty state."""
+        self.lines = []
+        self.current_line = []
+        self.current_start = None
+
+    def add_word(self, word_data: Dict[str, Any]) -> None:
+        """Add word to current line.
+
+        Args:
+            word_data: Dictionary with 'text', 'start', 'end' keys
+        """
+        word_text = word_data.get("text", "")
+        start_ms = word_data.get("start", 0)
+        end_ms = word_data.get("end", 0)
+
+        if not word_text:
+            return
+
+        if self.current_start is None:
+            self.current_start = start_ms
+
+        self.current_line.append((word_text, start_ms, end_ms))
+
+    def finalize_current_line(self) -> None:
+        """Format and append current line to output."""
+        if not self.current_line or self.current_start is None:
+            return
+
+        start_time = format_ms_to_timestamp_precise(self.current_start)
+        end_time = format_ms_to_timestamp_precise(self.current_line[-1][2])
+        line_text = " ".join(word[0] for word in self.current_line)
+        formatted = f"[{start_time} - {end_time}] {line_text}"
+        self.lines.append(formatted)
+
+        self.current_line = []
+        self.current_start = None
+
+    def get_formatted_output(self) -> str:
+        """Return all formatted lines joined by newlines.
+
+        Returns:
+            Formatted transcript string
+        """
+        return "\n".join(self.lines)
+
+
 def format_transcript_for_ai(transcript_data: Dict[str, Any]) -> str:
     """
     Format transcript with SRT-style precise timing for AI analysis.
@@ -188,53 +264,23 @@ def format_transcript_for_ai(transcript_data: Dict[str, Any]) -> str:
     if not words:
         return ""
 
-    formatted_lines = []
-    current_line = []
-    current_start = None
-    line_word_count = 0
-    max_words_per_line = 6  # Group 6 words per line for readability
+    formatter = TranscriptLineFormatter()
+    breaker = TranscriptLineBreaker()
 
     for word_data in words:
         word_text = word_data.get("text", "")
-        start_ms = word_data.get("start", 0)
-        end_ms = word_data.get("end", 0)
-
         if not word_text:
             continue
 
-        if current_start is None:
-            current_start = start_ms
+        formatter.add_word(word_data)
 
-        current_line.append((word_text, start_ms, end_ms))
-        line_word_count += 1
+        if breaker.should_break_line(word_text, len(formatter.current_line)):
+            formatter.finalize_current_line()
 
-        # End line at word limit or natural breaks
-        should_break = (
-            line_word_count >= max_words_per_line
-            or word_text.endswith(".")
-            or word_text.endswith("!")
-            or word_text.endswith("?")
-            or word_text.endswith(",")
-        )
+    # Handle remaining words
+    formatter.finalize_current_line()
 
-        if should_break and current_line:
-            start_time = format_ms_to_timestamp_precise(current_start)
-            end_time = format_ms_to_timestamp_precise(current_line[-1][2])
-            line_text = " ".join(word[0] for word in current_line)
-            formatted_lines.append(f"[{start_time} - {end_time}] {line_text}")
-
-            current_line = []
-            current_start = None
-            line_word_count = 0
-
-    # Handle any remaining words
-    if current_line and current_start is not None:
-        start_time = format_ms_to_timestamp_precise(current_start)
-        end_time = format_ms_to_timestamp_precise(current_line[-1][2])
-        line_text = " ".join(word[0] for word in current_line)
-        formatted_lines.append(f"[{start_time} - {end_time}] {line_text}")
-
-    return "\n".join(formatted_lines)
+    return formatter.get_formatted_output()
 
 
 def round_to_even(value: int) -> int:
