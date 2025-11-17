@@ -757,6 +757,145 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         return 0.0
 
 
+class SubtitleWordFilter:
+    """Filter and prepare words for subtitle creation."""
+
+    @staticmethod
+    def get_relevant_words(
+        transcript_data: Dict[str, Any], clip_start_ms: int, clip_end_ms: int
+    ) -> List[Dict[str, Any]]:
+        """Extract words that fall within clip timerange."""
+        relevant_words = []
+        for word_data in transcript_data.get("words", []):
+            word_start = word_data["start"]
+            word_end = word_data["end"]
+
+            if word_start < clip_end_ms and word_end > clip_start_ms:
+                relative_start = max(0, (word_start - clip_start_ms) / 1000.0)
+                relative_end = min(
+                    (clip_end_ms - clip_start_ms) / 1000.0,
+                    (word_end - clip_start_ms) / 1000.0,
+                )
+
+                if relative_end > relative_start:
+                    relevant_words.append(
+                        {
+                            "text": word_data["text"],
+                            "start": relative_start,
+                            "end": relative_end,
+                            "confidence": word_data.get("confidence", 1.0),
+                        }
+                    )
+        return relevant_words
+
+
+class SubtitleTextClipCreator:
+    """Create text clips with automatic font size adjustment."""
+
+    MAX_SUBTITLE_LINES = 2
+    HORIZONTAL_PADDING = 0.1
+    MIN_FONT_SIZE = 16
+    FONT_SIZE_REDUCTION = 0.85
+
+    @staticmethod
+    def create_text_clip(
+        text: str,
+        font_path: str,
+        font_size: int,
+        font_color: str,
+        video_width: int,
+    ) -> Optional[TextClip]:
+        """Create text clip with automatic size adjustment to fit lines."""
+        max_text_width = int(video_width * (1 - 2 * SubtitleTextClipCreator.HORIZONTAL_PADDING))
+        current_font_size = font_size
+        max_attempts = 3
+
+        for attempt in range(max_attempts):
+            text_clip = TextClip(
+                text=text,
+                font=font_path,
+                font_size=current_font_size,
+                color=font_color,
+                stroke_color="black",
+                stroke_width=1,
+                method="caption",
+                size=(max_text_width, None),
+                text_align="center",
+            )
+
+            text_height = text_clip.size[1] if text_clip.size else 40
+            estimated_line_height = current_font_size * 1.5
+            estimated_lines = text_height / estimated_line_height
+
+            if estimated_lines <= SubtitleTextClipCreator.MAX_SUBTITLE_LINES:
+                return text_clip
+
+            current_font_size = int(current_font_size * SubtitleTextClipCreator.FONT_SIZE_REDUCTION)
+            if current_font_size < SubtitleTextClipCreator.MIN_FONT_SIZE:
+                current_font_size = SubtitleTextClipCreator.MIN_FONT_SIZE
+                break
+
+        return text_clip
+
+
+class SubtitlePositioner:
+    """Calculate subtitle positioning on video."""
+
+    @staticmethod
+    def calculate_position(video_height: int, text_height: int) -> Tuple[str, int]:
+        """Calculate subtitle position (lower middle of video)."""
+        vertical_position = int(video_height * 0.75 - text_height // 2)
+        return ("center", vertical_position)
+
+
+class SubtitleClipBuilder:
+    """Build subtitle clips from word groups."""
+
+    @staticmethod
+    def build_clips(
+        relevant_words: List[Dict[str, Any]],
+        font_path: str,
+        font_size: int,
+        font_color: str,
+        video_width: int,
+        video_height: int,
+        words_per_subtitle: int = 3,
+    ) -> List[TextClip]:
+        """Build subtitle clips from grouped words."""
+        subtitle_clips = []
+        for i in range(0, len(relevant_words), words_per_subtitle):
+            word_group = relevant_words[i : i + words_per_subtitle]
+            if not word_group:
+                continue
+
+            segment_start = word_group[0]["start"]
+            segment_end = word_group[-1]["end"]
+            segment_duration = segment_end - segment_start
+
+            if segment_duration < 0.1:
+                continue
+
+            text = " ".join(word["text"] for word in word_group)
+
+            try:
+                text_clip = SubtitleTextClipCreator.create_text_clip(
+                    text, font_path, font_size, font_color, video_width
+                )
+
+                if text_clip:
+                    text_clip = text_clip.with_duration(segment_duration).with_start(segment_start)
+                    text_height = text_clip.size[1] if text_clip.size else 40
+                    position = SubtitlePositioner.calculate_position(video_height, text_height)
+                    text_clip = text_clip.with_position(position)
+                    subtitle_clips.append(text_clip)
+
+            except Exception as e:
+                logger.warning(f"Failed to create subtitle for '{text}': {e}")
+                continue
+
+        return subtitle_clips
+
+
 def create_assemblyai_subtitles(
     video_path: Path,
     clip_start: float,
@@ -779,118 +918,30 @@ def create_assemblyai_subtitles(
         logger.warning("No cached transcript data available for subtitles")
         return []
 
-    # Convert clip timing to milliseconds
+    # Convert clip timing to milliseconds and get relevant words
     clip_start_ms = int(clip_start * 1000)
     clip_end_ms = int(clip_end * 1000)
-
-    # Find words that fall within our clip timerange
-    relevant_words = []
-    for word_data in transcript_data["words"]:
-        word_start = word_data["start"]
-        word_end = word_data["end"]
-
-        # Check if word overlaps with clip
-        if word_start < clip_end_ms and word_end > clip_start_ms:
-            # Adjust timing relative to clip start
-            relative_start = max(0, (word_start - clip_start_ms) / 1000.0)
-            relative_end = min(
-                (clip_end_ms - clip_start_ms) / 1000.0,
-                (word_end - clip_start_ms) / 1000.0,
-            )
-
-            if relative_end > relative_start:
-                relevant_words.append(
-                    {
-                        "text": word_data["text"],
-                        "start": relative_start,
-                        "end": relative_end,
-                        "confidence": word_data.get("confidence", 1.0),
-                    }
-                )
+    relevant_words = SubtitleWordFilter.get_relevant_words(
+        transcript_data, clip_start_ms, clip_end_ms
+    )
 
     if not relevant_words:
         logger.warning("No words found in clip timerange")
         return []
 
-    # Group words into subtitle segments (3-4 words per subtitle for readability)
-    subtitle_clips = []
+    # Setup processor and font size
     processor = VideoProcessor(font_family, font_size, font_color)
-
-    # Use custom font size or calculate based on video width
     calculated_font_size = max(20, min(40, int(font_size * (video_width / 720))))
-    final_font_size = calculated_font_size
 
-    words_per_subtitle = 3
-    for i in range(0, len(relevant_words), words_per_subtitle):
-        word_group = relevant_words[i : i + words_per_subtitle]
-
-        if not word_group:
-            continue
-
-        # Calculate segment timing
-        segment_start = word_group[0]["start"]
-        segment_end = word_group[-1]["end"]
-        segment_duration = segment_end - segment_start
-
-        if segment_duration < 0.1:  # Skip very short segments
-            continue
-
-        # Create text
-        text = " ".join(word["text"] for word in word_group)
-
-        try:
-            # Constants for text wrapping
-            MAX_SUBTITLE_LINES = 2
-            HORIZONTAL_PADDING = 0.1  # 10% padding on each side
-            MAX_TEXT_WIDTH = int(video_width * (1 - 2 * HORIZONTAL_PADDING))
-
-            # Create text clip with wrapping
-            current_font_size = final_font_size
-            text_clip = None
-            max_attempts = 3
-
-            for attempt in range(max_attempts):
-                text_clip = TextClip(
-                    text=text,
-                    font=processor.font_path,
-                    font_size=current_font_size,
-                    color=font_color,
-                    stroke_color="black",
-                    stroke_width=1,
-                    method="caption",  # Enable multi-line wrapping
-                    size=(MAX_TEXT_WIDTH, None),  # Constrain width
-                    text_align="center",
-                )
-
-                # Check if text fits in 2 lines
-                text_height = text_clip.size[1] if text_clip.size else 40
-                estimated_line_height = current_font_size * 1.5
-                estimated_lines = text_height / estimated_line_height
-
-                if estimated_lines <= MAX_SUBTITLE_LINES:
-                    break  # Text fits
-
-                # Reduce font size by 15% and try again
-                current_font_size = int(current_font_size * 0.85)
-                if current_font_size < 16:
-                    current_font_size = 16  # Minimum readable size
-                    break
-
-            # Finalize clip with timing
-            text_clip = text_clip.with_duration(segment_duration).with_start(
-                segment_start
-            )
-
-            # Position in lower middle (accounting for multi-line height)
-            text_height = text_clip.size[1] if text_clip.size else 40
-            vertical_position = int(video_height * 0.75 - text_height // 2)
-            text_clip = text_clip.with_position(("center", vertical_position))
-
-            subtitle_clips.append(text_clip)
-
-        except Exception as e:
-            logger.warning(f"Failed to create subtitle for '{text}': {e}")
-            continue
+    # Build subtitle clips
+    subtitle_clips = SubtitleClipBuilder.build_clips(
+        relevant_words,
+        processor.font_path,
+        calculated_font_size,
+        font_color,
+        video_width,
+        video_height,
+    )
 
     logger.info(f"Created {len(subtitle_clips)} subtitle elements from AssemblyAI data")
     return subtitle_clips
