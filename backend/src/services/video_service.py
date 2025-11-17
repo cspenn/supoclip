@@ -31,8 +31,54 @@ class VideoNotFoundError(Exception):
     pass
 
 
+class VideoProcessingResponse:
+    """Helper for building video processing response."""
+
+    @staticmethod
+    def build_response(
+        segments_json: List[Dict[str, Any]],
+        clips_info: List[Dict[str, Any]],
+        relevant_parts: Any,
+    ) -> Dict[str, Any]:
+        """Build the response dictionary."""
+        return {
+            "segments": segments_json,
+            "clips": clips_info,
+            "summary": relevant_parts.summary if relevant_parts else None,
+            "key_topics": relevant_parts.key_topics if relevant_parts else None,
+        }
+
+    @staticmethod
+    def segments_to_json(segments: List[Any]) -> List[Dict[str, Any]]:
+        """Convert segment objects to JSON-serializable dicts."""
+        return [
+            {
+                "start_time": segment.start_time,
+                "end_time": segment.end_time,
+                "text": segment.text,
+                "relevance_score": segment.relevance_score,
+                "reasoning": segment.reasoning,
+            }
+            for segment in segments
+        ]
+
+
 class VideoService:
     """Service for video processing operations."""
+
+    @staticmethod
+    async def _get_video_path(url: str, source_type: str) -> Path:
+        """Get video path by downloading or validating existing path."""
+        if source_type == "youtube":
+            video_path = await VideoService.download_video(url)
+            if not video_path:
+                raise VideoDownloadError(f"Failed to download video from URL: {url}")
+            return video_path
+        else:
+            video_path = Path(url)
+            if not video_path.exists():
+                raise VideoNotFoundError(f"Video file not found at path: {url}")
+            return video_path
 
     @staticmethod
     async def download_video(url: str) -> Optional[Path]:
@@ -158,21 +204,11 @@ class VideoService:
                           Signature: async def callback(progress: int, message: str)
         """
         try:
-            # Step 1: Get video path (download or use existing)
+            # Step 1: Get video path
             if progress_callback:
                 await progress_callback(10, "Downloading video...")
 
-            if source_type == "youtube":
-                video_path = await VideoService.download_video(url)
-                if not video_path:
-                    raise VideoDownloadError(
-                        f"Failed to download video from URL: {url}"
-                    )
-            else:
-                video_path = Path(url)
-                if not video_path.exists():
-                    raise VideoNotFoundError(f"Video file not found at path: {url}")
-
+            video_path = await VideoService._get_video_path(url, source_type)
             logger.info(f"Step 1 complete: Video path obtained: {video_path}")
 
             # Step 2: Generate transcript
@@ -197,16 +233,9 @@ class VideoService:
             if progress_callback:
                 await progress_callback(70, "Creating video clips...")
 
-            segments_json = [
-                {
-                    "start_time": segment.start_time,
-                    "end_time": segment.end_time,
-                    "text": segment.text,
-                    "relevance_score": segment.relevance_score,
-                    "reasoning": segment.reasoning,
-                }
-                for segment in relevant_parts.most_relevant_segments
-            ]
+            segments_json = VideoProcessingResponse.segments_to_json(
+                relevant_parts.most_relevant_segments
+            )
 
             clips_info = await VideoService.create_video_clips(
                 video_path, segments_json, font_family, font_size, font_color
@@ -216,12 +245,9 @@ class VideoService:
             if progress_callback:
                 await progress_callback(100, "Processing complete!")
 
-            return {
-                "segments": segments_json,
-                "clips": clips_info,
-                "summary": relevant_parts.summary if relevant_parts else None,
-                "key_topics": relevant_parts.key_topics if relevant_parts else None,
-            }
+            return VideoProcessingResponse.build_response(
+                segments_json, clips_info, relevant_parts
+            )
 
         except Exception as e:
             logger.error(f"Error in video processing pipeline: {e}", exc_info=True)
