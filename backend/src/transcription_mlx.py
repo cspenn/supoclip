@@ -5,6 +5,8 @@ Replaces AssemblyAI cloud API for local, privacy-preserving transcription.
 Module: backend/src/transcription_mlx.py
 """
 import logging
+import os
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import json
@@ -15,6 +17,13 @@ try:
 except ImportError:
     from_pretrained = None  # type: ignore
     bfloat16 = None  # type: ignore
+
+try:
+    from groq import AsyncGroq
+except ImportError:
+    AsyncGroq = None  # type: ignore
+
+from .config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +99,33 @@ def transcribe_video_mlx(
             "words": _extract_words_from_result(result),
             "language": "en",
         }
+
+        # Reconstruct broken words from parakeet-mlx tokenization (if enabled)
+        # parakeet-mlx uses BPE tokenization which returns sub-word tokens
+        # Use Groq LLM to reconstruct complete words while preserving timing
+        config = Config()
+        words_list: List[Dict[str, Any]] = (
+            list(formatted_result.get("words", []))  # type: ignore
+        )
+        if words_list and config.reconstruct_words_with_llm:
+            logger.info("Reconstructing broken sub-word tokens with Groq LLM...")
+            try:
+                reconstructed_words = asyncio.run(
+                    _reconstruct_words_with_llm(words_list)
+                )
+                formatted_result["words"] = reconstructed_words
+                # Update text with reconstructed words
+                formatted_result["text"] = " ".join(
+                    w["text"] for w in reconstructed_words
+                )
+                logger.info(
+                    f"Word reconstruction complete: {len(formatted_result['words'])} words"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Word reconstruction failed, using original tokens: {e}"
+                )
+                # Continue with broken tokens if reconstruction fails
 
         # Cache for future use - avoid re-transcribing same video
         try:
@@ -240,6 +276,185 @@ def _get_token_end_time(token: Any) -> int:
     if hasattr(token, "end"):
         return int(token.end * 1000)
     return 0
+
+
+async def _reconstruct_words_with_llm(
+    broken_words: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Reconstruct complete words from sub-word tokens using Groq LLM.
+
+    parakeet-mlx returns sub-word tokens (e.g., ["Y", "es", "."]) instead of
+    complete words (["Yes", "."]) due to BPE tokenization. This function uses
+    Groq's LLM to reconstruct complete words while preserving timing information.
+
+    Args:
+        broken_words: List of word dicts with sub-word text and timing
+                     Format: [{"text": "Y", "start": 0, "end": 100}, ...]
+
+    Returns:
+        List of word dicts with reconstructed complete words and re-aligned timing
+        Format: [{"text": "Yes", "start": 0, "end": 200}, ...]
+
+    Raises:
+        ValueError: If Groq API key not configured
+        Exception: If API call fails
+    """
+    # Check if Groq is available and configured
+    if AsyncGroq is None:
+        logger.warning(
+            "Groq not available, skipping word reconstruction. "
+            "Install with: uv pip install groq"
+        )
+        return broken_words
+
+    groq_api_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_api_key:
+        logger.warning(
+            "GROQ_API_KEY not configured, skipping word reconstruction. "
+            "Captions may contain broken words."
+        )
+        return broken_words
+
+    # Extract broken text
+    broken_text = " ".join(word["text"] for word in broken_words)
+    if not broken_text.strip():
+        return broken_words
+
+    logger.info(f"Reconstructing {len(broken_words)} broken tokens with Groq LLM...")
+
+    try:
+        client = AsyncGroq(api_key=groq_api_key)
+
+        # Create prompt for word reconstruction
+        reconstruction_prompt = f"""Fix this broken transcription by combining sub-word tokens into complete words.
+The input has been tokenized at sub-word level (character fragments, BPE tokens).
+Reconstruct it into proper complete words with correct spacing and punctuation.
+
+Rules:
+1. Only reconstruct - do NOT add explanations or extra text
+2. Preserve all punctuation
+3. Return ONLY the corrected text, nothing else
+4. Keep original meaning - fix only the broken word boundaries
+
+Input: {broken_text}
+Output:"""
+
+        response = await client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=[{"role": "user", "content": reconstruction_prompt}],
+            temperature=0.1,  # Low temperature for deterministic output
+            max_tokens=2000,
+        )
+
+        reconstructed_text = ""
+        if response.choices and response.choices[0].message.content:
+            reconstructed_text = response.choices[0].message.content.strip()
+
+        if not reconstructed_text:
+            logger.warning("Groq returned empty response, using original tokens")
+            return broken_words
+
+        logger.info(
+            f"Reconstruction complete. Original: '{broken_text[:50]}...' "
+            f"→ Reconstructed: '{reconstructed_text[:50]}...'"
+        )
+
+        # Re-align timing: map reconstructed words to original token timings
+        reconstructed_words = _align_reconstructed_words(
+            broken_words, reconstructed_text
+        )
+
+        logger.info(
+            f"Timing re-aligned: {len(broken_words)} broken tokens "
+            f"→ {len(reconstructed_words)} reconstructed words"
+        )
+
+        return reconstructed_words
+
+    except Exception as e:
+        logger.error(f"Word reconstruction failed: {e}")
+        logger.warning("Falling back to broken tokens")
+        return broken_words
+
+
+def _align_reconstructed_words(
+    broken_words: List[Dict[str, Any]], reconstructed_text: str
+) -> List[Dict[str, Any]]:
+    """
+    Re-align timing information from broken tokens to reconstructed words.
+
+    Algorithm:
+    1. Split reconstructed text into words
+    2. For each reconstructed word, find matching broken tokens
+    3. Assign timing from first to last matching broken token
+
+    Args:
+        broken_words: Original broken tokens with timing
+        reconstructed_text: Reconstructed text from LLM
+
+    Returns:
+        List of word dicts with reconstructed text and aligned timing
+    """
+    # Split reconstructed text into words (preserve punctuation attached to words)
+    reconstructed_words_list = reconstructed_text.split()
+
+    if not reconstructed_words_list:
+        return broken_words
+
+    aligned_words: List[Dict[str, Any]] = []
+    broken_idx = 0
+
+    for reconstructed_word in reconstructed_words_list:
+        if broken_idx >= len(broken_words):
+            # No more broken tokens, stop alignment
+            break
+
+        # Find how many broken tokens make up this reconstructed word
+        # by matching character count approximately
+        reconstructed_len = len(reconstructed_word)
+
+        # Collect tokens that form this word
+        word_start_ms = broken_words[broken_idx]["start"]
+        word_text = ""
+        token_count = 0
+
+        while broken_idx < len(broken_words):
+            token_text = broken_words[broken_idx]["text"]
+            word_text += token_text
+            broken_idx += 1
+            token_count += 1
+
+            # Check if we've matched the reconstructed word
+            if len(word_text) >= reconstructed_len * 0.8:  # 80% match threshold
+                break
+
+        # Use end time of last matched token
+        word_end_ms = (
+            broken_words[broken_idx - 1]["end"] if token_count > 0 else word_start_ms
+        )
+
+        # Average confidence from matched tokens
+        confidence = (
+            sum(
+                broken_words[i].get("confidence", 1.0)
+                for i in range(max(0, broken_idx - token_count), broken_idx)
+            )
+            / token_count
+            if token_count > 0
+            else 1.0
+        )
+
+        aligned_words.append(
+            {
+                "text": reconstructed_word,
+                "start": word_start_ms,
+                "end": word_end_ms,
+                "confidence": confidence,
+            }
+        )
+
+    return aligned_words
 
 
 def get_video_transcript_mlx(video_path: Path) -> str:

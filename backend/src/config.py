@@ -24,6 +24,13 @@ class Config:
             "PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2"
         )
 
+        # Word reconstruction using Groq LLM (fixes broken sub-word tokens)
+        # parakeet-mlx uses BPE tokenization which returns sub-word tokens
+        # This setting enables reconstruction of complete words before subtitle generation
+        self.reconstruct_words_with_llm = (
+            os.getenv("RECONSTRUCT_WORDS_WITH_LLM", "true").lower() == "true"
+        )
+
         # Local LLM configuration (default - no API key required)
         self.local_llm_enabled = (
             os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
