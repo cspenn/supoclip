@@ -1,0 +1,157 @@
+================================================================================
+                    VISUAL ROOT CAUSE DIAGRAM
+================================================================================
+
+WHAT TESTS SAID (Unit/Integration):
+  ┌─────────────────────────────────────────────────────┐
+  │ Timestamp Parsing: WORKING ✓                         │
+  │ Database Operations: MOSTLY ERROR (setup issues)     │
+  │ Video Download: WORKING ✓                           │
+  │ Transcript Generation: WORKING ✓                    │
+  │ AI Analysis: Not tested with real Groq response     │
+  │ Zero Clips Scenario: Not tested                     │
+  └─────────────────────────────────────────────────────┘
+
+WHAT PRODUCTION SHOWS (Real Runtime):
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ STEP 1: Download YouTube video (22 minutes)                      │
+  │        └─→ SUCCESS ✓ (58MB file)                                │
+  │                                                                   │
+  │ STEP 2: Generate transcript with word-level timing                │
+  │        └─→ SUCCESS ✓ (6882 words, 55458 chars)                  │
+  │                                                                   │
+  │ STEP 3: Call Groq API with system prompt                          │
+  │        Prompt says: "MUST return 10-45 second segments"          │
+  │        └─→ API SUCCESS ✓ (returns 7 segments)                    │
+  │            BUT CONTENTS ARE WRONG ✗                             │
+  │            (durations: 0.56s, 0.80s, 1.0s, 1.12s, 1.20s...)     │
+  │                                                                   │
+  │ STEP 4: Validate segments (Filter out bad ones)                  │
+  │        Validation Rule: Reject segments < 5 seconds              │
+  │        └─→ CORRECT OPERATION ✓                                  │
+  │            Segment 1: 1.0s  → REJECTED (correct)                │
+  │            Segment 2: 0.80s → REJECTED (correct)                │
+  │            Segment 3: 1.2s  → REJECTED (correct)                │
+  │            ... all 7 segments rejected ...                       │
+  │            RESULT: 0 valid segments                              │
+  │                                                                   │
+  │ STEP 5: Generate clips                                            │
+  │        Input: 0 segments                                         │
+  │        Output: 0 clips                                           │
+  │        └─→ SUCCESS ✓ (correctly produces nothing)               │
+  │                                                                   │
+  │ STEP 6: Return results to user                                    │
+  │        Status: "completed" ← BUG (should be "error")            │
+  │        Clips: 0                                                  │
+  │        Error message: None ← BUG (should explain why)           │
+  │        └─→ SILENT FAILURE ✗                                    │
+  └──────────────────────────────────────────────────────────────────┘
+
+THE PROBLEM IN ONE PICTURE:
+
+  Expected:                 Actual:
+  ┌──────────────────┐     ┌──────────────────┐
+  │ Prompt says:     │     │ AI actually      │
+  │ "10-45 seconds"  │     │ returns:         │
+  └────────┬─────────┘     └────────┬─────────┘
+           │                       │
+           v                       v
+  ┌──────────────────┐     ┌──────────────────┐
+  │ Groq API         │     │ 0.56s segment    │
+  │ (Llama 4 Scout)  │     │ 0.80s segment    │
+  │                  │     │ 1.00s segment    │
+  │ Returns:         │     │ 1.12s segment    │
+  │ 3-7 segments     │     │ 1.20s segments   │
+  │ 10-45s each      │     │ (all ignored!)    │
+  └────────┬─────────┘     └────────┬─────────┘
+           │                       │
+           v                       v
+  ┌──────────────────┐     ┌──────────────────┐
+  │ Validation:      │     │ Validation:      │
+  │ ✓ All pass       │     │ ✗ All rejected   │
+  │                  │     │ (< 5 seconds)    │
+  └────────┬─────────┘     └────────┬─────────┘
+           │                       │
+           v                       v
+  ┌──────────────────┐     ┌──────────────────┐
+  │ Clip Generation: │     │ Clip Generation: │
+  │ 5 clips created  │     │ 0 clips created  │
+  └────────┬─────────┘     └────────┬─────────┘
+           │                       │
+           v                       v
+  ┌──────────────────┐     ┌──────────────────┐
+  │ Task Complete:   │     │ Task Complete:   │
+  │ SUCCESS ✓        │     │ SUCCESS ✓ (BUG)  │
+  │ 5 clips shown    │     │ 0 clips shown    │
+  │ User happy       │     │ User confused    │
+  └──────────────────┘     └──────────────────┘
+
+
+TESTING GAP VISUALIZATION:
+
+  ┌─────────────────────────────────────────────────────────┐
+  │                                                           │
+  │  TEST COVERAGE (What tests actually check):              │
+  │  ✓ Timestamp parsing in isolation                        │
+  │  ✓ Transcript generation in isolation                    │
+  │  ✓ Database CRUD operations                              │
+  │  ✓ Video download logic                                  │
+  │  ✗ Groq API with real responses                         │
+  │  ✗ AI output validation (durations)                     │
+  │  ✗ Zero clips generated scenario                        │
+  │  ✗ Complete end-to-end workflow                         │
+  │                                                           │
+  │  RESULT: Tests pass, but real system fails              │
+  │                                                           │
+  └─────────────────────────────────────────────────────────┘
+
+
+THREE-LAYER PROBLEM BREAKDOWN:
+
+  Layer 1: AI Output Quality
+  ┌──────────────────────────────────────────┐
+  │ Groq ignores "10-45 second" requirement  │
+  │ Returns 0.5-1.3 second segments instead  │
+  │ ROOT CAUSE: Unknown (model bug? prompt?) │
+  │ STATUS: UNFIXED                          │
+  └──────────────────────────────────────────┘
+            ↓
+  Layer 2: Validation (WORKING CORRECTLY)
+  ┌──────────────────────────────────────────┐
+  │ System correctly detects short segments  │
+  │ Filters them out (0 valid remain)        │
+  │ BUT: No error raised for 0 result        │
+  │ STATUS: NEEDS ERROR CONDITION            │
+  └──────────────────────────────────────────┘
+            ↓
+  Layer 3: Error Reporting
+  ┌──────────────────────────────────────────┐
+  │ Task marked "completed" with 0 clips     │
+  │ No error message to user                 │
+  │ Silent failure (confuses user)           │
+  │ STATUS: UNFIXED                          │
+  └──────────────────────────────────────────┘
+
+
+TIMESTAMP FIX STATUS:
+
+  Recent commits addressed:
+  ┌─────────────────────────────────────────┐
+  │ ✓ MM:SS format parsing                  │
+  │ ✓ MM:SS.mmm with milliseconds          │
+  │ ✓ Transcript timing precision          │
+  └─────────────────────────────────────────┘
+
+  But these fix happens AFTER AI output:
+  ┌─────────────────────────────────────────┐
+  │ AI returns: "02:15.80" (invalid anyway) │
+  │                                          │
+  │ Parser correctly reads: 2:15.80          │
+  │ Duration calculation: 2.80 - 2:15 = 0.8s│
+  │ Validation rejects: 0.8s < 5s           │
+  │                                          │
+  │ RESULT: Timestamp fix works, but        │
+  │ AI problem prevents it from mattering   │
+  └─────────────────────────────────────────┘
+
+================================================================================
