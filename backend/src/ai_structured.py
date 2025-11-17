@@ -35,27 +35,31 @@ class TranscriptAnalysis(BaseModel):
     key_topics: List[str] = Field(description="List of main topics discussed")
 
 
-# System prompt for Groq API
+# System prompt for Groq API (Fix 4: Enhanced with explicit duration warnings)
 SYSTEM_PROMPT = """You are an expert at analyzing video transcripts to find the most engaging segments for short-form content creation.
+
+CRITICAL INSTRUCTION: DO NOT RETURN FRAGMENTS OR ULTRA-SHORT CLIPS
 
 CORE OBJECTIVES:
 1. Identify segments that would be compelling on social media platforms
-2. Focus on complete thoughts, insights, or entertaining moments
+2. Focus on complete thoughts, insights, or entertaining moments (NOT fragments)
 3. Prioritize content with hooks, emotional moments, or valuable information
-4. Each segment should be engaging and worth watching
+4. Each segment should be engaging and worth watching (MINIMUM 10 SECONDS)
 
 SEGMENT SELECTION CRITERIA:
-1. STRONG HOOKS: Attention-grabbing opening lines
-2. VALUABLE CONTENT: Tips, insights, interesting facts, stories
-3. EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration
-4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone
-5. ENTERTAINING: Content people would want to share
+1. STRONG HOOKS: Attention-grabbing opening lines (complete sentences)
+2. VALUABLE CONTENT: Tips, insights, interesting facts, stories (full explanation)
+3. EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration (complete reaction)
+4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone (NOT partial)
+5. ENTERTAINING: Content people would want to watch (FULL CLIPS, NOT FRAGMENTS)
 
-TIMING GUIDELINES:
-- Segments MUST be between 10-45 seconds for optimal engagement
-- CRITICAL: start_time MUST be different from end_time (minimum 10 seconds apart)
-- Focus on natural content boundaries rather than arbitrary time limits
-- Include enough context for the segment to be understandable
+DURATION REQUIREMENTS - ABSOLUTELY CRITICAL:
+- MINIMUM DURATION: 10 seconds per segment (DO NOT return segments shorter than 10 seconds)
+- MAXIMUM DURATION: 45 seconds per segment
+- Duration calculation: end_time - start_time MUST be >= 10 seconds
+- NEVER return ultra-short clips (0.56s, 1.36s, 2.5s are INVALID)
+- If a segment is less than 10 seconds, DO NOT include it in your response
+- Return COMPLETE CLIPS, not word fragments or sentence fragments
 
 TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 - Use EXACT timestamps as they appear in the transcript
@@ -64,7 +68,10 @@ TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 - MINIMUM segment duration: 10 seconds (end_time - start_time >= 10 seconds)
 - Look at transcript ranges like [02:25 - 02:35] and use different start/end times
 - NEVER use the same timestamp for both start_time and end_time
-- Example: start_time: "02:25", end_time: "02:35" (NOT "02:25" and "02:25")
+- VERIFY DURATION BEFORE RETURNING: Calculate (end_time - start_time) and ensure it's >= 10 seconds
+- Example CORRECT: start_time: "02:25", end_time: "02:35" (10 second duration)
+- Example INCORRECT: start_time: "02:25", end_time: "02:26" (1 second - TOO SHORT)
+- Example INCORRECT: start_time: "02:25", end_time: "02:25" (0 seconds - INVALID)
 
 OUTPUT FORMAT:
 Return a JSON object with this exact structure:
@@ -73,16 +80,21 @@ Return a JSON object with this exact structure:
     {
       "start_time": "MM:SS",
       "end_time": "MM:SS",
-      "text": "segment text",
+      "text": "segment text (must be substantial and complete)",
       "relevance_score": 0.85,
-      "reasoning": "why this is relevant"
+      "reasoning": "why this is relevant (be specific)"
     }
   ],
   "summary": "brief summary",
   "key_topics": ["topic1", "topic2"]
 }
 
-Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity - choose segments that would genuinely engage viewers and have proper time ranges."""
+QUALITY REQUIREMENTS:
+- Find 3-7 compelling segments that would work well as standalone clips
+- Each segment MUST be at least 10 seconds long
+- Quality over quantity - choose segments that would genuinely engage viewers
+- Include enough text and context that the segment makes sense without external info
+- Only return segments that are COMPLETE THOUGHTS or COMPLETE SCENES, never fragments"""
 
 
 async def analyze_transcript_structured(
@@ -188,24 +200,58 @@ async def analyze_transcript_structured(
             f"AI analysis found {len(analysis.most_relevant_segments)} segments"
         )
 
+        # Fix 5: Add Groq response validation for duration warnings
+        # Check if segments are statistically too short (diagnostic for Groq issues)
+        if analysis.most_relevant_segments:
+            durations = []
+            for segment in analysis.most_relevant_segments:
+                try:
+                    start_parts = segment.start_time.split(":")
+                    end_parts = segment.end_time.split(":")
+                    start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
+                    end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
+                    duration = end_seconds - start_seconds
+                    if duration > 0:
+                        durations.append(duration)
+                except (ValueError, IndexError):
+                    pass
+
+            if durations:
+                avg_duration = sum(durations) / len(durations)
+                min_duration = min(durations)
+                max_duration = max(durations)
+                logger.info(
+                    f"Groq response duration analysis: "
+                    f"avg={avg_duration:.2f}s, min={min_duration:.2f}s, max={max_duration:.2f}s"
+                )
+
+                # Warning if average is suspiciously short (< 5 seconds)
+                if avg_duration < 5.0:
+                    logger.warning(
+                        f"WARNING: Groq response has very short segments (avg {avg_duration:.2f}s). "
+                        f"Model may be returning fragments instead of complete clips."
+                    )
+
         # Validate segments
         validated_segments = []
         for segment in analysis.most_relevant_segments:
-            # Validate text content
+            # Validate text content (Fix 2: Enhanced diagnostic logging)
             if not segment.text.strip() or len(segment.text.split()) < 3:
                 logger.warning(
-                    f"Skipping segment with insufficient content: '{segment.text[:50]}...'"
+                    f"REJECTED: Insufficient text content - '{segment.text[:50]}...' "
+                    f"({len(segment.text.split())} words, min 3 required)"
                 )
                 continue
 
-            # Validate timestamps
+            # Validate timestamps (Fix 2: Enhanced diagnostic logging)
             if segment.start_time == segment.end_time:
                 logger.warning(
-                    f"Skipping segment with identical start/end times: {segment.start_time}"
+                    f"REJECTED: Identical start/end times - {segment.start_time} "
+                    f"(duration 0s, min 5s required)"
                 )
                 continue
 
-            # Parse timestamps to validate duration
+            # Parse timestamps to validate duration (Fix 2: Enhanced diagnostic logging)
             try:
                 start_parts = segment.start_time.split(":")
                 end_parts = segment.end_time.split(":")
@@ -217,19 +263,22 @@ async def analyze_transcript_structured(
 
                 if duration <= 0:
                     logger.warning(
-                        f"Skipping segment with invalid duration: {segment.start_time} to {segment.end_time} = {duration}s"
+                        f"REJECTED: Invalid duration - {segment.start_time} to {segment.end_time} = {duration}s "
+                        f"(min 5s required)"
                     )
                     continue
 
                 if duration < 5:
                     logger.warning(
-                        f"Skipping segment too short: {duration}s (min 5s required)"
+                        f"REJECTED: Too short - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
+                        f"(min 5s required). Text: '{segment.text[:40]}...'"
                     )
                     continue
 
                 validated_segments.append(segment)
                 logger.info(
-                    f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s)"
+                    f"ACCEPTED: Segment {segment.start_time}-{segment.end_time} ({duration:.2f}s, "
+                    f"score {segment.relevance_score:.2f}). Text: '{segment.text[:50]}...'"
                 )
 
             except (ValueError, IndexError) as e:
@@ -240,6 +289,22 @@ async def analyze_transcript_structured(
 
         # Sort by relevance
         validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
+
+        # CRITICAL: Raise error if no segments passed validation (Fix 1)
+        # This prevents silent failures where task completes with 0 clips
+        if not validated_segments:
+            logger.error("ERROR: All AI-identified segments were rejected during validation")
+            logger.error(f"Original segments from AI: {len(analysis.most_relevant_segments)}")
+            logger.error(
+                "Possible causes: Groq returned ultra-short segments, "
+                "invalid timestamps, or insufficient content"
+            )
+            raise ValueError(
+                "No valid segments found. All segments were rejected as too short. "
+                "This typically means the AI model is returning fragments instead of complete clips (< 5 seconds). "
+                "The Groq Llama 4 Scout model may be returning ultra-short segments. "
+                "Consider checking the AI system prompt or model performance."
+            )
 
         final_analysis = TranscriptAnalysis(
             most_relevant_segments=validated_segments,

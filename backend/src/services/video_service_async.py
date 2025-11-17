@@ -272,21 +272,34 @@ class AsyncVideoProcessingService:
 
         except Exception as e:
             logger.error(f"[SERVICE=ASYNC] Error processing task {task_id}: {str(e)}")
-            await self._update_task_status(task_id, "error")
+            # Store error message for user visibility (Fix 3: Better error reporting)
+            await self._update_task_status(task_id, "error", error_message=str(e))
             logger.error(f"[SERVICE=ASYNC] Task {task_id} marked as error: {str(e)}")
 
-    async def _update_task_status(self, task_id: str, status: str) -> None:
+    async def _update_task_status(
+        self, task_id: str, status: str, error_message: Optional[str] = None
+    ) -> None:
         """Update task status in database.
 
         Args:
             task_id: Task ID to update
             status: New status value
+            error_message: Optional error message to store for user visibility
         """
         async with AsyncSessionLocal() as db:
-            await db.execute(
-                text("UPDATE tasks SET status = :status WHERE id = :task_id"),
-                {"status": status, "task_id": task_id},
-            )
+            if error_message:
+                # Store error message in progress_message field for user visibility
+                await db.execute(
+                    text(
+                        "UPDATE tasks SET status = :status, progress_message = :error_msg WHERE id = :task_id"
+                    ),
+                    {"status": status, "error_msg": error_message, "task_id": task_id},
+                )
+            else:
+                await db.execute(
+                    text("UPDATE tasks SET status = :status WHERE id = :task_id"),
+                    {"status": status, "task_id": task_id},
+                )
             await db.commit()
 
 

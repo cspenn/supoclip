@@ -367,6 +367,10 @@ async def get_task_details(task_id: str, db: AsyncSession = Depends(get_db)):
             "font_family": task.font_family if hasattr(task, "font_family") else None,
             "font_size": task.font_size if hasattr(task, "font_size") else None,
             "font_color": task.font_color if hasattr(task, "font_color") else None,
+            # Include progress_message for error reporting (Fix 3: User-visible error messages)
+            "progress_message": (
+                task.progress_message if hasattr(task, "progress_message") else None
+            ),
             "created_at": task.created_at.isoformat(),
             "updated_at": task.updated_at.isoformat(),
         }
