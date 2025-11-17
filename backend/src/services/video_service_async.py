@@ -74,12 +74,12 @@ class AsyncVideoProcessingService:
         # Get title based on source type
         if source.type == "youtube":
             try:
-                source.title = get_youtube_video_title(raw_source["url"])
-                if not source.title:
+                title = get_youtube_video_title(raw_source["url"])
+                source.title = title if title else "YouTube Video"
+                if not title:
                     logger.warning(
                         "[SERVICE=ASYNC] Could not get YouTube title, using default"
                     )
-                    source.title = "YouTube Video"
                 logger.info(f"[SERVICE=ASYNC] YouTube video title: {source.title}")
             except Exception as e:
                 logger.warning(
@@ -176,7 +176,7 @@ class AsyncVideoProcessingService:
                 logger.info(f"[SERVICE=ASYNC] Video downloaded to: {video_path}")
             else:
                 video_path = raw_source["url"]
-                if not Path(video_path).exists():
+                if isinstance(video_path, str) and not Path(video_path).exists():
                     raise Exception("Uploaded video file not found")
 
             # Process video

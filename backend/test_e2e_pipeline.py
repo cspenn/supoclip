@@ -109,7 +109,6 @@ async def test_complete_pipeline():
     print("\n" + "=" * 80)
     print("STEP 4: VALIDATE SEGMENTS")
     print("=" * 80)
-    segments_valid = True
     for seg in analysis.most_relevant_segments:
         # Check timestamps are in transcript (not hallucinated)
         if seg.start_time in formatted_transcript:

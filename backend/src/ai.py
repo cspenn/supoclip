@@ -324,11 +324,28 @@ async def get_most_relevant_parts_by_transcript(
             )
             from .ai_structured import analyze_transcript_structured
 
-            return await analyze_transcript_structured(
+            # Get result from structured API
+            structured_result = await analyze_transcript_structured(
                 transcript,
                 min_length=min_length,
                 max_length=max_length,
                 custom_prompt=custom_prompt,
+            )
+            # Convert from ai_structured.TranscriptAnalysis to ai.TranscriptAnalysis
+            converted_segments = [
+                TranscriptSegment(
+                    start_time=seg.start_time,
+                    end_time=seg.end_time,
+                    text=seg.text,
+                    relevance_score=seg.relevance_score,
+                    reasoning=seg.reasoning,
+                )
+                for seg in structured_result.most_relevant_segments
+            ]
+            return TranscriptAnalysis(
+                most_relevant_segments=converted_segments,
+                summary=structured_result.summary,
+                key_topics=structured_result.key_topics,
             )
 
         # For all other models, use Pydantic AI (tool calling)

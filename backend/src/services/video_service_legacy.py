@@ -87,12 +87,12 @@ class LegacySyncVideoService:
         # Get title based on source type
         if source.type == "youtube":
             logger.info("[SERVICE=LEGACY] Getting YouTube video title")
-            source.title = get_youtube_video_title(raw_source["url"])
-            if not source.title:
+            title = get_youtube_video_title(raw_source["url"])
+            source.title = title if title else "YouTube Video"
+            if not title:
                 logger.warning(
                     "[SERVICE=LEGACY] Could not get YouTube title, using default"
                 )
-                source.title = "YouTube Video"
             logger.info(f"[SERVICE=LEGACY] Video title: {source.title}")
         else:
             source.title = raw_source.get("title", "Uploaded Video")
@@ -138,7 +138,7 @@ class LegacySyncVideoService:
             logger.info(f"[SERVICE=LEGACY] Using uploaded video at: {video_path}")
 
             # Verify the uploaded file exists
-            if not Path(video_path).exists():
+            if isinstance(video_path, str) and not Path(video_path).exists():
                 logger.error(
                     f"[SERVICE=LEGACY] Uploaded video file not found: {video_path}"
                 )

@@ -2,7 +2,7 @@
 Video service - handles video processing business logic.
 """
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 import logging
 
 from ..utils.async_helpers import run_in_thread
@@ -194,7 +194,7 @@ class VideoService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Complete video processing pipeline.

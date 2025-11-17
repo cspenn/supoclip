@@ -143,6 +143,7 @@ async def analyze_transcript_structured(
         raise ValueError("GROQ_API_KEY environment variable not set")
 
     client = AsyncGroq(api_key=api_key)
+    response_content: str = ""
 
     try:
         logger.info(
@@ -189,7 +190,9 @@ async def analyze_transcript_structured(
         )
 
         # Extract and parse the response
-        response_content = completion.choices[0].message.content
+        response_content = completion.choices[0].message.content or ""
+        if not response_content:
+            raise ValueError("Empty response from Groq API")
         logger.info(f"Received response from Groq ({len(response_content)} chars)")
 
         # Parse JSON response
@@ -293,8 +296,12 @@ async def analyze_transcript_structured(
         # CRITICAL: Raise error if no segments passed validation (Fix 1)
         # This prevents silent failures where task completes with 0 clips
         if not validated_segments:
-            logger.error("ERROR: All AI-identified segments were rejected during validation")
-            logger.error(f"Original segments from AI: {len(analysis.most_relevant_segments)}")
+            logger.error(
+                "ERROR: All AI-identified segments were rejected during validation"
+            )
+            logger.error(
+                f"Original segments from AI: {len(analysis.most_relevant_segments)}"
+            )
             logger.error(
                 "Possible causes: Groq returned ultra-short segments, "
                 "invalid timestamps, or insufficient content"

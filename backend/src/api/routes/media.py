@@ -61,11 +61,15 @@ async def upload_video(request: Request):
         uploads_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate unique filename
+        if not video_file.filename:
+            raise ValueError("Video file must have a filename")
         file_extension = Path(video_file.filename).suffix
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         video_path = uploads_dir / unique_filename
 
         # Save the uploaded file
+        if isinstance(video_file, str):
+            raise TypeError("Expected UploadFile object")
         async with aiofiles.open(video_path, "wb") as f:
             content = await video_file.read()
             await f.write(content)

@@ -49,7 +49,7 @@ class ClipRepository:
     ) -> str:
         """Create a new clip record and return its ID."""
         clip_id = str(uuid.uuid4())
-        result = await db.execute(
+        await db.execute(
             text(
                 """
                 INSERT INTO generated_clips
@@ -136,7 +136,8 @@ class ClipRepository:
             ),
             {"task_id": task_id},
         )
-        return result.scalar()
+        count = result.scalar()
+        return int(count) if count is not None else 0
 
     @staticmethod
     async def delete_clips_by_task(db: AsyncSession, task_id: str) -> int:
@@ -146,7 +147,7 @@ class ClipRepository:
             {"task_id": task_id},
         )
         await db.commit()
-        deleted_count = result.rowcount
+        deleted_count = getattr(result, "rowcount", None) or 0
         logger.info(f"Deleted {deleted_count} clips for task {task_id}")
         return deleted_count
 

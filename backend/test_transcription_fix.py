@@ -1,7 +1,7 @@
 """
 Test script to verify parakeet-mlx token extraction fix.
 """
-from transcription_mlx import transcribe_video_mlx
+from transcription_mlx import transcribe_video_mlx  # type: ignore
 import sys
 from pathlib import Path
 

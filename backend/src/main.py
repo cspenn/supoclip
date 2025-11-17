@@ -1,6 +1,3 @@
-from .youtube_utils import *
-from .video_utils import *
-from .ai import *
 from .config import Config
 from .logging_config import setup_logging, cleanup_old_logs
 from contextlib import asynccontextmanager
@@ -353,7 +350,8 @@ async def get_task_details(task_id: str, db: AsyncSession = Depends(get_db)):
             ),
             {"task_id": task_id},
         )
-        clips_count = clips_count_result.fetchone().count
+        clips_count_row = clips_count_result.fetchone()
+        clips_count = clips_count_row.count if clips_count_row else 0
 
         task_data = {
             "id": task.id,
@@ -452,11 +450,17 @@ async def upload_video(request: Request):
         # Generate unique filename to avoid conflicts
         import uuid
 
+        if not video_file.filename:
+            raise HTTPException(
+                status_code=400, detail="Video file must have a filename"
+            )
         file_extension = Path(video_file.filename).suffix
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         video_path = uploads_dir / unique_filename
 
         # Save the uploaded file
+        if isinstance(video_file, str):
+            raise TypeError("Expected UploadFile object")
         async with aiofiles.open(video_path, "wb") as f:
             content = await video_file.read()
             await f.write(content)
@@ -486,6 +490,10 @@ async def upload_logo(request: Request, user_id: str = Depends(get_current_user)
             raise HTTPException(status_code=400, detail="No logo file provided")
 
         # Validate file type
+        if not logo_file.filename:
+            raise HTTPException(
+                status_code=400, detail="Logo file must have a filename"
+            )
         allowed_extensions = {".png", ".jpg", ".jpeg"}
         file_extension = Path(logo_file.filename).suffix.lower()
         if file_extension not in allowed_extensions:
@@ -501,6 +509,8 @@ async def upload_logo(request: Request, user_id: str = Depends(get_current_user)
         temp_filename = f"{user_id}_original{file_extension}"
         temp_path = logos_dir / temp_filename
 
+        if isinstance(logo_file, str):
+            raise TypeError("Expected UploadFile object")
         async with aiofiles.open(temp_path, "wb") as f:
             content = await logo_file.read()
             await f.write(content)

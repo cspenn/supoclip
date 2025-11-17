@@ -10,11 +10,11 @@ from typing import Dict, List, Any, Optional
 import json
 
 try:
-    from parakeet_mlx.utils import from_pretrained
-    from mlx.core import bfloat16
+    from parakeet_mlx.utils import from_pretrained  # type: ignore
+    from mlx.core import bfloat16  # type: ignore
 except ImportError:
-    from_pretrained = None
-    bfloat16 = None
+    from_pretrained = None  # type: ignore
+    bfloat16 = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 

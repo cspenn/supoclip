@@ -25,8 +25,8 @@ class SourceRepository:
         source = Source()
         source.type = source_type
         source.title = title
-        source.url = url
-        source.metadata = metadata
+        # Note: url and metadata are not stored in the Source model
+        # They are handled separately in video processing services
 
         db.add(source)
         await db.flush()

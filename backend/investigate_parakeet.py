@@ -2,8 +2,8 @@
 Investigate the actual structure of parakeet-mlx result object.
 """
 from pathlib import Path
-from parakeet_mlx.utils import from_pretrained
-from mlx.core import bfloat16
+from parakeet_mlx.utils import from_pretrained  # type: ignore
+from mlx.core import bfloat16  # type: ignore
 
 # Load model
 print("Loading parakeet-mlx model...")
@@ -79,7 +79,7 @@ if hasattr(result, "sentences"):
                             val = getattr(first_token, attr)
                             if not callable(val):
                                 print(f"    {attr} = {val}")
-                        except:
+                        except Exception:
                             pass
 
 # Print actual result structure

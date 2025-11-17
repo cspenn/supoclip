@@ -10,7 +10,7 @@ import numpy as np
 import json
 
 import cv2
-from moviepy import VideoFileClip, CompositeVideoClip, TextClip
+from moviepy import VideoFileClip, CompositeVideoClip, TextClip  # type: ignore
 
 
 from .config import Config
@@ -382,8 +382,16 @@ def detect_optimal_crop_region(
         face_centers = detect_faces_in_clip(video_clip, start_time, end_time)
 
         if face_centers:
+            # Convert face centers to float tuples for type compatibility
+            face_centers_float = [
+                (float(x), float(y), float(w), float(h)) for x, y, w, h in face_centers
+            ]
             x_offset, y_offset = FaceCenteredCropCalculator.calculate(
-                face_centers, new_width, new_height, original_width, original_height
+                face_centers_float,
+                new_width,
+                new_height,
+                original_width,
+                original_height,
             )
             logger.info(
                 f"Face-centered crop: {len(face_centers)} faces detected with improved algorithm"
@@ -435,7 +443,7 @@ class MediaPipeFaceDetector(FaceDetector):
         """Initialize MediaPipe detector."""
         self.detector = None
         try:
-            import mediapipe as mp
+            import mediapipe as mp  # type: ignore
 
             self.detector = mp.solutions.face_detection.FaceDetection(
                 model_selection=0, min_detection_confidence=0.5

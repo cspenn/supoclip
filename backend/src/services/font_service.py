@@ -11,8 +11,8 @@ import hashlib
 import uuid
 
 import matplotlib.font_manager as fm
-from fontTools.ttLib import TTFont
-from fontTools.ttLib.ttFont import TTLibError
+from fontTools.ttLib import TTFont  # type: ignore
+from fontTools.ttLib.ttFont import TTLibError  # type: ignore
 from sqlalchemy import select, func as db_func, or_
 from sqlalchemy.exc import IntegrityError
 

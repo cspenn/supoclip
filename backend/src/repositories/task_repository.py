@@ -45,7 +45,7 @@ class TaskRepository:
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid.uuid4())
-        result = await db.execute(
+        await db.execute(
             text(
                 """
                 INSERT INTO tasks (id, user_id, source_id, status, font_family, font_size, font_color)
