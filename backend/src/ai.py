@@ -124,14 +124,10 @@ def _get_transcript_agent():
     return _transcript_agent
 
 
-def validate_clean_start(segment_text: str) -> tuple[bool, str]:
-    """
-    Validate clip doesn't start with transition words/fillers.
+class CleanStartValidator:
+    """Validates clip doesn't start with transition words/fillers."""
 
-    Returns:
-        Tuple of (is_valid, reason)
-    """
-    forbidden_starts = [
+    FORBIDDEN_STARTS = [
         "and ",
         "but ",
         "so ",
@@ -145,12 +141,128 @@ def validate_clean_start(segment_text: str) -> tuple[bool, str]:
         "like ",
     ]
 
-    text_lower = segment_text.lower().strip()
-    for forbidden in forbidden_starts:
-        if text_lower.startswith(forbidden):
-            return False, f"Starts with forbidden word: '{forbidden.strip()}'"
+    @staticmethod
+    def validate(segment_text: str) -> tuple[bool, str]:
+        """
+        Validate clip doesn't start with transition words/fillers.
 
-    return True, "Clean start"
+        Returns:
+            Tuple of (is_valid, reason)
+        """
+        text_lower = segment_text.lower().strip()
+        for forbidden in CleanStartValidator.FORBIDDEN_STARTS:
+            if text_lower.startswith(forbidden):
+                return False, f"Starts with forbidden word: '{forbidden.strip()}'"
+        return True, "Clean start"
+
+
+def validate_clean_start(segment_text: str) -> tuple[bool, str]:
+    """Legacy wrapper for backward compatibility."""
+    return CleanStartValidator.validate(segment_text)
+
+
+class TimestampParser:
+    """Parses and validates transcript timestamps."""
+
+    MIN_DURATION_SECONDS = 5
+
+    @staticmethod
+    def parse_timestamp(timestamp: str) -> int:
+        """
+        Parse MM:SS timestamp to seconds.
+
+        Raises:
+            ValueError: If timestamp format is invalid
+        """
+        try:
+            parts = timestamp.split(":")
+            if len(parts) != 2:
+                raise ValueError(f"Invalid format: {timestamp}")
+            minutes, seconds = int(parts[0]), int(parts[1])
+            return minutes * 60 + seconds
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Cannot parse timestamp '{timestamp}': {e}")
+
+    @staticmethod
+    def calculate_duration(start_time: str, end_time: str) -> int:
+        """Calculate duration between two timestamps in seconds."""
+        start_seconds = TimestampParser.parse_timestamp(start_time)
+        end_seconds = TimestampParser.parse_timestamp(end_time)
+        return end_seconds - start_seconds
+
+    @staticmethod
+    def validate_duration(duration: int) -> tuple[bool, str]:
+        """Validate duration meets minimum requirement."""
+        if duration <= 0:
+            return False, f"Invalid duration: {duration}s (must be positive)"
+        if duration < TimestampParser.MIN_DURATION_SECONDS:
+            return False, f"Too short: {duration}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)"
+        return True, f"Valid: {duration}s"
+
+
+class TranscriptSegmentValidator:
+    """Validates transcript segments for clip generation."""
+
+    MIN_WORD_COUNT = 3
+
+    @staticmethod
+    def validate_text_content(text: str) -> tuple[bool, str]:
+        """Validate segment has sufficient text content."""
+        if not text.strip():
+            return False, "Empty text"
+        if len(text.split()) < TranscriptSegmentValidator.MIN_WORD_COUNT:
+            return False, f"Too few words: {len(text.split())} (min {TranscriptSegmentValidator.MIN_WORD_COUNT} required)"
+        return True, "Valid content"
+
+    @staticmethod
+    def validate_timestamps(segment: TranscriptSegment) -> tuple[bool, str]:
+        """Validate segment timestamps."""
+        if segment.start_time == segment.end_time:
+            return False, "Start and end times are identical"
+        try:
+            duration = TimestampParser.calculate_duration(
+                segment.start_time, segment.end_time
+            )
+            is_valid, reason = TimestampParser.validate_duration(duration)
+            if is_valid:
+                return True, f"Valid ({duration}s)"
+            return False, reason
+        except ValueError as e:
+            return False, f"Invalid timestamp format: {e}"
+
+    @staticmethod
+    def validate_segment(segment: TranscriptSegment) -> tuple[bool, str, int]:
+        """
+        Validate entire segment for clip generation.
+
+        Returns:
+            Tuple of (is_valid, reason, duration_seconds)
+        """
+        # Check text content
+        is_valid, reason = TranscriptSegmentValidator.validate_text_content(
+            segment.text
+        )
+        if not is_valid:
+            return False, f"Text validation: {reason}", 0
+
+        # Check clean start
+        is_clean, reason = CleanStartValidator.validate(segment.text)
+        if not is_clean:
+            return False, f"Clean start validation: {reason}", 0
+
+        # Check timestamps
+        is_valid, reason = TranscriptSegmentValidator.validate_timestamps(segment)
+        if not is_valid:
+            return False, f"Timestamp validation: {reason}", 0
+
+        # Calculate final duration for logging
+        try:
+            duration = TimestampParser.calculate_duration(
+                segment.start_time, segment.end_time
+            )
+            return True, "Valid segment", duration
+        except ValueError:
+            return False, "Duration calculation failed", 0
 
 
 async def get_most_relevant_parts_by_transcript(
@@ -223,65 +335,23 @@ async def get_most_relevant_parts_by_transcript(
             f"AI analysis found {len(analysis.most_relevant_segments)} segments"
         )
 
-        # Simple validation - just ensure segments have content
+        # Validate and filter segments
         validated_segments = []
         for segment in analysis.most_relevant_segments:
-            # Validate text content
-            if (
-                not segment.text.strip() or len(segment.text.split()) < 3
-            ):  # At least 3 words
+            is_valid, reason, duration = TranscriptSegmentValidator.validate_segment(
+                segment
+            )
+
+            if not is_valid:
                 logger.warning(
-                    f"Skipping segment with insufficient content: '{segment.text[:50]}...'"
+                    f"Skipping segment: {reason} - '{segment.text[:50]}...'"
                 )
                 continue
 
-            # Validate clean start (no transition words/fillers)
-            is_clean, reason = validate_clean_start(segment.text)
-            if not is_clean:
-                logger.warning(
-                    f"Skipping segment with unclean start: {reason} - '{segment.text[:50]}...'"
-                )
-                continue
-
-            # Validate timestamps - CRITICAL: start and end must be different
-            if segment.start_time == segment.end_time:
-                logger.warning(
-                    f"Skipping segment with identical start/end times: {segment.start_time}"
-                )
-                continue
-
-            # Parse timestamps to validate duration
-            try:
-                start_parts = segment.start_time.split(":")
-                end_parts = segment.end_time.split(":")
-
-                start_seconds = int(start_parts[0]) * 60 + int(start_parts[1])
-                end_seconds = int(end_parts[0]) * 60 + int(end_parts[1])
-
-                duration = end_seconds - start_seconds
-
-                if duration <= 0:
-                    logger.warning(
-                        f"Skipping segment with invalid duration: {segment.start_time} to {segment.end_time} = {duration}s"
-                    )
-                    continue
-
-                if duration < 5:  # Minimum 5 seconds
-                    logger.warning(
-                        f"Skipping segment too short: {duration}s (min 5s required)"
-                    )
-                    continue
-
-                validated_segments.append(segment)
-                logger.info(
-                    f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s)"
-                )
-
-            except (ValueError, IndexError) as e:
-                logger.warning(
-                    f"Skipping segment with invalid timestamp format: {segment.start_time}-{segment.end_time}: {e}"
-                )
-                continue
+            validated_segments.append(segment)
+            logger.info(
+                f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s)"
+            )
 
         # Sort by relevance
         validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
