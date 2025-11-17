@@ -36,6 +36,63 @@ class FontMetadata:
     source: str = "bundled"  # 'bundled' or 'system'
 
 
+class FontNameExtractor:
+    """Extract specific names from font files."""
+
+    @staticmethod
+    def extract_from_name_table(name_table, name_id: int) -> Optional[str]:
+        """Extract specific name from font name table by nameID.
+
+        Args:
+            name_table: Font name table from fontTools
+            name_id: ID of name to extract (1=family, 2=style, 4=full)
+
+        Returns:
+            Extracted name string or None if not found
+        """
+        for record in name_table.names:
+            if record.nameID == name_id:
+                try:
+                    return record.toUnicode()
+                except Exception:
+                    return None
+        return None
+
+    @staticmethod
+    def extract_all_names(name_table) -> dict[str, Optional[str]]:
+        """Extract family, style, and full name from font.
+
+        Args:
+            name_table: Font name table from fontTools
+
+        Returns:
+            Dictionary with family, style, and full_name keys
+        """
+        return {
+            "family": FontNameExtractor.extract_from_name_table(name_table, 1),
+            "style": FontNameExtractor.extract_from_name_table(name_table, 2),
+            "full_name": FontNameExtractor.extract_from_name_table(name_table, 4),
+        }
+
+
+class FontWeightExtractor:
+    """Extract weight information from font files."""
+
+    @staticmethod
+    def extract_weight(font: TTFont) -> Optional[int]:
+        """Extract font weight from OS/2 table if available.
+
+        Args:
+            font: TTFont object from fontTools
+
+        Returns:
+            Weight class value or None if not available
+        """
+        if "OS/2" in font:
+            return font["OS/2"].usWeightClass
+        return None
+
+
 class FontService:
     """Service for detecting, validating, and managing fonts."""
 
@@ -160,38 +217,14 @@ class FontService:
             # Open font file with fontTools
             font = TTFont(str(font_path))
 
-            # Extract name table
-            name_table = font["name"]
-
-            # Get font family name (nameID 1)
-            family = None
-            for record in name_table.names:
-                if record.nameID == 1:  # Font Family name
-                    family = record.toUnicode()
-                    break
-
-            # Get font subfamily/style (nameID 2)
-            style = None
-            for record in name_table.names:
-                if record.nameID == 2:  # Font Subfamily name
-                    style = record.toUnicode()
-                    break
-
-            # Get full font name (nameID 4)
-            full_name = None
-            for record in name_table.names:
-                if record.nameID == 4:  # Full font name
-                    full_name = record.toUnicode()
-                    break
+            # Extract all names using helper class
+            names = FontNameExtractor.extract_all_names(font["name"])
 
             # Use filename without extension as name if full_name not available
-            name = full_name or font_path.stem
+            name = names["full_name"] or font_path.stem
 
-            # Extract weight from OS/2 table if available
-            weight = None
-            if "OS/2" in font:
-                os2_table = font["OS/2"]
-                weight = os2_table.usWeightClass
+            # Extract weight using helper class
+            weight = FontWeightExtractor.extract_weight(font)
 
             # Compute file hash
             file_hash = await self.compute_file_hash(font_path)
@@ -200,8 +233,8 @@ class FontService:
             metadata = FontMetadata(
                 id=str(uuid.uuid4()),
                 name=name,
-                family=family or name,
-                style=style,
+                family=names["family"] or name,
+                style=names["style"],
                 weight=weight,
                 file_path=str(font_path),
                 file_hash=file_hash,
