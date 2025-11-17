@@ -403,6 +403,251 @@ def detect_optimal_crop_region(
         return (x_offset, y_offset, new_width, new_height)
 
 
+class FaceDetector:
+    """Abstract base class for face detectors."""
+
+    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+        """Detect faces in frame.
+
+        Args:
+            frame: Video frame as numpy array
+
+        Returns:
+            List of (x, y, w, h, confidence) tuples
+        """
+        raise NotImplementedError
+
+
+class MediaPipeFaceDetector(FaceDetector):
+    """MediaPipe face detection."""
+
+    def __init__(self):
+        """Initialize MediaPipe detector."""
+        self.detector = None
+        try:
+            import mediapipe as mp
+
+            self.detector = mp.solutions.face_detection.FaceDetection(
+                model_selection=0, min_detection_confidence=0.5
+            )
+            logger.info("Using MediaPipe face detector")
+        except Exception as e:
+            logger.warning(f"MediaPipe initialization failed: {e}")
+
+    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+        """Detect faces using MediaPipe."""
+        if self.detector is None:
+            return []
+
+        try:
+            height, width = frame.shape[:2]
+            results = self.detector.process(frame)
+
+            faces = []
+            if results.detections:
+                for detection in results.detections:
+                    bbox = detection.location_data.relative_bounding_box
+                    confidence = detection.score[0]
+
+                    x = int(bbox.xmin * width)
+                    y = int(bbox.ymin * height)
+                    w = int(bbox.width * width)
+                    h = int(bbox.height * height)
+
+                    if w > 30 and h > 30:
+                        faces.append((x, y, w, h, confidence))
+            return faces
+        except Exception as e:
+            logger.warning(f"MediaPipe detection failed: {e}")
+            return []
+
+    def close(self):
+        """Clean up detector resources."""
+        if self.detector is not None:
+            self.detector.close()
+
+
+class OpenCVDNNFaceDetector(FaceDetector):
+    """OpenCV DNN face detection."""
+
+    def __init__(self):
+        """Initialize OpenCV DNN detector."""
+        self.net = None
+        try:
+            import os
+
+            prototxt = cv2.data.haarcascades.replace(
+                "haarcascades", "opencv_face_detector.pbtxt"
+            )
+            model = cv2.data.haarcascades.replace(
+                "haarcascades", "opencv_face_detector_uint8.pb"
+            )
+
+            if os.path.exists(prototxt) and os.path.exists(model):
+                self.net = cv2.dnn.readNetFromTensorflow(model, prototxt)
+                logger.info("OpenCV DNN detector loaded")
+        except Exception as e:
+            logger.info(f"OpenCV DNN detector not available: {e}")
+
+    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+        """Detect faces using OpenCV DNN."""
+        if self.net is None:
+            return []
+
+        try:
+            height, width = frame.shape[:2]
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            blob = cv2.dnn.blobFromImage(frame_bgr, 1.0, (300, 300), [104, 117, 123])
+            self.net.setInput(blob)
+            detections = self.net.forward()
+
+            faces = []
+            for i in range(detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > 0.5:
+                    x1 = int(detections[0, 0, i, 3] * width)
+                    y1 = int(detections[0, 0, i, 4] * height)
+                    x2 = int(detections[0, 0, i, 5] * width)
+                    y2 = int(detections[0, 0, i, 6] * height)
+
+                    w = x2 - x1
+                    h = y2 - y1
+
+                    if w > 30 and h > 30:
+                        faces.append((x1, y1, w, h, confidence))
+            return faces
+        except Exception as e:
+            logger.warning(f"DNN detection failed: {e}")
+            return []
+
+
+class HaarCascadeFaceDetector(FaceDetector):
+    """Haar Cascade face detection (fallback)."""
+
+    def __init__(self):
+        """Initialize Haar cascade detector."""
+        self.cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+
+    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+        """Detect faces using Haar cascade."""
+        try:
+            height, width = frame.shape[:2]
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
+            faces_raw = self.cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.05,
+                minNeighbors=3,
+                minSize=(40, 40),
+                maxSize=(int(width * 0.7), int(height * 0.7)),
+            )
+
+            faces = []
+            for x, y, w, h in faces_raw:
+                face_area = w * h
+                relative_size = face_area / (width * height)
+                confidence = min(0.9, 0.3 + relative_size * 2)
+                faces.append((x, y, w, h, confidence))
+            return faces
+        except Exception as e:
+            logger.warning(f"Haar cascade detection failed: {e}")
+            return []
+
+
+class VideoFrameSampler:
+    """Sample frames from video clips."""
+
+    @staticmethod
+    def generate_sample_times(start_time: float, end_time: float) -> List[float]:
+        """Generate times to sample for face detection.
+
+        Args:
+            start_time: Clip start time in seconds
+            end_time: Clip end time in seconds
+
+        Returns:
+            List of sample times
+        """
+        duration = end_time - start_time
+        sample_interval = min(0.5, duration / 10)
+
+        sample_times = []
+        current = start_time
+        while current < end_time:
+            sample_times.append(current)
+            current += sample_interval
+
+        # Add middle time if duration > 1s
+        if duration > 1.0:
+            middle = start_time + duration / 2
+            if middle not in sample_times:
+                sample_times.append(middle)
+
+        return [t for t in sample_times if t < end_time]
+
+
+class FaceDetectionService:
+    """Orchestrate face detection with fallback chain."""
+
+    MIN_RELATIVE_AREA = 0.005
+    MAX_RELATIVE_AREA = 0.3
+
+    def __init__(self):
+        """Initialize detector chain."""
+        self.detectors = [
+            MediaPipeFaceDetector(),
+            OpenCVDNNFaceDetector(),
+            HaarCascadeFaceDetector(),
+        ]
+
+    def detect_in_frame(
+        self, frame: np.ndarray
+    ) -> List[Tuple[int, int, int, float]]:
+        """Detect faces in single frame using detector chain.
+
+        Args:
+            frame: Video frame
+
+        Returns:
+            List of (center_x, center_y, area, confidence) tuples
+        """
+        height, width = frame.shape[:2]
+        frame_area = width * height
+
+        # Try detectors in order until faces found
+        for detector in self.detectors:
+            try:
+                detected = detector.detect(frame)
+                if detected:
+                    # Convert to face centers and filter
+                    face_centers = []
+                    for x, y, w, h, conf in detected:
+                        center_x = x + w // 2
+                        center_y = y + h // 2
+                        area = w * h
+                        relative_area = area / frame_area
+
+                        if self.MIN_RELATIVE_AREA < relative_area < self.MAX_RELATIVE_AREA:
+                            face_centers.append((center_x, center_y, area, conf))
+
+                    if face_centers:
+                        return face_centers
+            except Exception as e:
+                logger.warning(f"Detector {detector.__class__.__name__} failed: {e}")
+                continue
+
+        return []
+
+    def close(self):
+        """Clean up detector resources."""
+        for detector in self.detectors:
+            if hasattr(detector, "close"):
+                detector.close()
+
+
 def detect_faces_in_clip(
     video_clip: VideoFileClip, start_time: float, end_time: float
 ) -> List[Tuple[int, int, int, float]]:
@@ -410,184 +655,29 @@ def detect_faces_in_clip(
     Improved face detection using multiple methods and temporal consistency.
     Returns list of (x, y, area, confidence) tuples.
     """
-    face_centers = []
-
     try:
-        # Try to use MediaPipe (most accurate)
-        mp_face_detection = None
-        try:
-            import mediapipe as mp
+        # Initialize face detection service
+        service = FaceDetectionService()
 
-            mp_face_detection = mp.solutions.face_detection.FaceDetection(
-                model_selection=0,  # 0 for short-range (better for close faces)
-                min_detection_confidence=0.5,
-            )
-            logger.info("Using MediaPipe face detector")
-        except ImportError:
-            logger.info("MediaPipe not available, falling back to OpenCV")
-        except Exception as e:
-            logger.warning(f"MediaPipe face detector failed to initialize: {e}")
-
-        # Initialize OpenCV face detectors as fallback
-        haar_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-
-        # Try to load DNN face detector (more accurate than Haar)
-        dnn_net = None
-        try:
-            # Load OpenCV's DNN face detector
-            prototxt_path = cv2.data.haarcascades.replace(
-                "haarcascades", "opencv_face_detector.pbtxt"
-            )
-            model_path = cv2.data.haarcascades.replace(
-                "haarcascades", "opencv_face_detector_uint8.pb"
-            )
-
-            # If DNN model files don't exist, we'll fall back to Haar cascade
-            import os
-
-            if os.path.exists(prototxt_path) and os.path.exists(model_path):
-                dnn_net = cv2.dnn.readNetFromTensorflow(model_path, prototxt_path)
-                logger.info("OpenCV DNN face detector loaded as backup")
-            else:
-                logger.info("OpenCV DNN face detector not available")
-        except Exception:
-            logger.info("OpenCV DNN face detector failed to load")
-
-        # Sample more frames for better face detection (every 0.5 seconds)
-        duration = end_time - start_time
-        sample_interval = min(0.5, duration / 10)  # At least 10 samples, max every 0.5s
-        sample_times = []
-
-        current_time = start_time
-        while current_time < end_time:
-            sample_times.append(current_time)
-            current_time += sample_interval
-
-        # Ensure we always sample the middle and end
-        if duration > 1.0:
-            middle_time = start_time + duration / 2
-            if middle_time not in sample_times:
-                sample_times.append(middle_time)
-
-        sample_times = [t for t in sample_times if t < end_time]
+        # Generate sample times
+        sample_times = VideoFrameSampler.generate_sample_times(start_time, end_time)
         logger.info(f"Sampling {len(sample_times)} frames for face detection")
 
+        # Detect faces in all sampled frames
+        face_centers = []
         for sample_time in sample_times:
             try:
                 frame = video_clip.get_frame(sample_time)
-                height, width = frame.shape[:2]
-                detected_faces = []
-
-                # Try MediaPipe first (most accurate)
-                if mp_face_detection is not None:
-                    try:
-                        # MediaPipe expects RGB format
-                        results = mp_face_detection.process(frame)
-
-                        if results.detections:
-                            for detection in results.detections:
-                                bbox = detection.location_data.relative_bounding_box
-                                confidence = detection.score[0]
-
-                                # Convert relative coordinates to absolute
-                                x = int(bbox.xmin * width)
-                                y = int(bbox.ymin * height)
-                                w = int(bbox.width * width)
-                                h = int(bbox.height * height)
-
-                                if w > 30 and h > 30:  # Minimum face size
-                                    detected_faces.append((x, y, w, h, confidence))
-                    except Exception as e:
-                        logger.warning(
-                            f"MediaPipe detection failed for frame at {sample_time}s: {e}"
-                        )
-
-                # If MediaPipe didn't find faces, try DNN detector
-                if not detected_faces and dnn_net is not None:
-                    try:
-                        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                        blob = cv2.dnn.blobFromImage(
-                            frame_bgr, 1.0, (300, 300), [104, 117, 123]
-                        )
-                        dnn_net.setInput(blob)
-                        detections = dnn_net.forward()
-
-                        for i in range(detections.shape[2]):
-                            confidence = detections[0, 0, i, 2]
-                            if confidence > 0.5:  # Confidence threshold
-                                x1 = int(detections[0, 0, i, 3] * width)
-                                y1 = int(detections[0, 0, i, 4] * height)
-                                x2 = int(detections[0, 0, i, 5] * width)
-                                y2 = int(detections[0, 0, i, 6] * height)
-
-                                w = x2 - x1
-                                h = y2 - y1
-
-                                if w > 30 and h > 30:  # Minimum face size
-                                    detected_faces.append((x1, y1, w, h, confidence))
-                    except Exception as e:
-                        logger.warning(
-                            f"DNN detection failed for frame at {sample_time}s: {e}"
-                        )
-
-                # If still no faces found, use Haar cascade
-                if not detected_faces:
-                    try:
-                        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-
-                        faces = haar_cascade.detectMultiScale(
-                            gray,
-                            scaleFactor=1.05,  # More sensitive
-                            minNeighbors=3,  # Less strict
-                            minSize=(40, 40),  # Smaller minimum size
-                            maxSize=(
-                                int(width * 0.7),
-                                int(height * 0.7),
-                            ),  # Maximum size limit
-                        )
-
-                        for x, y, w, h in faces:
-                            # Estimate confidence based on face size and position
-                            face_area = w * h
-                            relative_size = face_area / (width * height)
-                            confidence = min(
-                                0.9, 0.3 + relative_size * 2
-                            )  # Rough confidence estimate
-                            detected_faces.append((x, y, w, h, confidence))
-                    except Exception as e:
-                        logger.warning(
-                            f"Haar cascade detection failed for frame at {sample_time}s: {e}"
-                        )
-
-                # Process detected faces
-                for x, y, w, h, confidence in detected_faces:
-                    face_center_x = x + w // 2
-                    face_center_y = y + h // 2
-                    face_area = w * h
-
-                    # Filter out very small or very large faces
-                    frame_area = width * height
-                    relative_area = face_area / frame_area
-
-                    if (
-                        0.005 < relative_area < 0.3
-                    ):  # Face should be 0.5% to 30% of frame
-                        face_centers.append(
-                            (face_center_x, face_center_y, face_area, confidence)
-                        )
-
+                centers = service.detect_in_frame(frame)
+                face_centers.extend(centers)
             except Exception as e:
-                logger.warning(f"Error detecting faces in frame at {sample_time}s: {e}")
+                logger.warning(f"Error detecting faces at {sample_time}s: {e}")
                 continue
 
-        # Close MediaPipe detector
-        if mp_face_detection is not None:
-            mp_face_detection.close()
+        # Clean up detector resources
+        service.close()
 
-        # Remove outliers (faces that are very far from the median position)
+        # Remove outliers
         if len(face_centers) > 2:
             face_centers = filter_face_outliers(face_centers)
 
