@@ -26,7 +26,9 @@ except ImportError:
     import sqlite3
 
     # Fallback to sqlite3
-    db_path = os.getenv("DATABASE_URL", "sqlite:///./supoclip.db").replace("sqlite:///", "")
+    db_path = os.getenv("DATABASE_URL", "sqlite:///./supoclip.db").replace(
+        "sqlite:///", ""
+    )
     user_id = os.getenv("DEFAULT_USER_ID", "local-user")
 
     try:
@@ -41,17 +43,13 @@ except ImportError:
 
         # Create default user
         now = datetime.utcnow().isoformat()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            user_id,
-            "Local Development User",
-            "local@localhost.local",
-            0,
-            now,
-            now
-        ))
+        """,
+            (user_id, "Local Development User", "local@localhost.local", 0, now, now),
+        )
 
         conn.commit()
         conn.close()
@@ -80,8 +78,7 @@ def seed_database() -> None:
     with engine.begin() as connection:
         # Check if default user already exists
         result = connection.execute(
-            text("SELECT id FROM users WHERE id = :user_id"),
-            {"user_id": user_id}
+            text("SELECT id FROM users WHERE id = :user_id"), {"user_id": user_id}
         )
 
         existing_user = result.fetchone()
@@ -95,10 +92,12 @@ def seed_database() -> None:
 
         try:
             connection.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt)
                     VALUES (:id, :name, :email, :emailVerified, :createdAt, :updatedAt)
-                """),
+                """
+                ),
                 {
                     "id": user_id,
                     "name": "Local Development User",
@@ -106,7 +105,7 @@ def seed_database() -> None:
                     "emailVerified": 0,
                     "createdAt": now,
                     "updatedAt": now,
-                }
+                },
             )
             print(f"✅ Created default user '{user_id}'")
 

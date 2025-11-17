@@ -15,7 +15,7 @@ load_dotenv()
 # Database configuration - SQLite instead of PostgreSQL
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "sqlite+aiosqlite:///./supoclip.db"  # Local SQLite database
+    "sqlite+aiosqlite:///./supoclip.db",  # Local SQLite database
 )
 
 # Create async engine with SQLite-specific configuration
@@ -37,10 +37,15 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # Base class for all models
+
+
 class Base(DeclarativeBase):
     pass
 
+
 # Dependency to get database session
+
+
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:
@@ -48,7 +53,10 @@ async def get_db():
         finally:
             await session.close()
 
+
 # Initialize database
+
+
 async def init_db() -> None:
     """Initialize database and apply migrations."""
     async with engine.begin() as conn:
@@ -57,19 +65,24 @@ async def init_db() -> None:
 
         # Apply custom migrations if needed
         try:
-            migration_path = Path(__file__).parent.parent / "migrations" / "002_add_system_fonts.sql"
+            migration_path = (
+                Path(__file__).parent.parent / "migrations" / "002_add_system_fonts.sql"
+            )
             if migration_path.exists():
                 with open(migration_path) as f:
                     sql = f.read()
                     # For SQLite, we need to execute statements one by one
                     # Split on semicolon and execute each statement
-                    statements = [s.strip() for s in sql.split(';') if s.strip()]
+                    statements = [s.strip() for s in sql.split(";") if s.strip()]
                     for statement in statements:
                         await conn.execute(text(statement))
                 logger.info("✅ Applied system_fonts migration")
         except Exception as e:
             logger.warning(f"⚠️ Migration already applied or failed: {e}")
 
+
 # Close database connections
+
+
 async def close_db():
     await engine.dispose()

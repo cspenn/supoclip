@@ -9,7 +9,6 @@ import logging
 from typing import Dict, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,6 @@ job queue (LocalJobQueue). Tasks are executed with asyncio workers.
 """
 import logging
 from typing import Dict, Any
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ async def process_video_task(
     user_id: str,
     font_family: str = "TikTokSans-Regular",
     font_size: int = 24,
-    font_color: str = "#FFFFFF"
+    font_color: str = "#FFFFFF",
 ) -> Dict[str, Any]:
     """
     Background worker task to process a video.
@@ -64,7 +63,7 @@ async def process_video_task(
                 font_family=font_family,
                 font_size=font_size,
                 font_color=font_color,
-                progress_callback=update_progress
+                progress_callback=update_progress,
             )
 
             logger.info(f"Task {task_id} completed successfully")
@@ -75,5 +74,6 @@ async def process_video_task(
             logger.error(f"Task {task_id} failed: {e}", exc_info=True)
             await progress.update(task_id, 0, f"Error: {str(e)}", "error")
             raise
+
 
 # end backend/src/workers/tasks.py

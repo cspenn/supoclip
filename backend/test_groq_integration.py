@@ -2,6 +2,8 @@
 Test Groq integration with Llama 4 Scout model.
 Verifies LLM configuration and AI analysis works with Groq API.
 """
+from src.ai import get_most_relevant_parts_by_transcript
+from src.config import Config
 import sys
 import asyncio
 from pathlib import Path
@@ -11,19 +13,17 @@ backend_path = Path(__file__).parent
 if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
-from src.config import Config
-from src.ai import get_most_relevant_parts_by_transcript
 
 async def test_groq_config():
     """Test Groq configuration and AI analysis."""
-    print("="*80)
+    print("=" * 80)
     print("GROQ INTEGRATION TEST")
-    print("="*80)
+    print("=" * 80)
 
     # Test 1: Configuration
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("TEST 1: CONFIGURATION")
-    print("-"*80)
+    print("-" * 80)
 
     config = Config()
 
@@ -41,9 +41,9 @@ async def test_groq_config():
     print("✅ Configuration correct: Using Groq API")
 
     # Test 2: Get LLM Model
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("TEST 2: LLM MODEL INITIALIZATION")
-    print("-"*80)
+    print("-" * 80)
 
     try:
         llm_model = config.get_llm_model()
@@ -53,9 +53,9 @@ async def test_groq_config():
         return False
 
     # Test 3: AI Analysis with Sample Transcript
-    print("\n" + "-"*80)
+    print("\n" + "-" * 80)
     print("TEST 3: AI ANALYSIS WITH GROQ")
-    print("-"*80)
+    print("-" * 80)
 
     sample_transcript = """
 [00:00 - 00:05] Welcome to this video about artificial intelligence and machine learning.
@@ -76,7 +76,9 @@ async def test_groq_config():
         analysis = await get_most_relevant_parts_by_transcript(sample_transcript)
 
         if len(analysis.most_relevant_segments) > 0:
-            print(f"\n✅ AI ANALYSIS SUCCESS: {len(analysis.most_relevant_segments)} segments found")
+            print(
+                f"\n✅ AI ANALYSIS SUCCESS: {len(analysis.most_relevant_segments)} segments found"
+            )
             print("\nSegments identified by Llama 4 Scout:")
             for i, seg in enumerate(analysis.most_relevant_segments, 1):
                 print(f"\n  Segment {i}:")
@@ -91,13 +93,14 @@ async def test_groq_config():
     except Exception as e:
         print(f"\n❌ AI ANALYSIS FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
     # Final Summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("GROQ INTEGRATION TEST PASSED! 🎉")
-    print("="*80)
+    print("=" * 80)
     print("\n✅ Configuration: Groq API enabled")
     print("✅ Model: meta-llama/llama-4-scout-17b-16e-instruct")
     print("✅ AI Analysis: Working correctly")
@@ -108,6 +111,7 @@ async def test_groq_config():
     print("  • Context: 128K tokens")
 
     return True
+
 
 if __name__ == "__main__":
     result = asyncio.run(test_groq_config())

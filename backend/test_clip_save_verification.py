@@ -3,6 +3,9 @@ Direct verification that the parameter shadowing bug fix allows clips to be save
 
 This test simulates what happens in the real pipeline when saving clips to database.
 """
+from src.repositories.clip_repository import ClipRepository
+from src.database import AsyncSessionLocal
+from sqlalchemy import text
 import asyncio
 import sys
 from pathlib import Path
@@ -10,17 +13,13 @@ from pathlib import Path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
-from sqlalchemy import text
-from src.database import AsyncSessionLocal
-from src.repositories.clip_repository import ClipRepository
-
 
 async def test_clip_save():
     """Test that clips can be saved to database without TypeError."""
 
-    print("="*80)
+    print("=" * 80)
     print("CLIP SAVE VERIFICATION TEST")
-    print("="*80)
+    print("=" * 80)
     print("\nThis test verifies that the parameter shadowing bug is fixed.")
     print("Before fix: TypeError: 'str' object is not callable")
     print("After fix: Clips save successfully\n")
@@ -34,23 +33,24 @@ async def test_clip_save():
             # Clean up any existing test data
             await db.execute(
                 text("DELETE FROM generated_clips WHERE task_id = :task_id"),
-                {"task_id": test_task_id}
+                {"task_id": test_task_id},
             )
             await db.execute(
-                text("DELETE FROM tasks WHERE id = :task_id"),
-                {"task_id": test_task_id}
+                text("DELETE FROM tasks WHERE id = :task_id"), {"task_id": test_task_id}
             )
 
             # Create test task
             await db.execute(
-                text("""INSERT INTO tasks (id, user_id, status, progress)
-                   VALUES (:id, :user_id, :status, :progress)"""),
+                text(
+                    """INSERT INTO tasks (id, user_id, status, progress)
+                   VALUES (:id, :user_id, :status, :progress)"""
+                ),
                 {
                     "id": test_task_id,
                     "user_id": test_user_id,
                     "status": "processing",
-                    "progress": 90
-                }
+                    "progress": 90,
+                },
             )
             await db.commit()
 
@@ -58,7 +58,7 @@ async def test_clip_save():
 
             # Simulate saving a clip (this is what fails with the shadowing bug)
             print("\n📝 Testing ClipRepository.create_clip()...")
-            print("   This calls: text(\"\"\"INSERT INTO...\"\"\")")
+            print('   This calls: text("""INSERT INTO...""")')
             print("   Before fix: 'text' parameter shadows text() function")
             print("   After fix: 'clip_text' parameter, text() function works\n")
 
@@ -73,20 +73,22 @@ async def test_clip_save():
                 clip_text="This is the transcript text for the clip segment",
                 relevance_score=0.92,
                 reasoning="Strong hook with actionable advice",
-                clip_order=1
+                clip_order=1,
             )
 
             await db.commit()
 
             print(f"✅ SUCCESS: Clip created with ID: {clip_id}")
-            print(f"✅ No TypeError occurred")
-            print(f"✅ SQLAlchemy text() function is NOT shadowed")
-            print(f"✅ Parameter 'clip_text' is working correctly")
+            print("✅ No TypeError occurred")
+            print("✅ SQLAlchemy text() function is NOT shadowed")
+            print("✅ Parameter 'clip_text' is working correctly")
 
             # Verify it was actually saved
             result = await db.execute(
-                text("SELECT COUNT(*) as count FROM generated_clips WHERE task_id = :task_id"),
-                {"task_id": test_task_id}
+                text(
+                    "SELECT COUNT(*) as count FROM generated_clips WHERE task_id = :task_id"
+                ),
+                {"task_id": test_task_id},
             )
             count = result.scalar()
 
@@ -95,17 +97,16 @@ async def test_clip_save():
             # Clean up
             await db.execute(
                 text("DELETE FROM generated_clips WHERE task_id = :task_id"),
-                {"task_id": test_task_id}
+                {"task_id": test_task_id},
             )
             await db.execute(
-                text("DELETE FROM tasks WHERE id = :task_id"),
-                {"task_id": test_task_id}
+                text("DELETE FROM tasks WHERE id = :task_id"), {"task_id": test_task_id}
             )
             await db.commit()
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("🎉 TEST PASSED: Parameter shadowing bug is FIXED")
-            print("="*80)
+            print("=" * 80)
             print("\nThe bug was:")
             print("  Parameter name 'text' shadowed SQLAlchemy's text() function")
             print("\nThe fix:")
@@ -121,6 +122,7 @@ async def test_clip_save():
         except Exception as e:
             print(f"\n❌ TEST FAILED: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 

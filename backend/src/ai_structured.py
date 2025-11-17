@@ -90,7 +90,7 @@ async def analyze_transcript_structured(
     min_length: int = 10,
     max_length: int = 45,
     custom_prompt: str | None = None,
-    model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    model: str = "meta-llama/llama-4-scout-17b-16e-instruct",
 ) -> TranscriptAnalysis:
     """
     Analyze transcript using Groq's Structured Outputs API.
@@ -115,11 +115,15 @@ async def analyze_transcript_structured(
     # Guard against empty transcripts
     if not transcript or len(transcript.strip()) == 0:
         logger.error("Cannot analyze empty transcript")
-        raise ValueError("Cannot analyze empty transcript - transcription may have failed")
+        raise ValueError(
+            "Cannot analyze empty transcript - transcription may have failed"
+        )
 
     if len(transcript.strip()) < 50:
         logger.error(f"Transcript too short ({len(transcript)} chars)")
-        raise ValueError(f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required")
+        raise ValueError(
+            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
+        )
 
     # Initialize Groq client
     api_key = os.getenv("GROQ_API_KEY")
@@ -129,7 +133,9 @@ async def analyze_transcript_structured(
     client = AsyncGroq(api_key=api_key)
 
     try:
-        logger.info(f"Analyzing transcript with Groq Structured Outputs ({len(transcript)} chars)")
+        logger.info(
+            f"Analyzing transcript with Groq Structured Outputs ({len(transcript)} chars)"
+        )
         logger.info(f"Using model: {model}")
         logger.info(f"Clip length settings - Min: {min_length}s, Max: {max_length}s")
         if custom_prompt:
@@ -144,7 +150,9 @@ async def analyze_transcript_structured(
         if custom_prompt:
             user_prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
 
-        user_prompt_parts.append("\nFind segments that would be compelling as standalone clips for social media.")
+        user_prompt_parts.append(
+            "\nFind segments that would be compelling as standalone clips for social media."
+        )
         user_prompt_parts.append(f"\nTranscript:\n{transcript}")
 
         user_prompt = "\n".join(user_prompt_parts)
@@ -153,25 +161,19 @@ async def analyze_transcript_structured(
         completion = await client.chat.completions.create(
             model=model,
             messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
             ],
             response_format={
                 "type": "json_schema",
                 "json_schema": {
                     "name": "transcript_analysis",
                     "strict": True,
-                    "schema": TranscriptAnalysis.model_json_schema()
-                }
+                    "schema": TranscriptAnalysis.model_json_schema(),
+                },
             },
             temperature=0.7,
-            max_tokens=4096
+            max_tokens=4096,
         )
 
         # Extract and parse the response
@@ -182,7 +184,9 @@ async def analyze_transcript_structured(
         analysis_data = json.loads(response_content)
         analysis = TranscriptAnalysis(**analysis_data)
 
-        logger.info(f"AI analysis found {len(analysis.most_relevant_segments)} segments")
+        logger.info(
+            f"AI analysis found {len(analysis.most_relevant_segments)} segments"
+        )
 
         # Validate segments
         validated_segments = []
@@ -245,7 +249,9 @@ async def analyze_transcript_structured(
 
         logger.info(f"Selected {len(validated_segments)} segments for processing")
         if validated_segments:
-            logger.info(f"Top segment score: {validated_segments[0].relevance_score:.2f}")
+            logger.info(
+                f"Top segment score: {validated_segments[0].relevance_score:.2f}"
+            )
 
         return final_analysis
 

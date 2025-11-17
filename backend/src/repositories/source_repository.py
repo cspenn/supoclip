@@ -17,7 +17,7 @@ class SourceRepository:
         source_type: str,
         title: str,
         url: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new source record and return its ID."""
         from ..models import Source
@@ -36,13 +36,15 @@ class SourceRepository:
         return source_id
 
     @staticmethod
-    async def get_source_by_id(db: AsyncSession, source_id: str) -> Optional[Dict[str, Any]]:
+    async def get_source_by_id(
+        db: AsyncSession, source_id: str
+    ) -> Optional[Dict[str, Any]]:
         """Get source by ID."""
         from sqlalchemy import text
 
         result = await db.execute(
             text("SELECT * FROM sources WHERE id = :source_id"),
-            {"source_id": source_id}
+            {"source_id": source_id},
         )
         row = result.fetchone()
 
@@ -53,9 +55,9 @@ class SourceRepository:
             "id": row.id,
             "type": row.type,
             "title": row.title,
-            "url": getattr(row, 'url', None),
-            "metadata": getattr(row, 'metadata', None),
-            "created_at": row.created_at
+            "url": getattr(row, "url", None),
+            "metadata": getattr(row, "metadata", None),
+            "created_at": row.created_at,
         }
 
     @staticmethod
@@ -65,7 +67,7 @@ class SourceRepository:
 
         await db.execute(
             text("UPDATE sources SET title = :title WHERE id = :source_id"),
-            {"title": title, "source_id": source_id}
+            {"title": title, "source_id": source_id},
         )
         await db.commit()
         logger.info(f"Updated source {source_id} title to: {title}")

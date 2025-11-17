@@ -32,7 +32,7 @@ class TaskService:
         title: Optional[str] = None,
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
-        font_color: str = "#FFFFFF"
+        font_color: str = "#FFFFFF",
     ) -> str:
         """
         Create a new task with associated source.
@@ -54,10 +54,7 @@ class TaskService:
 
         # Create source
         source_id = await self.source_repo.create_source(
-            self.db,
-            source_type=source_type,
-            title=title,
-            url=url
+            self.db, source_type=source_type, title=title, url=url
         )
 
         # Create task
@@ -68,7 +65,7 @@ class TaskService:
             status="queued",  # Changed from "processing" to "queued"
             font_family=font_family,
             font_size=font_size,
-            font_color=font_color
+            font_color=font_color,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -82,7 +79,7 @@ class TaskService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
@@ -93,13 +90,21 @@ class TaskService:
 
             # Update status to processing
             await self.task_repo.update_task_status(
-                self.db, task_id, "processing", progress=0, progress_message="Starting..."
+                self.db,
+                task_id,
+                "processing",
+                progress=0,
+                progress_message="Starting...",
             )
 
             # Progress callback wrapper
             async def update_progress(progress: int, message: str):
                 await self.task_repo.update_task_status(
-                    self.db, task_id, "processing", progress=progress, progress_message=message
+                    self.db,
+                    task_id,
+                    "processing",
+                    progress=progress,
+                    progress_message=message,
                 )
                 if progress_callback:
                     await progress_callback(progress, message)
@@ -111,12 +116,16 @@ class TaskService:
                 font_family=font_family,
                 font_size=font_size,
                 font_color=font_color,
-                progress_callback=update_progress
+                progress_callback=update_progress,
             )
 
             # Save clips to database
             await self.task_repo.update_task_status(
-                self.db, task_id, "processing", progress=95, progress_message="Saving clips..."
+                self.db,
+                task_id,
+                "processing",
+                progress=95,
+                progress_message="Saving clips...",
             )
 
             clip_ids = []
@@ -132,7 +141,7 @@ class TaskService:
                     clip_text=clip_info["text"],
                     relevance_score=clip_info["relevance_score"],
                     reasoning=clip_info["reasoning"],
-                    clip_order=i + 1
+                    clip_order=i + 1,
                 )
                 clip_ids.append(clip_id)
 
@@ -141,17 +150,23 @@ class TaskService:
 
             # Mark as completed
             await self.task_repo.update_task_status(
-                self.db, task_id, "completed", progress=100, progress_message="Complete!"
+                self.db,
+                task_id,
+                "completed",
+                progress=100,
+                progress_message="Complete!",
             )
 
-            logger.info(f"Task {task_id} completed successfully with {len(clip_ids)} clips")
+            logger.info(
+                f"Task {task_id} completed successfully with {len(clip_ids)} clips"
+            )
 
             return {
                 "task_id": task_id,
                 "clips_count": len(clip_ids),
                 "segments": result["segments"],
                 "summary": result.get("summary"),
-                "key_topics": result.get("key_topics")
+                "key_topics": result.get("key_topics"),
             }
 
         except Exception as e:
@@ -170,16 +185,16 @@ class TaskService:
 
         # Get clips with full backend URL
         clips = await self.clip_repo.get_clips_by_task(
-            self.db,
-            task_id,
-            backend_url=self.config.backend_url
+            self.db, task_id, backend_url=self.config.backend_url
         )
         task["clips"] = clips
         task["clips_count"] = len(clips)
 
         return task
 
-    async def get_user_tasks(self, user_id: str, limit: int = 50) -> list[Dict[str, Any]]:
+    async def get_user_tasks(
+        self, user_id: str, limit: int = 50
+    ) -> list[Dict[str, Any]]:
         """Get all tasks for a user."""
         return await self.task_repo.get_user_tasks(self.db, user_id, limit)
 

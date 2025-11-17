@@ -13,7 +13,7 @@ import uuid
 import matplotlib.font_manager as fm
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.ttFont import TTLibError
-from sqlalchemy import select, delete, func as db_func, or_
+from sqlalchemy import select, func as db_func, or_
 from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FontMetadata:
     """Metadata for a font file."""
-    
+
     id: Optional[str] = None
     name: str = ""
     family: str = ""
@@ -38,11 +38,11 @@ class FontMetadata:
 
 class FontService:
     """Service for detecting, validating, and managing fonts."""
-    
+
     def __init__(self, db_session=None, temp_dir: Path = Path("/tmp")):
         """
         Initialize FontService.
-        
+
         Args:
             db_session: Optional database session for caching
             temp_dir: Directory for temporary files
@@ -50,9 +50,9 @@ class FontService:
         self.db_session = db_session
         self.temp_dir = temp_dir
         self.bundled_fonts_dir = Path(__file__).parent.parent.parent / "fonts"
-        
+
         logger.info("🎨 FontService initialized")
-    
+
     async def get_bundled_fonts(self) -> List[FontMetadata]:
         """
         Get all bundled fonts from backend/fonts directory.
@@ -63,15 +63,21 @@ class FontService:
         logger.info("📦 Getting bundled fonts...")
 
         if not self.bundled_fonts_dir.exists():
-            logger.warning(f"⚠️ Bundled fonts directory not found: {self.bundled_fonts_dir}")
+            logger.warning(
+                f"⚠️ Bundled fonts directory not found: {self.bundled_fonts_dir}"
+            )
             return []
 
         bundled_fonts = []
 
         # Find all .ttf and .otf files
-        font_files = list(self.bundled_fonts_dir.glob("*.ttf")) + list(self.bundled_fonts_dir.glob("*.otf"))
+        font_files = list(self.bundled_fonts_dir.glob("*.ttf")) + list(
+            self.bundled_fonts_dir.glob("*.otf")
+        )
 
-        logger.info(f"🔍 Found {len(font_files)} font files in {self.bundled_fonts_dir}")
+        logger.info(
+            f"🔍 Found {len(font_files)} font files in {self.bundled_fonts_dir}"
+        )
 
         for font_path in font_files:
             try:
@@ -92,7 +98,7 @@ class FontService:
 
         logger.info(f"✅ Loaded {len(bundled_fonts)} bundled fonts")
         return bundled_fonts
-    
+
     async def detect_system_fonts(self) -> List[FontMetadata]:
         """
         Detect system-installed fonts using matplotlib.font_manager.
@@ -106,7 +112,7 @@ class FontService:
 
         try:
             # Use matplotlib's font_manager to find all system fonts
-            font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+            font_list = fm.findSystemFonts(fontpaths=None, fontext="ttf")
 
             logger.info(f"📊 Found {len(font_list)} TrueType fonts on system")
 
@@ -129,7 +135,9 @@ class FontService:
                         system_fonts.append(metadata)
 
                 except Exception as e:
-                    logger.debug(f"⚠️ Failed to process system font {font_path_str}: {e}")
+                    logger.debug(
+                        f"⚠️ Failed to process system font {font_path_str}: {e}"
+                    )
 
             logger.info(f"✅ Detected {len(system_fonts)} valid system fonts")
 
@@ -137,7 +145,7 @@ class FontService:
             logger.error(f"❌ System font detection failed: {e}")
 
         return system_fonts
-    
+
     async def extract_font_metadata(self, font_path: Path) -> Optional[FontMetadata]:
         """
         Extract metadata from a font file using fontTools.
@@ -153,7 +161,7 @@ class FontService:
             font = TTFont(str(font_path))
 
             # Extract name table
-            name_table = font['name']
+            name_table = font["name"]
 
             # Get font family name (nameID 1)
             family = None
@@ -181,8 +189,8 @@ class FontService:
 
             # Extract weight from OS/2 table if available
             weight = None
-            if 'OS/2' in font:
-                os2_table = font['OS/2']
+            if "OS/2" in font:
+                os2_table = font["OS/2"]
                 weight = os2_table.usWeightClass
 
             # Compute file hash
@@ -203,7 +211,7 @@ class FontService:
                     "file_size": font_path.stat().st_size,
                     "file_extension": font_path.suffix,
                 },
-                source="bundled"  # Will be overridden by caller
+                source="bundled",  # Will be overridden by caller
             )
 
             font.close()
@@ -212,7 +220,7 @@ class FontService:
         except Exception as e:
             logger.debug(f"⚠️ Failed to extract metadata from {font_path}: {e}")
             return None
-    
+
     async def validate_font(self, font_path: Path) -> bool:
         """
         Validate that a font file is readable and usable by MoviePy/ImageMagick.
@@ -250,12 +258,14 @@ class FontService:
             # maxp: maximum profile
             # hmtx: horizontal metrics
             # cmap: character to glyph mapping (critical for text rendering)
-            required_tables = ['head', 'hhea', 'maxp', 'hmtx', 'cmap']
+            required_tables = ["head", "hhea", "maxp", "hmtx", "cmap"]
 
             has_all_required = True
             for table in required_tables:
                 if table not in font:
-                    logger.debug(f"⚠️ Font missing required table '{table}': {font_path}")
+                    logger.debug(
+                        f"⚠️ Font missing required table '{table}': {font_path}"
+                    )
                     has_all_required = False
                     break
 
@@ -270,7 +280,7 @@ class FontService:
         except Exception as e:
             logger.debug(f"⚠️ Font validation exception for {font_path}: {e}")
             return False
-    
+
     async def compute_file_hash(self, file_path: Path) -> str:
         """
         Compute SHA256 hash of a font file.
@@ -294,7 +304,7 @@ class FontService:
         except Exception as e:
             logger.warning(f"⚠️ Failed to compute hash for {file_path}: {e}")
             return ""
-    
+
     async def cache_fonts(self, fonts: List[FontMetadata]) -> None:
         """
         Cache detected fonts in SQLite database.
@@ -348,7 +358,7 @@ class FontService:
                             is_valid=font.is_valid,
                             detection_timestamp=font.detection_timestamp,
                             metadata_json=font.metadata_json,
-                            source=font.source
+                            source=font.source,
                         )
                         self.db_session.add(db_font)
                         logger.debug(f"✨ Cached new font: {font.name}")
@@ -362,17 +372,15 @@ class FontService:
 
             # Commit all changes
             await self.db_session.commit()
-            logger.info(f"✅ Successfully cached fonts")
+            logger.info("✅ Successfully cached fonts")
 
         except Exception as e:
             logger.error(f"❌ Font caching failed: {e}")
             if self.db_session:
                 await self.db_session.rollback()
-    
+
     async def get_all_fonts(
-        self,
-        search_query: Optional[str] = None,
-        source_filter: Optional[str] = None
+        self, search_query: Optional[str] = None, source_filter: Optional[str] = None
     ) -> List[FontMetadata]:
         """
         Get all available fonts with optional filtering.
@@ -404,7 +412,7 @@ class FontService:
                 query = query.where(
                     or_(
                         db_func.lower(SystemFont.name).like(search_term),
-                        db_func.lower(SystemFont.family).like(search_term)
+                        db_func.lower(SystemFont.family).like(search_term),
                     )
                 )
 
@@ -425,7 +433,7 @@ class FontService:
                     is_valid=bool(f.is_valid),
                     detection_timestamp=f.detection_timestamp,
                     metadata_json=f.metadata_json,
-                    source=f.source
+                    source=f.source,
                 )
                 for f in db_fonts
             ]
@@ -436,30 +444,31 @@ class FontService:
         except Exception as e:
             logger.error(f"❌ Failed to retrieve fonts: {e}")
             return []
-    
+
     async def get_font_by_name(self, font_name: str) -> Optional[FontMetadata]:
         """
         Get a specific font by name.
-        
+
         Args:
             font_name: Name of the font
-            
+
         Returns:
             FontMetadata object or None if not found
         """
         # TODO: Implement font lookup by name
         logger.debug(f"🔎 Looking up font: {font_name}")
         return None
-    
+
     async def refresh_system_fonts(self) -> int:
         """
         Force refresh of system fonts.
-        
+
         Returns:
             Number of fonts detected
         """
         # TODO: Implement system font refresh
         logger.info("🔄 Refreshing system fonts...")
         return 0
+
 
 # end backend/src/services/font_service.py

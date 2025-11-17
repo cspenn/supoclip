@@ -35,10 +35,7 @@ def set_font_service(service: FontService) -> None:
     _font_service = service
 
 
-async def get_current_user(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-) -> str:
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> str:
     """FastAPI dependency to extract and validate current user.
 
     Checks both 'X-User-ID' and 'user-id' header formats.
@@ -65,7 +62,7 @@ async def get_current_user(
     try:
         result = await db.execute(
             text("SELECT id FROM users WHERE id = :user_id LIMIT 1"),
-            {"user_id": user_id}
+            {"user_id": user_id},
         )
         user = result.fetchone()
 
@@ -77,15 +74,16 @@ async def get_current_user(
         raise
     except Exception as e:
         logger.error(f"Error verifying user: {e}")
-        raise HTTPException(status_code=500, detail="Authentication verification failed")
+        raise HTTPException(
+            status_code=500, detail="Authentication verification failed"
+        )
 
     logger.info(f"User authenticated: {user_id}")
     return user_id
 
 
 async def get_optional_user(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
+    request: Request, db: AsyncSession = Depends(get_db)
 ) -> Optional[str]:
     """Optional version of get_current_user.
 
@@ -103,5 +101,6 @@ async def get_optional_user(
         return await get_current_user(request, db)
     except HTTPException:
         return None
+
 
 # end backend/src/dependencies.py

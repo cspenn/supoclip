@@ -7,6 +7,7 @@ This is the new main entry point with:
 - Real-time progress updates via SSE
 - Thread pool for blocking operations
 """
+from .api.routes.media import router as media_router
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
@@ -81,7 +82,6 @@ app.mount("/clips", StaticFiles(directory=str(clips_dir)), name="clips")
 app.include_router(tasks.router)
 
 # Keep existing utility endpoints
-from .api.routes.media import router as media_router
 
 app.include_router(media_router)
 

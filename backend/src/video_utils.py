@@ -5,22 +5,17 @@ Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
 
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
-import os
 import logging
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor
 import json
 
 import cv2
-from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ColorClip
+from moviepy import VideoFileClip, CompositeVideoClip, TextClip
 
-import srt
-from datetime import timedelta
 
 from .config import Config
 from .transcription_mlx import (
     transcribe_video_mlx,
-    load_cached_transcript_mlx,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,9 +98,7 @@ def get_video_transcript(video_path: Path) -> str:
 
             # Use SRT-style format with millisecond precision for AI analysis
             result_text = format_transcript_for_ai(result)
-            logger.info(
-                f"Transcript formatted with SRT: {len(result_text)} chars"
-            )
+            logger.info(f"Transcript formatted with SRT: {len(result_text)} chars")
             return result_text
         else:
             logger.error("No words found in transcription result")
@@ -727,8 +720,8 @@ def create_assemblyai_subtitles(
                     color=font_color,
                     stroke_color="black",
                     stroke_width=1,
-                    method="caption",           # Enable multi-line wrapping
-                    size=(MAX_TEXT_WIDTH, None), # Constrain width
+                    method="caption",  # Enable multi-line wrapping
+                    size=(MAX_TEXT_WIDTH, None),  # Constrain width
                     text_align="center",
                 )
 
@@ -747,10 +740,8 @@ def create_assemblyai_subtitles(
                     break
 
             # Finalize clip with timing
-            text_clip = (
-                text_clip
-                .with_duration(segment_duration)
-                .with_start(segment_start)
+            text_clip = text_clip.with_duration(segment_duration).with_start(
+                segment_start
             )
 
             # Position in lower middle (accounting for multi-line height)
@@ -854,11 +845,9 @@ def create_optimized_clip(
                     logo_position, position_map["top-right"]
                 )
 
-                logo_clip = (
-                    logo_clip.with_duration(cropped_clip.duration).with_position(
-                        logo_position_coords
-                    )
-                )
+                logo_clip = logo_clip.with_duration(
+                    cropped_clip.duration
+                ).with_position(logo_position_coords)
 
                 final_clips.append(logo_clip)
 
@@ -993,7 +982,7 @@ def apply_transition_effect(
 ) -> bool:
     """Apply transition effect between two clips using a transition video."""
     try:
-        from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
+        from moviepy import VideoFileClip, concatenate_videoclips
 
         # Load clips
         clip1 = VideoFileClip(str(clip1_path))

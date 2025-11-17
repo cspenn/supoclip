@@ -36,6 +36,19 @@ class UserPreferencesService:
         "logo_corner_position": "top-right",
     }
 
+    # Mapping from preference keys to database column names
+    PREFERENCE_FIELDS = {
+        "font_family": "default_font_family",
+        "font_size": "default_font_size",
+        "font_color": "default_font_color",
+        "clip_min_length": "default_clip_min_length",
+        "clip_target_length": "default_clip_target_length",
+        "clip_max_length": "default_clip_max_length",
+        "custom_ai_prompt": "custom_ai_prompt",
+        "logo_file_path": "logo_file_path",
+        "logo_corner_position": "logo_corner_position",
+    }
+
     def __init__(self, db: AsyncSession):
         """Initialize user preferences service.
 
@@ -43,6 +56,23 @@ class UserPreferencesService:
             db: Database session for querying user preferences
         """
         self.db = db
+
+    def _merge_with_defaults(self, user_prefs_row) -> dict[str, Any]:
+        """Merge user preferences with defaults using field mapping.
+
+        Args:
+            user_prefs_row: Database row containing user preferences
+
+        Returns:
+            Dictionary with user preferences merged with defaults
+        """
+        preferences = {}
+        for key, db_column in self.PREFERENCE_FIELDS.items():
+            user_value = (
+                getattr(user_prefs_row, db_column, None) if user_prefs_row else None
+            )
+            preferences[key] = user_value or self.DEFAULT_PREFERENCES[key]
+        return preferences
 
     async def get_user_preferences(self, user_id: str) -> dict[str, Any]:
         """Load user preferences from database.
@@ -60,14 +90,16 @@ class UserPreferencesService:
             ValueError: If user not found in database
         """
         result = await self.db.execute(
-            text("""
+            text(
+                """
                 SELECT default_font_family, default_font_size, default_font_color,
                        default_clip_min_length, default_clip_target_length,
                        default_clip_max_length, custom_ai_prompt,
                        logo_file_path, logo_corner_position
                 FROM users WHERE id = :user_id
-            """),
-            {"user_id": user_id}
+            """
+            ),
+            {"user_id": user_id},
         )
         user_prefs = result.fetchone()
 
@@ -77,25 +109,10 @@ class UserPreferencesService:
 
         logger.info(f"Loaded preferences for user {user_id}")
 
-        # Merge user preferences with defaults (user prefs take precedence)
-        preferences = {
-            "font_family": user_prefs.default_font_family or self.DEFAULT_PREFERENCES["font_family"],
-            "font_size": user_prefs.default_font_size or self.DEFAULT_PREFERENCES["font_size"],
-            "font_color": user_prefs.default_font_color or self.DEFAULT_PREFERENCES["font_color"],
-            "clip_min_length": user_prefs.default_clip_min_length or self.DEFAULT_PREFERENCES["clip_min_length"],
-            "clip_target_length": user_prefs.default_clip_target_length or self.DEFAULT_PREFERENCES["clip_target_length"],
-            "clip_max_length": user_prefs.default_clip_max_length or self.DEFAULT_PREFERENCES["clip_max_length"],
-            "custom_ai_prompt": user_prefs.custom_ai_prompt or self.DEFAULT_PREFERENCES["custom_ai_prompt"],
-            "logo_file_path": user_prefs.logo_file_path or self.DEFAULT_PREFERENCES["logo_file_path"],
-            "logo_corner_position": user_prefs.logo_corner_position or self.DEFAULT_PREFERENCES["logo_corner_position"],
-        }
-
-        return preferences
+        return self._merge_with_defaults(user_prefs)
 
     async def merge_with_request_options(
-        self,
-        user_id: str,
-        request_options: dict[str, Any]
+        self, user_id: str, request_options: dict[str, Any]
     ) -> dict[str, Any]:
         """Merge request options with user preferences and system defaults.
 
@@ -131,11 +148,18 @@ class UserPreferencesService:
                     merged[key] = request_value
 
         # Override clip settings if provided
-        for key in ["clip_min_length", "clip_target_length", "clip_max_length", "custom_ai_prompt"]:
+        for key in [
+            "clip_min_length",
+            "clip_target_length",
+            "clip_max_length",
+            "custom_ai_prompt",
+        ]:
             if key in request_options and request_options[key] is not None:
                 merged[key] = request_options[key]
 
-        logger.info(f"Merged preferences for user {user_id}: font={merged['font_family']}, size={merged['font_size']}")
+        logger.info(
+            f"Merged preferences for user {user_id}: font={merged['font_family']}, size={merged['font_size']}"
+        )
 
         return merged
 
@@ -150,5 +174,6 @@ class UserPreferencesService:
         """
         logo_file_path = preferences.get("logo_file_path")
         return Path(logo_file_path) if logo_file_path else None
+
 
 # end backend/src/services/user_preferences_service.py

@@ -8,7 +8,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 async def run_in_thread(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """
@@ -40,6 +41,7 @@ def async_wrap(func: Callable[..., T]) -> Callable[..., Any]:
         # Can now be awaited:
         result = await my_sync_function(arg1, arg2)
     """
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> T:
         return await run_in_thread(func, *args, **kwargs)

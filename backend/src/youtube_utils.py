@@ -16,6 +16,7 @@ from .config import Config
 logger = logging.getLogger(__name__)
 config = Config()
 
+
 class YouTubeDownloader:
     """Enhanced YouTube downloader with optimized settings."""
 
@@ -28,48 +29,51 @@ class YouTubeDownloader:
         output_path = self.temp_dir / f"{video_id}.%(ext)s"
 
         return {
-            'outtmpl': str(output_path),
+            "outtmpl": str(output_path),
             # More permissive format selection to avoid "format not available" errors
-            'format': 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b',
-            'merge_output_format': 'mp4',
-            'writesubtitles': False,
-            'writeautomaticsub': False,
+            "format": "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
+            "merge_output_format": "mp4",
+            "writesubtitles": False,
+            "writeautomaticsub": False,
             # Optimized for speed and reliability
-            'socket_timeout': 30,
-            'retries': 5,  # Increased retries
-            'fragment_retries': 5,
-            'http_chunk_size': 10485760,  # 10MB chunks
+            "socket_timeout": 30,
+            "retries": 5,  # Increased retries
+            "fragment_retries": 5,
+            "http_chunk_size": 10485760,  # 10MB chunks
             # Quiet operation - only errors/warnings
-            'quiet': True,
-            'no_warnings': False,  # Show warnings but not info
-            'ignoreerrors': False,
+            "quiet": True,
+            "no_warnings": False,  # Show warnings but not info
+            "ignoreerrors": False,
             # Enhanced headers to avoid 403 errors
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
             },
             # Simplified YouTube bypass - use android client for better reliability
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],
                 }
             },
             # Post-processing options
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
+            "postprocessors": [
+                {
+                    "key": "FFmpegVideoConvertor",
+                    "preferedformat": "mp4",
+                }
+            ],
             # Metadata extraction
-            'extract_flat': False,
-            'writeinfojson': False,
+            "extract_flat": False,
+            "writeinfojson": False,
             # Additional bypass options
-            'nocheckcertificate': True,
-            'prefer_insecure': False,
-            'age_limit': None,
+            "nocheckcertificate": True,
+            "prefer_insecure": False,
+            "age_limit": None,
         }
+
 
 def get_youtube_video_id(url: str) -> Optional[str]:
     """
@@ -103,7 +107,7 @@ def get_youtube_video_id(url: str) -> Optional[str]:
     # Fallback: parse query parameters
     try:
         parsed_url = urlparse(url)
-        if 'youtube.com' in parsed_url.netloc.lower():
+        if "youtube.com" in parsed_url.netloc.lower():
             query = parse_qs(parsed_url.query)
             video_ids = query.get("v")
             if video_ids and len(video_ids[0]) == 11:
@@ -113,10 +117,12 @@ def get_youtube_video_id(url: str) -> Optional[str]:
 
     return None
 
+
 def validate_youtube_url(url: str) -> bool:
     """Validate if URL is a proper YouTube URL."""
     video_id = get_youtube_video_id(url)
     return video_id is not None
+
 
 def get_youtube_video_info(url: str) -> Optional[Dict[str, Any]]:
     """
@@ -130,48 +136,49 @@ def get_youtube_video_info(url: str) -> Optional[Dict[str, Any]]:
 
     try:
         ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extractaudio': False,
-            'skip_download': True,
-            'socket_timeout': 30,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Connection': 'keep-alive',
+            "quiet": True,
+            "no_warnings": True,
+            "extractaudio": False,
+            "skip_download": True,
+            "socket_timeout": 30,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Connection": "keep-alive",
             },
             # Simplified extractor args for better compatibility
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],
                 }
             },
-            'nocheckcertificate': True,
+            "nocheckcertificate": True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
             return {
-                'id': info.get('id'),
-                'title': info.get('title'),
-                'description': info.get('description', ''),
-                'duration': info.get('duration'),
-                'uploader': info.get('uploader'),
-                'upload_date': info.get('upload_date'),
-                'view_count': info.get('view_count'),
-                'like_count': info.get('like_count'),
-                'thumbnail': info.get('thumbnail'),
-                'format_id': info.get('format_id'),
-                'resolution': info.get('resolution'),
-                'fps': info.get('fps'),
-                'filesize': info.get('filesize'),
+                "id": info.get("id"),
+                "title": info.get("title"),
+                "description": info.get("description", ""),
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader"),
+                "upload_date": info.get("upload_date"),
+                "view_count": info.get("view_count"),
+                "like_count": info.get("like_count"),
+                "thumbnail": info.get("thumbnail"),
+                "format_id": info.get("format_id"),
+                "resolution": info.get("resolution"),
+                "fps": info.get("fps"),
+                "filesize": info.get("filesize"),
             }
 
     except Exception as e:
         logger.error(f"Error extracting video info: {e}")
         return None
+
 
 def get_youtube_video_title(url: str) -> Optional[str]:
     """
@@ -179,7 +186,8 @@ def get_youtube_video_title(url: str) -> Optional[str]:
     Enhanced with better error handling and validation.
     """
     video_info = get_youtube_video_info(url)
-    return video_info.get('title') if video_info else None
+    return video_info.get("title") if video_info else None
+
 
 def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
     """
@@ -204,7 +212,7 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
     logger.info(f"Video: '{video_info.get('title')}' ({video_info.get('duration')}s)")
 
     # Check if video is too long (optional safeguard)
-    duration = video_info.get('duration', 0)
+    duration = video_info.get("duration", 0)
     if duration > 3600:  # 1 hour limit
         logger.warning(f"Video duration ({duration}s) exceeds recommended limit")
 
@@ -222,17 +230,25 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
                 # Find the downloaded file
                 logger.info(f"Searching for downloaded file: {video_id}.*")
                 for file_path in downloader.temp_dir.glob(f"{video_id}.*"):
-                    if file_path.is_file() and file_path.suffix.lower() in ['.mp4', '.mkv', '.webm']:
+                    if file_path.is_file() and file_path.suffix.lower() in [
+                        ".mp4",
+                        ".mkv",
+                        ".webm",
+                    ]:
                         file_size = file_path.stat().st_size
-                        logger.info(f"Download successful: {file_path.name} ({file_size // 1024 // 1024}MB)")
+                        logger.info(
+                            f"Download successful: {file_path.name} ({file_size // 1024 // 1024}MB)"
+                        )
                         return file_path
 
-                logger.warning(f"No video file found after download attempt {attempt + 1}")
+                logger.warning(
+                    f"No video file found after download attempt {attempt + 1}"
+                )
 
         except yt_dlp.utils.DownloadError as e:
             logger.warning(f"Download attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff: 1, 2, 4 seconds
+                wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
                 logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
@@ -241,7 +257,7 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
         except Exception as e:
             logger.error(f"Unexpected error during download attempt {attempt + 1}: {e}")
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
@@ -249,12 +265,16 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
 
     return None
 
+
 def get_video_duration(url: str) -> Optional[int]:
     """Get video duration in seconds without downloading."""
     video_info = get_youtube_video_info(url)
-    return video_info.get('duration') if video_info else None
+    return video_info.get("duration") if video_info else None
 
-def is_video_suitable_for_processing(url: str, min_duration: int = 60, max_duration: int = 7200) -> bool:
+
+def is_video_suitable_for_processing(
+    url: str, min_duration: int = 60, max_duration: int = 7200
+) -> bool:
     """
     Check if video is suitable for processing based on duration and other factors.
     Default limits: 1 minute to 2 hours.
@@ -263,16 +283,19 @@ def is_video_suitable_for_processing(url: str, min_duration: int = 60, max_durat
     if not video_info:
         return False
 
-    duration = video_info.get('duration', 0)
+    duration = video_info.get("duration", 0)
 
     # Check duration constraints
     if duration < min_duration or duration > max_duration:
-        logger.warning(f"Video duration {duration}s outside allowed range ({min_duration}-{max_duration}s)")
+        logger.warning(
+            f"Video duration {duration}s outside allowed range ({min_duration}-{max_duration}s)"
+        )
         return False
 
     # Additional checks could go here (e.g., content type, quality, etc.)
 
     return True
+
 
 def cleanup_downloaded_files(video_id: str):
     """Clean up downloaded files for a specific video ID."""
@@ -286,7 +309,10 @@ def cleanup_downloaded_files(video_id: str):
         except Exception as e:
             logger.warning(f"Failed to cleanup {file_path.name}: {e}")
 
+
 # Backward compatibility functions
+
+
 def extract_video_id(url: str) -> Optional[str]:
     """Backward compatibility wrapper."""
     return get_youtube_video_id(url)

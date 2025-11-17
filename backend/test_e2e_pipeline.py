@@ -2,6 +2,10 @@
 End-to-end integration test for video processing pipeline.
 Tests the complete flow: transcription → AI analysis → clip creation → database storage.
 """
+from src.config import Config
+from src.ai import get_most_relevant_parts_by_transcript
+from src.video_utils import get_video_transcript, create_clips_with_transitions
+from src.transcription_mlx import transcribe_video_mlx
 import sys
 import asyncio
 from pathlib import Path
@@ -11,16 +15,12 @@ backend_path = Path(__file__).parent
 if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
-from src.transcription_mlx import transcribe_video_mlx
-from src.video_utils import get_video_transcript, create_clips_with_transitions
-from src.ai import get_most_relevant_parts_by_transcript
-from src.config import Config
 
 async def test_complete_pipeline():
     """End-to-end test of video processing pipeline."""
-    print("="*80)
+    print("=" * 80)
     print("END-TO-END PIPELINE TEST")
-    print("="*80)
+    print("=" * 80)
 
     # Find a test video
     video_path = list(Path("temp/uploads").glob("*.mp4"))
@@ -36,27 +36,31 @@ async def test_complete_pipeline():
     total_checks = 6
 
     # ===== STEP 1: Transcription =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 1: TRANSCRIPTION (parakeet-mlx)")
-    print("="*80)
+    print("=" * 80)
     try:
         result = transcribe_video_mlx(video_file)
 
         if result["text"] and len(result["text"]) > 50:
-            print(f"✅ Transcript generated: {len(result['text'])} chars, {len(result['words'])} words")
+            print(
+                f"✅ Transcript generated: {len(result['text'])} chars, {len(result['words'])} words"
+            )
             print(f"   Preview: {result['text'][:100]}...")
             success_count += 1
         else:
-            print(f"❌ Transcript too short or empty: {len(result.get('text', ''))} chars")
+            print(
+                f"❌ Transcript too short or empty: {len(result.get('text', ''))} chars"
+            )
             return False
     except Exception as e:
         print(f"❌ Transcription failed: {e}")
         return False
 
     # ===== STEP 2: Format Transcript for AI =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 2: FORMAT TRANSCRIPT")
-    print("="*80)
+    print("=" * 80)
     try:
         formatted_transcript = get_video_transcript(video_file)
 
@@ -65,27 +69,31 @@ async def test_complete_pipeline():
             print(f"   Sample segment: {formatted_transcript[:150]}...")
             success_count += 1
         else:
-            print(f"❌ Formatted transcript too short: {len(formatted_transcript)} chars")
+            print(
+                f"❌ Formatted transcript too short: {len(formatted_transcript)} chars"
+            )
             return False
     except Exception as e:
         print(f"❌ Transcript formatting failed: {e}")
         return False
 
     # ===== STEP 3: AI Analysis =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 3: AI ANALYSIS")
-    print("="*80)
+    print("=" * 80)
     try:
         analysis = await get_most_relevant_parts_by_transcript(formatted_transcript)
 
         if len(analysis.most_relevant_segments) > 0:
             print(f"✅ AI found {len(analysis.most_relevant_segments)} segments")
             for i, seg in enumerate(analysis.most_relevant_segments[:3], 1):
-                print(f"   Segment {i}: {seg.start_time} → {seg.end_time} (score: {seg.relevance_score:.2f})")
+                print(
+                    f"   Segment {i}: {seg.start_time} → {seg.end_time} (score: {seg.relevance_score:.2f})"
+                )
                 print(f"      Text: {seg.text[:80]}...")
             success_count += 1
         else:
-            print(f"❌ AI found no segments")
+            print("❌ AI found no segments")
             return False
     except ValueError as e:
         print(f"❌ AI analysis rejected transcript: {e}")
@@ -93,29 +101,32 @@ async def test_complete_pipeline():
     except Exception as e:
         print(f"❌ AI analysis failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
     # ===== STEP 4: Validate Segments =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 4: VALIDATE SEGMENTS")
-    print("="*80)
+    print("=" * 80)
     segments_valid = True
     for seg in analysis.most_relevant_segments:
         # Check timestamps are in transcript (not hallucinated)
         if seg.start_time in formatted_transcript:
             continue
         else:
-            print(f"⚠️  Warning: Timestamp {seg.start_time} not found in transcript (may be hallucinated)")
+            print(
+                f"⚠️  Warning: Timestamp {seg.start_time} not found in transcript (may be hallucinated)"
+            )
             # This is not a failure - timestamps are approximate
 
-    print(f"✅ Segment validation complete")
+    print("✅ Segment validation complete")
     success_count += 1
 
     # ===== STEP 5: Create Clips =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 5: CREATE VIDEO CLIPS")
-    print("="*80)
+    print("=" * 80)
     try:
         clips_output_dir = Path(config.temp_dir) / "clips" / "test_e2e"
         clips_output_dir.mkdir(parents=True, exist_ok=True)
@@ -127,9 +138,10 @@ async def test_complete_pipeline():
                 "end_time": seg.end_time,
                 "text": seg.text,
                 "relevance_score": seg.relevance_score,
-                "reasoning": seg.reasoning
+                "reasoning": seg.reasoning,
             }
-            for seg in analysis.most_relevant_segments[:2]  # Test with first 2 segments only
+            # Test with first 2 segments only
+            for seg in analysis.most_relevant_segments[:2]
         ]
 
         print(f"   Creating {len(segments_dict)} test clips...")
@@ -139,7 +151,7 @@ async def test_complete_pipeline():
             clips_output_dir,
             font_family="THEBOLDFONT-FREEVERSION",
             font_size=24,
-            font_color="#FFFFFF"
+            font_color="#FFFFFF",
         )
 
         if len(clips_info) > 0:
@@ -154,20 +166,22 @@ async def test_complete_pipeline():
                     return False
             success_count += 1
         else:
-            print(f"❌ No clips created")
+            print("❌ No clips created")
             return False
     except Exception as e:
         print(f"❌ Clip creation failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
     # ===== STEP 6: Verify Clip IDs Storage (JSON Format) =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("STEP 6: VERIFY JSON SERIALIZATION")
-    print("="*80)
+    print("=" * 80)
     try:
         import json
+
         clip_ids = [clip["id"] for clip in clips_info if "id" in clip]
         if not clip_ids:
             # Generate test IDs
@@ -178,22 +192,22 @@ async def test_complete_pipeline():
         deserialized = json.loads(json_str)
 
         if deserialized == clip_ids:
-            print(f"✅ JSON serialization works correctly")
+            print("✅ JSON serialization works correctly")
             print(f"   Original: {clip_ids}")
             print(f"   JSON: {json_str}")
             print(f"   Deserialized: {deserialized}")
             success_count += 1
         else:
-            print(f"❌ JSON round-trip failed")
+            print("❌ JSON round-trip failed")
             return False
     except Exception as e:
         print(f"❌ JSON serialization test failed: {e}")
         return False
 
     # ===== FINAL RESULTS =====
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print(f"FINAL RESULTS: {success_count}/{total_checks} checks passed")
-    print("="*80)
+    print("=" * 80)
 
     if success_count == total_checks:
         print("\n🎉 END-TO-END PIPELINE TEST PASSED!")
@@ -207,8 +221,11 @@ async def test_complete_pipeline():
         print("\n🚀 Your video processing pipeline is FULLY OPERATIONAL!")
         return True
     else:
-        print(f"\n❌ PIPELINE TEST FAILED: {total_checks - success_count} checks failed")
+        print(
+            f"\n❌ PIPELINE TEST FAILED: {total_checks - success_count} checks failed"
+        )
         return False
+
 
 if __name__ == "__main__":
     result = asyncio.run(test_complete_pipeline())

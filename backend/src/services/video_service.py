@@ -9,12 +9,9 @@ from ..utils.async_helpers import run_in_thread
 from ..youtube_utils import (
     download_youtube_video,
     get_youtube_video_title,
-    get_youtube_video_id
+    get_youtube_video_id,
 )
-from ..video_utils import (
-    get_video_transcript,
-    create_clips_with_transitions
-)
+from ..video_utils import get_video_transcript, create_clips_with_transitions
 from ..ai import get_most_relevant_parts_by_transcript
 from ..config import Config
 
@@ -24,11 +21,13 @@ config = Config()
 
 class VideoDownloadError(Exception):
     """Raised when video download fails."""
+
     pass
 
 
 class VideoNotFoundError(Exception):
     """Raised when video file is not found."""
+
     pass
 
 
@@ -52,7 +51,9 @@ class VideoService:
             logger.info(f"Video downloaded successfully: {video_path}")
             return video_path
         except Exception as e:
-            logger.error(f"Exception during video download from {url}: {e}", exc_info=True)
+            logger.error(
+                f"Exception during video download from {url}: {e}", exc_info=True
+            )
             raise
 
     @staticmethod
@@ -80,7 +81,10 @@ class VideoService:
             logger.info(f"Transcript generated: {len(transcript)} characters")
             return transcript
         except Exception as e:
-            logger.error(f"Exception during transcript generation for {video_path}: {e}", exc_info=True)
+            logger.error(
+                f"Exception during transcript generation for {video_path}: {e}",
+                exc_info=True,
+            )
             raise
 
     @staticmethod
@@ -91,7 +95,9 @@ class VideoService:
         """
         logger.info("Starting AI analysis of transcript")
         relevant_parts = await get_most_relevant_parts_by_transcript(transcript)
-        logger.info(f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found")
+        logger.info(
+            f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
+        )
         return relevant_parts
 
     @staticmethod
@@ -100,7 +106,7 @@ class VideoService:
         segments: List[Dict[str, Any]],
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
-        font_color: str = "#FFFFFF"
+        font_color: str = "#FFFFFF",
     ) -> List[Dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.
@@ -118,13 +124,15 @@ class VideoService:
                 clips_output_dir,
                 font_family,
                 font_size,
-                font_color
+                font_color,
             )
 
             logger.info(f"Successfully created {len(clips_info)} clips")
             return clips_info
         except Exception as e:
-            logger.error(f"Exception during clip creation for {video_path}: {e}", exc_info=True)
+            logger.error(
+                f"Exception during clip creation for {video_path}: {e}", exc_info=True
+            )
             raise
 
     @staticmethod
@@ -140,7 +148,7 @@ class VideoService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
         """
         Complete video processing pipeline.
@@ -157,7 +165,9 @@ class VideoService:
             if source_type == "youtube":
                 video_path = await VideoService.download_video(url)
                 if not video_path:
-                    raise VideoDownloadError(f"Failed to download video from URL: {url}")
+                    raise VideoDownloadError(
+                        f"Failed to download video from URL: {url}"
+                    )
             else:
                 video_path = Path(url)
                 if not video_path.exists():
@@ -170,14 +180,18 @@ class VideoService:
                 await progress_callback(30, "Generating transcript...")
 
             transcript = await VideoService.generate_transcript(video_path)
-            logger.info(f"Step 2 complete: Transcript generated ({len(transcript)} characters)")
+            logger.info(
+                f"Step 2 complete: Transcript generated ({len(transcript)} characters)"
+            )
 
             # Step 3: AI analysis
             if progress_callback:
                 await progress_callback(50, "Analyzing content with AI...")
 
             relevant_parts = await VideoService.analyze_transcript(transcript)
-            logger.info(f"Step 3 complete: AI analysis done ({len(relevant_parts.most_relevant_segments)} segments identified)")
+            logger.info(
+                f"Step 3 complete: AI analysis done ({len(relevant_parts.most_relevant_segments)} segments identified)"
+            )
 
             # Step 4: Create clips
             if progress_callback:
@@ -189,17 +203,13 @@ class VideoService:
                     "end_time": segment.end_time,
                     "text": segment.text,
                     "relevance_score": segment.relevance_score,
-                    "reasoning": segment.reasoning
+                    "reasoning": segment.reasoning,
                 }
                 for segment in relevant_parts.most_relevant_segments
             ]
 
             clips_info = await VideoService.create_video_clips(
-                video_path,
-                segments_json,
-                font_family,
-                font_size,
-                font_color
+                video_path, segments_json, font_family, font_size, font_color
             )
             logger.info(f"Step 4 complete: Created {len(clips_info)} video clips")
 
@@ -210,7 +220,7 @@ class VideoService:
                 "segments": segments_json,
                 "clips": clips_info,
                 "summary": relevant_parts.summary if relevant_parts else None,
-                "key_topics": relevant_parts.key_topics if relevant_parts else None
+                "key_topics": relevant_parts.key_topics if relevant_parts else None,
             }
 
         except Exception as e:

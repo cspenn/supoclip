@@ -89,7 +89,9 @@ class LegacySyncVideoService:
             logger.info("[SERVICE=LEGACY] Getting YouTube video title")
             source.title = get_youtube_video_title(raw_source["url"])
             if not source.title:
-                logger.warning("[SERVICE=LEGACY] Could not get YouTube title, using default")
+                logger.warning(
+                    "[SERVICE=LEGACY] Could not get YouTube title, using default"
+                )
                 source.title = "YouTube Video"
             logger.info(f"[SERVICE=LEGACY] Video title: {source.title}")
         else:
@@ -137,12 +139,16 @@ class LegacySyncVideoService:
 
             # Verify the uploaded file exists
             if not Path(video_path).exists():
-                logger.error(f"[SERVICE=LEGACY] Uploaded video file not found: {video_path}")
+                logger.error(
+                    f"[SERVICE=LEGACY] Uploaded video file not found: {video_path}"
+                )
                 raise Exception("Uploaded video file not found")
 
         # Process video (same for both YouTube and uploaded videos)
         if video_path:
-            logger.info("[SERVICE=LEGACY] Starting transcript generation with AssemblyAI + SRT equalization")
+            logger.info(
+                "[SERVICE=LEGACY] Starting transcript generation with AssemblyAI + SRT equalization"
+            )
             transcript = get_video_transcript(video_path)
             logger.info(
                 f"[SERVICE=LEGACY] AssemblyAI transcript generated with 10-char line equalization (length: {len(transcript)} characters)"
@@ -153,7 +159,7 @@ class LegacySyncVideoService:
                 transcript,
                 min_length=clip_min_length,
                 max_length=clip_max_length,
-                custom_prompt=custom_ai_prompt
+                custom_prompt=custom_ai_prompt,
             )
             logger.info(
                 f"[SERVICE=LEGACY] AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
@@ -171,10 +177,14 @@ class LegacySyncVideoService:
                 }
                 for segment in relevant_parts.most_relevant_segments
             ]
-            logger.info(f"[SERVICE=LEGACY] Created {len(relevant_segments_json)} segment records")
+            logger.info(
+                f"[SERVICE=LEGACY] Created {len(relevant_segments_json)} segment records"
+            )
 
             # Create clips from relevant segments with transitions and custom fonts
-            logger.info("[SERVICE=LEGACY] Starting video clip generation with transitions")
+            logger.info(
+                "[SERVICE=LEGACY] Starting video clip generation with transitions"
+            )
             clips_output_dir = Path(self.config.temp_dir) / "clips"
             logger.info(f"[SERVICE=LEGACY] Output directory: {clips_output_dir}")
             logger.info(
@@ -190,7 +200,9 @@ class LegacySyncVideoService:
                 logo_path,
                 logo_corner_position,
             )
-            logger.info(f"[SERVICE=LEGACY] Generated {len(clips_info)} video clips with transitions")
+            logger.info(
+                f"[SERVICE=LEGACY] Generated {len(clips_info)} video clips with transitions"
+            )
 
             # Save clips to database
             logger.info("[SERVICE=LEGACY] Saving clips to database")
@@ -214,12 +226,16 @@ class LegacySyncVideoService:
                 self.db.add(clip_record)
                 await self.db.flush()
                 clip_ids.append(clip_record.id)
-                logger.info(f"[SERVICE=LEGACY] Clip {i+1} saved with ID: {clip_record.id}")
+                logger.info(
+                    f"[SERVICE=LEGACY] Clip {i+1} saved with ID: {clip_record.id}"
+                )
 
             # Update task with clip IDs
             logger.info(f"[SERVICE=LEGACY] Updating task with {len(clip_ids)} clip IDs")
             await self.db.execute(
-                text("UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"),
+                text(
+                    "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
+                ),
                 {"clip_ids": json.dumps(clip_ids), "task_id": task.id},
             )
             await self.db.commit()
@@ -241,5 +257,6 @@ class LegacySyncVideoService:
             "summary": relevant_parts.summary if relevant_parts else None,
             "key_topics": relevant_parts.key_topics if relevant_parts else None,
         }
+
 
 # end backend/src/services/video_service_legacy.py

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 import logging
 
-from ...services.font_service import FontService, FontMetadata
+from ...services.font_service import FontService
 from ...dependencies import get_font_service
 
 router = APIRouter(prefix="/fonts", tags=["fonts"])
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @router.get("")
 async def list_fonts(
     source: str = Query(None, description="Filter by source: 'bundled' or 'system'"),
-    service: FontService = Depends(get_font_service)
+    service: FontService = Depends(get_font_service),
 ) -> List[Dict[str, Any]]:
     """
     Get all available fonts.
@@ -51,7 +51,7 @@ async def list_fonts(
 @router.get("/search")
 async def search_fonts(
     q: str = Query(..., description="Search query for font name or family"),
-    service: FontService = Depends(get_font_service)
+    service: FontService = Depends(get_font_service),
 ) -> List[Dict[str, Any]]:
     """
     Search for fonts by name or family.
@@ -63,7 +63,9 @@ async def search_fonts(
         List of matching font metadata objects
     """
     if not q or len(q) < 2:
-        raise HTTPException(status_code=400, detail="Search query must be at least 2 characters")
+        raise HTTPException(
+            status_code=400, detail="Search query must be at least 2 characters"
+        )
 
     try:
         fonts = await service.get_all_fonts(search_query=q)
@@ -86,7 +88,7 @@ async def search_fonts(
 
 @router.post("/refresh")
 async def refresh_fonts(
-    service: FontService = Depends(get_font_service)
+    service: FontService = Depends(get_font_service),
 ) -> Dict[str, Any]:
     """
     Force refresh of system fonts.
@@ -120,8 +122,7 @@ async def refresh_fonts(
 
 @router.get("/{font_name}")
 async def get_font_file(
-    font_name: str,
-    service: FontService = Depends(get_font_service)
+    font_name: str, service: FontService = Depends(get_font_service)
 ) -> FileResponse:
     """
     Serve a font file by name.
@@ -155,12 +156,13 @@ async def get_font_file(
             headers={
                 "Cache-Control": "public, max-age=86400",
                 "Content-Disposition": f"inline; filename={font_name}.ttf",
-            }
+            },
         )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Failed to serve font {font_name}: {e}")
         raise HTTPException(status_code=500, detail="Failed to serve font file")
+
 
 # end backend/src/api/routes/fonts.py

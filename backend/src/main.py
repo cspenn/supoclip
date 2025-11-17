@@ -3,19 +3,16 @@ from .video_utils import *
 from .ai import *
 from .config import Config
 from .logging_config import setup_logging, cleanup_old_logs
-from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 import asyncio
-import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .models import Task, Source, GeneratedClip
 from .database import init_db, close_db, get_db, AsyncSessionLocal
 from .api.routes.tasks import router as tasks_router
 from .api.routes.fonts import router as fonts_router
@@ -51,6 +48,7 @@ async def initialize_font_service(db_session: AsyncSession) -> None:
 
     # Detect and cache system fonts in background
     asyncio.create_task(_detect_system_fonts_background(font_service))
+
 
 async def _detect_system_fonts_background(font_service: FontService) -> None:
     """Background task to detect and cache system fonts."""
@@ -133,10 +131,7 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/start")
-async def start_task(
-    request: Request,
-    user_id: str = Depends(get_current_user)
-):
+async def start_task(request: Request, user_id: str = Depends(get_current_user)):
     """Start a new task for authenticated users (legacy synchronous endpoint)"""
     logger.info(f"Starting new task request for user {user_id}")
 
@@ -170,7 +165,9 @@ async def start_task(
                 "custom_ai_prompt": data.get("custom_ai_prompt"),
             }
 
-            preferences = await pref_service.merge_with_request_options(user_id, request_opts)
+            preferences = await pref_service.merge_with_request_options(
+                user_id, request_opts
+            )
             logo_path = pref_service.get_logo_path(preferences)
 
             logger.info(f"User {user_id} preferences loaded and merged")
@@ -199,8 +196,7 @@ async def start_task(
 
 @app.post("/start-with-progress")
 async def start_task_with_progress(
-    request: Request,
-    user_id: str = Depends(get_current_user)
+    request: Request, user_id: str = Depends(get_current_user)
 ):
     """Start a new task and return task ID for SSE tracking (async endpoint)"""
 
@@ -235,7 +231,9 @@ async def start_task_with_progress(
                 "custom_ai_prompt": data.get("custom_ai_prompt"),
             }
 
-            preferences = await pref_service.merge_with_request_options(user_id, request_opts)
+            preferences = await pref_service.merge_with_request_options(
+                user_id, request_opts
+            )
             logo_path = pref_service.get_logo_path(preferences)
 
             logger.info(f"User {user_id} preferences loaded and merged")
@@ -317,7 +315,8 @@ async def get_task_clips(task_id: str, db: AsyncSession = Depends(get_db)):
                 "reasoning": clip.reasoning,
                 "clip_order": clip.clip_order,
                 "created_at": clip.created_at.isoformat(),
-                "video_url": f"/clips/{clip.filename}",  # URL for frontend to access the clip
+                # URL for frontend to access the clip
+                "video_url": f"/clips/{clip.filename}",
             }
             clips_data.append(clip_data)
 
@@ -418,7 +417,7 @@ async def get_default_ai_prompt():
         logger.info("Retrieving default AI prompt")
         return {
             "prompt": simplified_system_prompt,
-            "description": "Default system prompt for AI-powered clip selection"
+            "description": "Default system prompt for AI-powered clip selection",
         }
 
     except Exception as e:
@@ -433,7 +432,6 @@ async def get_default_ai_prompt():
 async def upload_video(request: Request):
     """Upload a video to the server"""
     try:
-        from fastapi import UploadFile, File, Form
         import aiofiles
 
         # Get the form data
@@ -468,15 +466,11 @@ async def upload_video(request: Request):
 
 
 @app.post("/upload-logo")
-async def upload_logo(
-    request: Request,
-    user_id: str = Depends(get_current_user)
-):
+async def upload_logo(request: Request, user_id: str = Depends(get_current_user)):
     """Upload logo image for user branding"""
     try:
         from PIL import Image
         import aiofiles
-        import uuid
 
         logger.info(f"Logo upload request from user {user_id}")
 
@@ -491,7 +485,9 @@ async def upload_logo(
         allowed_extensions = {".png", ".jpg", ".jpeg"}
         file_extension = Path(logo_file.filename).suffix.lower()
         if file_extension not in allowed_extensions:
-            raise HTTPException(status_code=400, detail="Only PNG and JPG files allowed")
+            raise HTTPException(
+                status_code=400, detail="Only PNG and JPG files allowed"
+            )
 
         # Create logos directory
         logos_dir = Path(config.temp_dir) / "logos"

@@ -45,12 +45,13 @@ class ClipRepository:
         clip_text: str,
         relevance_score: float,
         reasoning: str,
-        clip_order: int
+        clip_order: int,
     ) -> str:
         """Create a new clip record and return its ID."""
         clip_id = str(uuid.uuid4())
         result = await db.execute(
-            text("""
+            text(
+                """
                 INSERT INTO generated_clips
                 (id, task_id, filename, file_path, start_time, end_time, duration,
                  text, relevance_score, reasoning, clip_order)
@@ -58,7 +59,8 @@ class ClipRepository:
                 (:id, :task_id, :filename, :file_path, :start_time, :end_time, :duration,
                  :text, :relevance_score, :reasoning, :clip_order)
                 RETURNING id
-            """),
+            """
+            ),
             {
                 "id": clip_id,
                 "task_id": task_id,
@@ -70,17 +72,15 @@ class ClipRepository:
                 "text": clip_text,
                 "relevance_score": relevance_score,
                 "reasoning": reasoning,
-                "clip_order": clip_order
-            }
+                "clip_order": clip_order,
+            },
         )
         logger.debug(f"Created clip {clip_id} for task {task_id}")
         return clip_id
 
     @staticmethod
     async def get_clips_by_task(
-        db: AsyncSession,
-        task_id: str,
-        backend_url: str = "http://localhost:8008"
+        db: AsyncSession, task_id: str, backend_url: str = "http://localhost:8008"
     ) -> List[Dict[str, Any]]:
         """
         Get all clips for a specific task, ordered by clip_order.
@@ -94,32 +94,36 @@ class ClipRepository:
             List of clip dictionaries with full video URLs
         """
         result = await db.execute(
-            text("""
+            text(
+                """
                 SELECT id, filename, file_path, start_time, end_time, duration,
                        text, relevance_score, reasoning, clip_order, created_at
                 FROM generated_clips
                 WHERE task_id = :task_id
                 ORDER BY clip_order ASC
-            """),
-            {"task_id": task_id}
+            """
+            ),
+            {"task_id": task_id},
         )
 
         clips = []
         for row in result.fetchall():
-            clips.append({
-                "id": row.id,
-                "filename": row.filename,
-                "file_path": row.file_path,
-                "start_time": row.start_time,
-                "end_time": row.end_time,
-                "duration": row.duration,
-                "text": row.text,
-                "relevance_score": row.relevance_score,
-                "reasoning": row.reasoning,
-                "clip_order": row.clip_order,
-                "created_at": parse_sqlite_datetime(row.created_at),
-                "video_url": f"{backend_url}/clips/{row.filename}"
-            })
+            clips.append(
+                {
+                    "id": row.id,
+                    "filename": row.filename,
+                    "file_path": row.file_path,
+                    "start_time": row.start_time,
+                    "end_time": row.end_time,
+                    "duration": row.duration,
+                    "text": row.text,
+                    "relevance_score": row.relevance_score,
+                    "reasoning": row.reasoning,
+                    "clip_order": row.clip_order,
+                    "created_at": parse_sqlite_datetime(row.created_at),
+                    "video_url": f"{backend_url}/clips/{row.filename}",
+                }
+            )
 
         return clips
 
@@ -127,8 +131,10 @@ class ClipRepository:
     async def get_clips_count(db: AsyncSession, task_id: str) -> int:
         """Get the count of clips for a task."""
         result = await db.execute(
-            text("SELECT COUNT(*) as count FROM generated_clips WHERE task_id = :task_id"),
-            {"task_id": task_id}
+            text(
+                "SELECT COUNT(*) as count FROM generated_clips WHERE task_id = :task_id"
+            ),
+            {"task_id": task_id},
         )
         return result.scalar()
 
@@ -137,7 +143,7 @@ class ClipRepository:
         """Delete all clips for a task. Returns count of deleted clips."""
         result = await db.execute(
             text("DELETE FROM generated_clips WHERE task_id = :task_id"),
-            {"task_id": task_id}
+            {"task_id": task_id},
         )
         await db.commit()
         deleted_count = result.rowcount
@@ -149,7 +155,7 @@ class ClipRepository:
         """Delete a single clip by ID."""
         await db.execute(
             text("DELETE FROM generated_clips WHERE id = :clip_id"),
-            {"clip_id": clip_id}
+            {"clip_id": clip_id},
         )
         await db.commit()
         logger.info(f"Deleted clip {clip_id}")

@@ -6,7 +6,6 @@ This service handles the /start-with-progress endpoint which processes videos
 asynchronously with SSE progress tracking. Can handle unlimited processing time.
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime
@@ -77,11 +76,15 @@ class AsyncVideoProcessingService:
             try:
                 source.title = get_youtube_video_title(raw_source["url"])
                 if not source.title:
-                    logger.warning("[SERVICE=ASYNC] Could not get YouTube title, using default")
+                    logger.warning(
+                        "[SERVICE=ASYNC] Could not get YouTube title, using default"
+                    )
                     source.title = "YouTube Video"
                 logger.info(f"[SERVICE=ASYNC] YouTube video title: {source.title}")
             except Exception as e:
-                logger.warning(f"[SERVICE=ASYNC] Could not get YouTube title, using default: {str(e)}")
+                logger.warning(
+                    f"[SERVICE=ASYNC] Could not get YouTube title, using default: {str(e)}"
+                )
                 source.title = "YouTube Video"
         else:
             source.title = raw_source.get("title", "Uploaded Video")
@@ -142,7 +145,9 @@ class AsyncVideoProcessingService:
             logo_corner_position: Corner position for logo
         """
         try:
-            logger.info(f"[SERVICE=ASYNC] Starting background processing for task {task_id}")
+            logger.info(
+                f"[SERVICE=ASYNC] Starting background processing for task {task_id}"
+            )
             await self._update_task_status(task_id, "processing")
 
             # Get source from database
@@ -162,7 +167,9 @@ class AsyncVideoProcessingService:
             # Determine video path based on source type
             video_path = None
             if source_data.type == "youtube":
-                logger.info(f"[SERVICE=ASYNC] Task {task_id}: Downloading YouTube video...")
+                logger.info(
+                    f"[SERVICE=ASYNC] Task {task_id}: Downloading YouTube video..."
+                )
                 video_path = download_youtube_video(raw_source["url"])
                 if not video_path:
                     raise Exception("Failed to download video")
@@ -174,16 +181,22 @@ class AsyncVideoProcessingService:
 
             # Process video
             if video_path:
-                logger.info(f"[SERVICE=ASYNC] Task {task_id}: Generating transcript with AssemblyAI...")
+                logger.info(
+                    f"[SERVICE=ASYNC] Task {task_id}: Generating transcript with AssemblyAI..."
+                )
                 transcript = get_video_transcript(video_path)
-                logger.info(f"[SERVICE=ASYNC] Transcript generated (length: {len(transcript)} characters)")
+                logger.info(
+                    f"[SERVICE=ASYNC] Transcript generated (length: {len(transcript)} characters)"
+                )
 
-                logger.info(f"[SERVICE=ASYNC] Task {task_id}: AI analyzing content for best clips...")
+                logger.info(
+                    f"[SERVICE=ASYNC] Task {task_id}: AI analyzing content for best clips..."
+                )
                 relevant_parts = await get_most_relevant_parts_by_transcript(
                     transcript,
                     min_length=clip_min_length,
                     max_length=clip_max_length,
-                    custom_prompt=custom_ai_prompt
+                    custom_prompt=custom_ai_prompt,
                 )
                 logger.info(
                     f"[SERVICE=ASYNC] AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
@@ -218,9 +231,13 @@ class AsyncVideoProcessingService:
                     logo_path,
                     logo_corner_position,
                 )
-                logger.info(f"[SERVICE=ASYNC] Generated {len(clips_info)} video clips with transitions")
+                logger.info(
+                    f"[SERVICE=ASYNC] Generated {len(clips_info)} video clips with transitions"
+                )
 
-                logger.info(f"[SERVICE=ASYNC] Task {task_id}: Saving clips to database...")
+                logger.info(
+                    f"[SERVICE=ASYNC] Task {task_id}: Saving clips to database..."
+                )
                 async with AsyncSessionLocal() as db:
                     clip_ids = []
                     for i, clip_info in enumerate(clips_info):
@@ -271,5 +288,6 @@ class AsyncVideoProcessingService:
                 {"status": status, "task_id": task_id},
             )
             await db.commit()
+
 
 # end backend/src/services/video_service_async.py

@@ -73,10 +73,10 @@ def transcribe_video_mlx(
         # Load parakeet-mlx model
         logger.info(f"Loading parakeet-mlx model: {model_id}...")
         model = from_pretrained(model_id, dtype=bfloat16)
-        logger.info(f"Model loaded. Starting transcription...")
+        logger.info("Model loaded. Starting transcription...")
 
         # Transcribe with word-level timing via streaming
-        logger.info(f"Starting parakeet transcription...")
+        logger.info("Starting parakeet transcription...")
         result = model.transcribe(
             str(video_path),
             chunk_duration=120.0,
@@ -201,7 +201,9 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
                         "text": token.text.strip(),
                         "start": start_ms,
                         "end": end_ms,
-                        "confidence": token.confidence if hasattr(token, "confidence") else 1.0,
+                        "confidence": token.confidence
+                        if hasattr(token, "confidence")
+                        else 1.0,
                     }
                 )
 

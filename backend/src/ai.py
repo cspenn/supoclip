@@ -132,8 +132,17 @@ def validate_clean_start(segment_text: str) -> tuple[bool, str]:
         Tuple of (is_valid, reason)
     """
     forbidden_starts = [
-        "and ", "but ", "so ", "well ", "because ", "also ",
-        "um ", "uh ", "you know", "i mean", "like ",
+        "and ",
+        "but ",
+        "so ",
+        "well ",
+        "because ",
+        "also ",
+        "um ",
+        "uh ",
+        "you know",
+        "i mean",
+        "like ",
     ]
 
     text_lower = segment_text.lower().strip()
@@ -148,7 +157,7 @@ async def get_most_relevant_parts_by_transcript(
     transcript: str,
     min_length: int = 10,
     max_length: int = 45,
-    custom_prompt: str | None = None
+    custom_prompt: str | None = None,
 ) -> TranscriptAnalysis:
     """Get the most relevant parts of a transcript for creating clips - simplified version."""
     logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
@@ -159,12 +168,18 @@ async def get_most_relevant_parts_by_transcript(
     # Guard against empty transcripts to prevent AI hallucination
     if not transcript or len(transcript.strip()) == 0:
         logger.error("Cannot analyze empty transcript")
-        raise ValueError("Cannot analyze empty transcript - transcription may have failed")
+        raise ValueError(
+            "Cannot analyze empty transcript - transcription may have failed"
+        )
 
     # Additional safety check: transcript should have reasonable length
     if len(transcript.strip()) < 50:
-        logger.error(f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure")
-        raise ValueError(f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required")
+        logger.error(
+            f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure"
+        )
+        raise ValueError(
+            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
+        )
 
     try:
         # Build the dynamic prompt
@@ -176,7 +191,9 @@ async def get_most_relevant_parts_by_transcript(
         if custom_prompt:
             prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
 
-        prompt_parts.append("\nFind segments that would be compelling as standalone clips for social media.")
+        prompt_parts.append(
+            "\nFind segments that would be compelling as standalone clips for social media."
+        )
         prompt_parts.append(f"\nTranscript:\n{transcript}")
 
         analysis_prompt = "\n".join(prompt_parts)
@@ -184,13 +201,16 @@ async def get_most_relevant_parts_by_transcript(
         # Check if using Llama 4 Scout - use Groq Structured Outputs instead of tool calling
         model_str = config.llm if not config.local_llm_enabled else ""
         if "llama-4-scout" in model_str or "llama-4-maverick" in model_str:
-            logger.info("Using Groq Structured Outputs API for Llama 4 Scout compatibility")
+            logger.info(
+                "Using Groq Structured Outputs API for Llama 4 Scout compatibility"
+            )
             from .ai_structured import analyze_transcript_structured
+
             return await analyze_transcript_structured(
                 transcript,
                 min_length=min_length,
                 max_length=max_length,
-                custom_prompt=custom_prompt
+                custom_prompt=custom_prompt,
             )
 
         # For all other models, use Pydantic AI (tool calling)
