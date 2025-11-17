@@ -168,6 +168,72 @@ def format_ms_to_timestamp_precise(ms: int) -> str:
     return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
 
+class TargetDimensionCalculator:
+    """Calculate target dimensions for video cropping."""
+
+    @staticmethod
+    def calculate(
+        original_width: int, original_height: int, target_ratio: float
+    ) -> Tuple[int, int]:
+        """Calculate target width and height maintaining aspect ratio."""
+        if original_width / original_height > target_ratio:
+            new_width = round_to_even(int(original_height * target_ratio))
+            new_height = round_to_even(original_height)
+        else:
+            new_width = round_to_even(original_width)
+            new_height = round_to_even(int(original_width / target_ratio))
+        return new_width, new_height
+
+
+class FaceCenteredCropCalculator:
+    """Calculate crop position based on detected faces."""
+
+    @staticmethod
+    def calculate(
+        face_centers: List[Tuple[float, float, float, float]],
+        new_width: int,
+        new_height: int,
+        original_width: int,
+        original_height: int,
+    ) -> Tuple[int, int]:
+        """Calculate face-centered crop offsets."""
+        total_weight = sum(area * confidence for _, _, area, confidence in face_centers)
+        if total_weight == 0:
+            return CenterCropCalculator.calculate(
+                new_width, new_height, original_width, original_height
+            )
+
+        weighted_x = (
+            sum(x * area * confidence for x, y, area, confidence in face_centers)
+            / total_weight
+        )
+        weighted_y = (
+            sum(y * area * confidence for x, y, area, confidence in face_centers)
+            / total_weight
+        )
+
+        # Add slight bias towards upper portion for better face framing
+        weighted_y = max(0, weighted_y - new_height * 0.1)
+
+        x_offset = max(0, min(int(weighted_x - new_width // 2), original_width - new_width))
+        y_offset = max(0, min(int(weighted_y - new_height // 2), original_height - new_height))
+
+        return round_to_even(x_offset), round_to_even(y_offset)
+
+
+class CenterCropCalculator:
+    """Calculate center crop position."""
+
+    @staticmethod
+    def calculate(
+        new_width: int, new_height: int, original_width: int, original_height: int
+    ) -> Tuple[int, int]:
+        """Calculate center crop offsets."""
+        x_offset = (original_width - new_width) // 2 if original_width > new_width else 0
+        y_offset = (original_height - new_height) // 2 if original_height > new_height else 0
+        return round_to_even(x_offset), round_to_even(y_offset)
+
+
 class TranscriptLineBreaker:
     """Determine when to break lines in transcripts."""
 
@@ -298,80 +364,26 @@ def detect_optimal_crop_region(
     try:
         original_width, original_height = video_clip.size
 
-        # Calculate target dimensions and ensure they're even
-        if original_width / original_height > target_ratio:
-            new_width = round_to_even(int(original_height * target_ratio))
-            new_height = round_to_even(original_height)
-        else:
-            new_width = round_to_even(original_width)
-            new_height = round_to_even(int(original_width / target_ratio))
+        # Calculate target dimensions
+        new_width, new_height = TargetDimensionCalculator.calculate(
+            original_width, original_height, target_ratio
+        )
 
-        # Try improved face detection
+        # Detect faces and calculate crop position
         face_centers = detect_faces_in_clip(video_clip, start_time, end_time)
 
-        # Calculate crop position
         if face_centers:
-            # Use weighted average of face centers with temporal consistency
-            total_weight = sum(
-                area * confidence for _, _, area, confidence in face_centers
+            x_offset, y_offset = FaceCenteredCropCalculator.calculate(
+                face_centers, new_width, new_height, original_width, original_height
             )
-            if total_weight > 0:
-                weighted_x = (
-                    sum(
-                        x * area * confidence for x, y, area, confidence in face_centers
-                    )
-                    / total_weight
-                )
-                weighted_y = (
-                    sum(
-                        y * area * confidence for x, y, area, confidence in face_centers
-                    )
-                    / total_weight
-                )
-
-                # Add slight bias towards upper portion for better face framing
-                weighted_y = max(0, weighted_y - new_height * 0.1)
-
-                x_offset = max(
-                    0, min(int(weighted_x - new_width // 2), original_width - new_width)
-                )
-                y_offset = max(
-                    0,
-                    min(
-                        int(weighted_y - new_height // 2), original_height - new_height
-                    ),
-                )
-
-                logger.info(
-                    f"Face-centered crop: {len(face_centers)} faces detected with improved algorithm"
-                )
-            else:
-                # Center crop
-                x_offset = (
-                    (original_width - new_width) // 2
-                    if original_width > new_width
-                    else 0
-                )
-                y_offset = (
-                    (original_height - new_height) // 2
-                    if original_height > new_height
-                    else 0
-                )
+            logger.info(
+                f"Face-centered crop: {len(face_centers)} faces detected with improved algorithm"
+            )
         else:
-            # Center crop
-            x_offset = (
-                (original_width - new_width) // 2 if original_width > new_width else 0
-            )
-            y_offset = (
-                (original_height - new_height) // 2
-                if original_height > new_height
-                else 0
+            x_offset, y_offset = CenterCropCalculator.calculate(
+                new_width, new_height, original_width, original_height
             )
             logger.info("Using center crop (no faces detected)")
-
-        # Ensure offsets are even too
-        x_offset = round_to_even(x_offset)
-        y_offset = round_to_even(y_offset)
 
         logger.info(
             f"Crop dimensions: {new_width}x{new_height} at offset ({x_offset}, {y_offset})"
@@ -382,24 +394,13 @@ def detect_optimal_crop_region(
         logger.error(f"Error in crop detection: {e}")
         # Fallback to center crop
         original_width, original_height = video_clip.size
-        if original_width / original_height > target_ratio:
-            new_width = round_to_even(int(original_height * target_ratio))
-            new_height = round_to_even(original_height)
-        else:
-            new_width = round_to_even(original_width)
-            new_height = round_to_even(int(original_width / target_ratio))
-
-        x_offset = (
-            round_to_even((original_width - new_width) // 2)
-            if original_width > new_width
-            else 0
-        )
-        y_offset = (
-            round_to_even((original_height - new_height) // 2)
-            if original_height > new_height
-            else 0
+        new_width, new_height = TargetDimensionCalculator.calculate(
+            original_width, original_height, target_ratio
         )
 
+        x_offset, y_offset = CenterCropCalculator.calculate(
+            new_width, new_height, original_width, original_height
+        )
         return (x_offset, y_offset, new_width, new_height)
 
 
