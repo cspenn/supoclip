@@ -250,6 +250,29 @@ class VideoService:
             if progress_callback:
                 await progress_callback(50, "Analyzing content with AI...")
 
+            # Validate and cap clip duration parameters to realistic ranges
+            if min_length < 10:
+                logger.warning(f"min_length {min_length}s too short. Setting to 10s.")
+                min_length = 10
+
+            if min_length > 45:
+                logger.warning(
+                    f"min_length {min_length}s exceeds recommended maximum. Capping at 45s."
+                )
+                min_length = 45
+
+            if max_length > 60:
+                logger.warning(
+                    f"max_length {max_length}s exceeds recommended maximum. Capping at 60s."
+                )
+                max_length = 60
+
+            if max_length < min_length:
+                logger.warning(
+                    f"max_length < min_length. Adjusting to {min_length + 10}s."
+                )
+                max_length = min_length + 10
+
             relevant_parts = await VideoService.analyze_transcript(
                 transcript, min_length=min_length, max_length=max_length
             )

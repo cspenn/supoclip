@@ -348,13 +348,15 @@ async def get_most_relevant_parts_by_transcript(
                     summary=structured_result.summary,
                     key_topics=structured_result.key_topics,
                 )
+            except ValueError as e:
+                logger.error(f"Groq Structured Outputs validation failed: {e}")
+                raise ValueError(
+                    f"AI analysis failed: {e}. "
+                    f"Try reducing clip duration requirements (recommended: 10-45 seconds)."
+                ) from e
             except Exception as e:
-                # Fallback to Pydantic AI if Groq fails (e.g., API down, rate limited)
-                logger.warning(
-                    f"Groq Structured Outputs failed ({type(e).__name__}), "
-                    f"falling back to Pydantic AI with configured LLM"
-                )
-                # Continue to Pydantic AI fallback below
+                logger.error(f"Groq Structured Outputs API error: {e}")
+                raise
 
         # For all other models, use Pydantic AI (tool calling)
         # Lazy initialize agent on first use

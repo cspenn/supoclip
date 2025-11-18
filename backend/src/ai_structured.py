@@ -318,6 +318,11 @@ async def analyze_transcript_structured(
         # CRITICAL: Raise error if no segments passed validation (Fix 1)
         # This prevents silent failures where task completes with 0 clips
         if not validated_segments:
+            # Calculate average duration for diagnostics
+            avg_duration_str = "N/A"
+            if durations:
+                avg_duration_str = f"{sum(durations)/len(durations):.1f}s"
+
             logger.error(
                 "ERROR: All AI-identified segments were rejected during validation"
             )
@@ -329,10 +334,9 @@ async def analyze_transcript_structured(
                 "invalid timestamps, or insufficient content"
             )
             raise ValueError(
-                "No valid segments found. All segments were rejected as too short. "
-                "This typically means the AI model is returning fragments instead of complete clips (< 5 seconds). "
-                "The Groq Llama 4 Scout model may be returning ultra-short segments. "
-                "Consider checking the AI system prompt or model performance."
+                f"No valid segments found. All {len(analysis.most_relevant_segments)} segments rejected. "
+                f"Requested: {min_length}-{max_length}s. AI returned average: {avg_duration_str}. "
+                f"Recommendation: Try shorter clip durations (10-45 seconds work best for viral content)."
             )
 
         final_analysis = TranscriptAnalysis(
