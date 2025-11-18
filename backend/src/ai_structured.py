@@ -267,14 +267,14 @@ async def analyze_transcript_structured(
                 if duration <= 0:
                     logger.warning(
                         f"REJECTED: Invalid duration - {segment.start_time} to {segment.end_time} = {duration}s "
-                        f"(min 5s required)"
+                        f"(min 10s required)"
                     )
                     continue
 
-                if duration < 5:
+                if duration < 10:
                     logger.warning(
                         f"REJECTED: Too short - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
-                        f"(min 5s required). Text: '{segment.text[:40]}...'"
+                        f"(min 10s required). Text: '{segment.text[:40]}...'"
                     )
                     continue
 

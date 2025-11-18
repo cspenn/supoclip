@@ -27,6 +27,11 @@ from .config import Config
 
 logger = logging.getLogger(__name__)
 
+# Cache version for transcript cache files
+# Increment this when cache format changes or when new processing is added (e.g., word reconstruction)
+# This ensures old caches are invalidated and re-transcription occurs with new features
+TRANSCRIPT_CACHE_VERSION = 2  # v2: Added word reconstruction via Groq LLM (2025-11-17)
+
 
 def transcribe_video_mlx(
     video_path: Path, model_id: str = "mlx-community/parakeet-tdt-0.6b-v2"
@@ -73,7 +78,20 @@ def transcribe_video_mlx(
         logger.info(f"Loading cached transcript: {cache_path}")
         try:
             with open(cache_path, "r") as f:
-                return json.load(f)
+                cached_data = json.load(f)
+
+            # Check cache version for forward compatibility
+            cached_version = cached_data.get("_cache_version", 1)  # Default to v1 for old caches
+            if cached_version != TRANSCRIPT_CACHE_VERSION:
+                logger.info(
+                    f"Cache version mismatch (cached: v{cached_version}, current: v{TRANSCRIPT_CACHE_VERSION}). "
+                    f"Re-transcribing to ensure word reconstruction is applied..."
+                )
+                # Delete old cache to force re-transcription
+                cache_path.unlink()
+            else:
+                # Cache version matches, use it
+                return cached_data
         except Exception as e:
             logger.warning(f"Failed to load cached transcript: {e}")
             # Continue with fresh transcription
@@ -93,7 +111,7 @@ def transcribe_video_mlx(
         )
 
         # Format result to match AssemblyAI structure for backward compatibility
-        formatted_result = {
+        formatted_result: Dict[str, Any] = {
             "text": _extract_text_from_result(result),
             "segments": _extract_segments_from_result(result),
             "words": _extract_words_from_result(result),
@@ -128,10 +146,12 @@ def transcribe_video_mlx(
                 # Continue with broken tokens if reconstruction fails
 
         # Cache for future use - avoid re-transcribing same video
+        # Include cache version to invalidate old caches when format changes
+        formatted_result["_cache_version"] = TRANSCRIPT_CACHE_VERSION
         try:
             with open(cache_path, "w") as f:
                 json.dump(formatted_result, f, indent=2)
-            logger.info(f"Cached transcript: {cache_path}")
+            logger.info(f"Cached transcript (v{TRANSCRIPT_CACHE_VERSION}): {cache_path}")
         except Exception as e:
             logger.warning(f"Failed to cache transcript: {e}")
 
