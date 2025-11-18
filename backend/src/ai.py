@@ -391,13 +391,14 @@ async def get_most_relevant_parts_by_transcript(
 
         return final_analysis
 
+    except ValueError as e:
+        # Re-raise validation errors so tasks correctly mark as failed
+        logger.error(f"Validation error in transcript analysis: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Error in transcript analysis: {e}")
-        return TranscriptAnalysis(
-            most_relevant_segments=[],
-            summary=f"Analysis failed: {str(e)}",
-            key_topics=[],
-        )
+        # Re-raise other exceptions so tasks correctly mark as failed
+        logger.error(f"Error in transcript analysis: {e}", exc_info=True)
+        raise
 
 
 def get_most_relevant_parts_sync(transcript: str) -> TranscriptAnalysis:
