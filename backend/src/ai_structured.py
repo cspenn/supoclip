@@ -35,8 +35,18 @@ class TranscriptAnalysis(BaseModel):
     key_topics: List[str] = Field(description="List of main topics discussed")
 
 
-# System prompt for Groq API (Fix 4: Enhanced with explicit duration warnings)
-SYSTEM_PROMPT = """You are an expert at analyzing video transcripts to find the most engaging segments for short-form content creation.
+def build_system_prompt(min_length: int = 10, max_length: int = 45) -> str:
+    """
+    Build dynamic system prompt with user-configured clip length parameters.
+
+    Args:
+        min_length: Minimum clip duration in seconds (default: 10)
+        max_length: Maximum clip duration in seconds (default: 45)
+
+    Returns:
+        System prompt string with duration requirements customized to user preferences
+    """
+    return f"""You are an expert at analyzing video transcripts to find the most engaging segments for short-form content creation.
 
 CRITICAL INSTRUCTION: DO NOT RETURN FRAGMENTS OR ULTRA-SHORT CLIPS
 
@@ -44,7 +54,7 @@ CORE OBJECTIVES:
 1. Identify segments that would be compelling on social media platforms
 2. Focus on complete thoughts, insights, or entertaining moments (NOT fragments)
 3. Prioritize content with hooks, emotional moments, or valuable information
-4. Each segment should be engaging and worth watching (MINIMUM 10 SECONDS)
+4. Each segment should be engaging and worth watching (MINIMUM {min_length} SECONDS)
 
 SEGMENT SELECTION CRITERIA:
 1. STRONG HOOKS: Attention-grabbing opening lines (complete sentences)
@@ -54,44 +64,46 @@ SEGMENT SELECTION CRITERIA:
 5. ENTERTAINING: Content people would want to watch (FULL CLIPS, NOT FRAGMENTS)
 
 DURATION REQUIREMENTS - ABSOLUTELY CRITICAL:
-- MINIMUM DURATION: 10 seconds per segment (DO NOT return segments shorter than 10 seconds)
-- MAXIMUM DURATION: 45 seconds per segment
-- Duration calculation: end_time - start_time MUST be >= 10 seconds
+- MINIMUM DURATION: {min_length} seconds per segment (DO NOT return segments shorter than {min_length} seconds)
+- MAXIMUM DURATION: {max_length} seconds per segment (DO NOT return segments longer than {max_length} seconds)
+- Duration calculation: end_time - start_time MUST be >= {min_length} seconds AND <= {max_length} seconds
 - NEVER return ultra-short clips (0.56s, 1.36s, 2.5s are INVALID)
-- If a segment is less than 10 seconds, DO NOT include it in your response
+- If a segment is less than {min_length} seconds, DO NOT include it in your response
+- If a segment is more than {max_length} seconds, DO NOT include it in your response
 - Return COMPLETE CLIPS, not word fragments or sentence fragments
 
 TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
 - Use EXACT timestamps as they appear in the transcript
 - Never modify timestamp format (keep MM:SS structure)
 - start_time MUST be LESS THAN end_time (start_time < end_time)
-- MINIMUM segment duration: 10 seconds (end_time - start_time >= 10 seconds)
+- MINIMUM segment duration: {min_length} seconds (end_time - start_time >= {min_length} seconds)
+- MAXIMUM segment duration: {max_length} seconds (end_time - start_time <= {max_length} seconds)
 - Look at transcript ranges like [02:25 - 02:35] and use different start/end times
 - NEVER use the same timestamp for both start_time and end_time
-- VERIFY DURATION BEFORE RETURNING: Calculate (end_time - start_time) and ensure it's >= 10 seconds
-- Example CORRECT: start_time: "02:25", end_time: "02:35" (10 second duration)
+- VERIFY DURATION BEFORE RETURNING: Calculate (end_time - start_time) and ensure it's between {min_length} and {max_length} seconds
+- Example CORRECT (if min={min_length}, max={max_length}): start_time: "02:25", end_time: "02:35" (10 second duration)
 - Example INCORRECT: start_time: "02:25", end_time: "02:26" (1 second - TOO SHORT)
 - Example INCORRECT: start_time: "02:25", end_time: "02:25" (0 seconds - INVALID)
 
 OUTPUT FORMAT:
 Return a JSON object with this exact structure:
-{
+{{
   "most_relevant_segments": [
-    {
+    {{
       "start_time": "MM:SS",
       "end_time": "MM:SS",
       "text": "segment text (must be substantial and complete)",
       "relevance_score": 0.85,
       "reasoning": "why this is relevant (be specific)"
-    }
+    }}
   ],
   "summary": "brief summary",
   "key_topics": ["topic1", "topic2"]
-}
+}}
 
 QUALITY REQUIREMENTS:
 - Find 3-7 compelling segments that would work well as standalone clips
-- Each segment MUST be at least 10 seconds long
+- Each segment MUST be between {min_length} and {max_length} seconds long
 - Quality over quantity - choose segments that would genuinely engage viewers
 - Include enough text and context that the segment makes sense without external info
 - Only return segments that are COMPLETE THOUGHTS or COMPLETE SCENES, never fragments"""
@@ -170,11 +182,14 @@ async def analyze_transcript_structured(
 
         user_prompt = "\n".join(user_prompt_parts)
 
+        # Build dynamic system prompt with user's clip length parameters
+        system_prompt = build_system_prompt(min_length, max_length)
+
         # Create the completion with structured outputs
         completion = await client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={
@@ -246,11 +261,11 @@ async def analyze_transcript_structured(
                 )
                 continue
 
-            # Validate timestamps (Fix 2: Enhanced diagnostic logging)
+            # Validate timestamps (using user-configured min_length)
             if segment.start_time == segment.end_time:
                 logger.warning(
                     f"REJECTED: Identical start/end times - {segment.start_time} "
-                    f"(duration 0s, min 5s required)"
+                    f"(duration 0s, min {min_length}s required)"
                 )
                 continue
 
@@ -267,14 +282,21 @@ async def analyze_transcript_structured(
                 if duration <= 0:
                     logger.warning(
                         f"REJECTED: Invalid duration - {segment.start_time} to {segment.end_time} = {duration}s "
-                        f"(min 10s required)"
+                        f"(min {min_length}s required)"
                     )
                     continue
 
-                if duration < 10:
+                if duration < min_length:
                     logger.warning(
                         f"REJECTED: Too short - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
-                        f"(min 10s required). Text: '{segment.text[:40]}...'"
+                        f"(min {min_length}s required). Text: '{segment.text[:40]}...'"
+                    )
+                    continue
+
+                if duration > max_length:
+                    logger.warning(
+                        f"REJECTED: Too long - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
+                        f"(max {max_length}s allowed). Text: '{segment.text[:40]}...'"
                     )
                     continue
 

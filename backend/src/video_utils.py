@@ -910,8 +910,7 @@ class SubtitleTextClipCreator:
                 color=font_color,
                 stroke_color="black",
                 stroke_width=1,
-                method="caption",
-                size=(max_text_width, None),
+                method="label",  # Changed from "caption" to prevent text cutoff
                 text_align="center",
             )
 
