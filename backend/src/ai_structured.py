@@ -15,6 +15,75 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+def expand_segment_to_duration(
+    segment: "TranscriptSegment",
+    min_length: int,
+    max_length: int,
+    current_duration: float,
+) -> "TranscriptSegment":
+    """
+    Expand a segment to meet minimum duration requirements.
+
+    Strategy:
+    - If segment is too short, expand it symmetrically (both directions)
+    - Respect max_length constraint
+    - Try to expand by whole seconds for cleaner timestamps
+
+    Args:
+        segment: The segment to expand
+        min_length: Minimum required duration in seconds
+        max_length: Maximum allowed duration in seconds
+        current_duration: Current duration of the segment
+
+    Returns:
+        Expanded TranscriptSegment with updated timestamps
+    """
+    if current_duration >= min_length:
+        return segment
+
+    # Calculate how much to expand
+    needed_expansion = min_length - current_duration
+
+    # Don't exceed max_length
+    if min_length > max_length:
+        needed_expansion = max_length - current_duration
+
+    # Expand symmetrically: half before, half after
+    expand_before = needed_expansion / 2
+    expand_after = needed_expansion / 2
+
+    # Parse current timestamps
+    start_parts = segment.start_time.split(":")
+    end_parts = segment.end_time.split(":")
+
+    start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
+    end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
+
+    # Calculate new boundaries
+    new_start_seconds = max(0, start_seconds - expand_before)
+    new_end_seconds = end_seconds + expand_after
+
+    # Format back to MM:SS
+    new_start_time = f"{int(new_start_seconds // 60):02d}:{new_start_seconds % 60:05.2f}"
+    new_end_time = f"{int(new_end_seconds // 60):02d}:{new_end_seconds % 60:05.2f}"
+
+    new_duration = new_end_seconds - new_start_seconds
+
+    logger.info(
+        f"EXPANDED: {segment.start_time}-{segment.end_time} ({current_duration:.2f}s) → "
+        f"{new_start_time}-{new_end_time} ({new_duration:.2f}s) to meet min_length={min_length}s"
+    )
+
+    # Create expanded segment
+    return TranscriptSegment(
+        start_time=new_start_time,
+        end_time=new_end_time,
+        text=segment.text,  # Keep original text (video processing will fetch actual content)
+        relevance_score=segment.relevance_score,
+        reasoning=f"{segment.reasoning} [Auto-expanded to meet {min_length}s minimum duration]",
+    )
+
+
 class TranscriptSegment(BaseModel):
     """Represents a relevant segment of transcript with precise timing."""
 
@@ -287,11 +356,41 @@ async def analyze_transcript_structured(
                     continue
 
                 if duration < min_length:
-                    logger.warning(
-                        f"REJECTED: Too short - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
-                        f"(min {min_length}s required). Text: '{segment.text[:40]}...'"
+                    # Try to expand segment to meet minimum duration
+                    logger.info(
+                        f"EXPANDING: Segment {segment.start_time} to {segment.end_time} = {duration:.2f}s "
+                        f"is shorter than min {min_length}s. Attempting expansion..."
                     )
-                    continue
+                    try:
+                        expanded_segment = expand_segment_to_duration(
+                            segment, min_length, max_length, duration
+                        )
+                        # Validate expanded segment doesn't exceed max_length
+                        expanded_start_parts = expanded_segment.start_time.split(":")
+                        expanded_end_parts = expanded_segment.end_time.split(":")
+                        expanded_start_seconds = int(expanded_start_parts[0]) * 60 + float(
+                            expanded_start_parts[1]
+                        )
+                        expanded_end_seconds = int(expanded_end_parts[0]) * 60 + float(
+                            expanded_end_parts[1]
+                        )
+                        expanded_duration = expanded_end_seconds - expanded_start_seconds
+
+                        if expanded_duration > max_length:
+                            logger.warning(
+                                f"REJECTED: Expanded segment would exceed max_length "
+                                f"({expanded_duration:.2f}s > {max_length}s)"
+                            )
+                            continue
+
+                        # Use expanded segment
+                        segment = expanded_segment
+                        duration = expanded_duration
+                    except Exception as e:
+                        logger.warning(
+                            f"REJECTED: Failed to expand segment - {segment.start_time} to {segment.end_time}: {e}"
+                        )
+                        continue
 
                 if duration > max_length:
                     logger.warning(
