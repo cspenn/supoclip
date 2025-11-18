@@ -223,6 +223,13 @@ class VideoService:
                               Signature: async def callback(progress: int, message: str)
         """
         try:
+            # Log parameters at start
+            logger.info(
+                f"Processing video with parameters: "
+                f"font_family={font_family}, font_size={font_size}, font_color={font_color}, "
+                f"clip_length={min_length}s-{max_length}s"
+            )
+
             # Step 1: Get video path
             if progress_callback:
                 await progress_callback(10, "Downloading video...")

@@ -22,6 +22,80 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+def resolve_font_path(font_family: str) -> str:
+    """
+    Resolve font file path, checking bundled fonts first, then system fonts.
+
+    This function handles font resolution in the following priority:
+    1. Check if bundled font exists (backend/fonts/{font_family}.ttf)
+    2. Try common font name variations (with hyphens, underscores, etc.)
+    3. Fall back to default bundled font
+
+    Args:
+        font_family: Font name (e.g., "Barlow Condensed Semi Bold")
+
+    Returns:
+        Full path to .ttf file
+    """
+    # First, check if bundled font exists with exact name
+    bundled_fonts_dir = Path(__file__).parent.parent / "fonts"
+    font_path = bundled_fonts_dir / f"{font_family}.ttf"
+
+    if font_path.exists():
+        logger.debug(f"Found bundled font: {font_family}")
+        return str(font_path)
+
+    # Try common variations (replace spaces with hyphens/underscores)
+    variations = [
+        font_family.replace(" ", "-"),
+        font_family.replace(" ", "_"),
+        font_family.replace(" Semi ", "-Semi"),  # e.g., "Barlow Condensed Semi Bold"
+    ]
+
+    for variation in variations:
+        font_path = bundled_fonts_dir / f"{variation}.ttf"
+        if font_path.exists():
+            logger.debug(f"Found bundled font with variation: {variation}")
+            return str(font_path)
+
+    # Try system fonts via database (synchronous lookup)
+    try:
+        import sqlite3
+        db_url = config.database_url or "sqlite+aiosqlite:///./supoclip.db"
+        db_path = db_url.replace("sqlite+aiosqlite:///", "").replace("sqlite://", "")
+
+        if Path(db_path).exists():
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_path FROM system_fonts WHERE name = ? AND is_valid = 1",
+                (font_family,)
+            )
+            result = cursor.fetchone()
+            conn.close()
+
+            if result and result[0]:
+                system_font_path = result[0]
+                if Path(system_font_path).exists():
+                    logger.info(
+                        f"Found system font '{font_family}' at: {system_font_path}"
+                    )
+                    return system_font_path
+                else:
+                    logger.warning(
+                        f"System font file not found: {system_font_path}"
+                    )
+    except Exception as e:
+        logger.debug(f"Could not query system fonts database: {e}")
+
+    # Fall back to default font
+    default_font = bundled_fonts_dir / "THEBOLDFONT-FREEVERSION.ttf"
+    logger.warning(
+        f"Font '{font_family}' not found. Using default font: {default_font}"
+    )
+    return str(default_font)
+
+
 class VideoProcessor:
     """Handles video processing operations with optimized settings."""
 
@@ -34,14 +108,8 @@ class VideoProcessor:
         self.font_family = font_family
         self.font_size = font_size
         self.font_color = font_color
-        self.font_path = str(
-            Path(__file__).parent.parent / "fonts" / f"{font_family}.ttf"
-        )
-        # Fallback to default font if custom font doesn't exist
-        if not Path(self.font_path).exists():
-            self.font_path = str(
-                Path(__file__).parent.parent / "fonts" / "THEBOLDFONT-FREEVERSION.ttf"
-            )
+        # Resolve font path using comprehensive lookup
+        self.font_path = resolve_font_path(font_family)
 
     def get_optimal_encoding_settings(
         self, target_quality: str = "high"

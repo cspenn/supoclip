@@ -53,11 +53,15 @@ export default function Home() {
     color: "#FFFFFF",
   });
 
+  // Clip length slider states (for current form submission)
+  const [clipMinLength, setClipMinLength] = useState(10);
+  const [clipMaxLength, setClipMaxLength] = useState(45);
+
   // Use useTasks hook to get latest task
   const { tasks, isLoading: isLoadingLatest } = useTasks();
   const latestTask = tasks.length > 0 ? tasks[0] : null;
 
-  // Load user preferences and apply to font options
+  // Load user preferences and apply to font options and clip length sliders
   useEffect(() => {
     if (preferences) {
       setFontOptions({
@@ -65,6 +69,9 @@ export default function Home() {
         size: preferences.fontSize,
         color: preferences.fontColor,
       });
+      // Initialize slider values from user preferences
+      setClipMinLength(preferences.clipMinLength ?? 10);
+      setClipMaxLength(preferences.clipMaxLength ?? 45);
     }
   }, [preferences]);
 
@@ -150,9 +157,9 @@ export default function Home() {
             font_size: fontOptions.size,
             font_color: fontOptions.color
           },
-          // Clip length settings from user preferences (defaults: min=10s, max=45s)
-          min_length: preferences?.clipMinLength ?? 10,
-          max_length: preferences?.clipMaxLength ?? 45,
+          // Clip length settings from current form state (user-adjusted sliders)
+          min_length: clipMinLength,
+          max_length: clipMaxLength,
         }),
       });
 
@@ -348,6 +355,67 @@ export default function Home() {
               showPreview={true}
               collapsible={true}
             />
+
+            {/* Clip Length Settings Section */}
+            <div className="space-y-4 border rounded-lg p-4 bg-gray-50">
+              <div>
+                <h3 className="text-sm font-semibold text-black mb-1">
+                  Clip Length Settings
+                </h3>
+                <p className="text-xs text-gray-600">
+                  Configure the desired length for generated clips (in seconds)
+                </p>
+              </div>
+
+              {/* Minimum Length Slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-medium text-black">
+                    Minimum Length
+                  </label>
+                  <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    {clipMinLength}s
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="120"
+                  value={clipMinLength}
+                  onChange={(e) => setClipMinLength(parseInt(e.target.value))}
+                  disabled={isLoading}
+                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <p className="text-xs text-gray-600">Range: 5 - {clipMaxLength}s</p>
+              </div>
+
+              {/* Maximum Length Slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-medium text-black">
+                    Maximum Length
+                  </label>
+                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">
+                    {clipMaxLength}s
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={clipMinLength}
+                  max="300"
+                  value={clipMaxLength}
+                  onChange={(e) => setClipMaxLength(parseInt(e.target.value))}
+                  disabled={isLoading}
+                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-green-600"
+                />
+                <p className="text-xs text-gray-600">Range: {clipMinLength}s - 300s</p>
+              </div>
+
+              {/* Display current range */}
+              <div className="bg-white rounded p-3 text-sm text-center text-gray-700 font-medium">
+                Current range: <span className="text-blue-600">{clipMinLength}s</span> - <span className="text-green-600">{clipMaxLength}s</span>
+              </div>
+            </div>
 
             {isLoading && (
               <div className="space-y-4">
