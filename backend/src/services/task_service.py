@@ -79,6 +79,8 @@ class TaskService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
+        min_length: int = 10,
+        max_length: int = 45,
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -109,13 +111,15 @@ class TaskService:
                 if progress_callback:
                     await progress_callback(progress, message)
 
-            # Process video with progress updates
+            # Process video with progress updates and clip length settings
             result = await self.video_service.process_video_complete(
                 url=url,
                 source_type=source_type,
                 font_family=font_family,
                 font_size=font_size,
                 font_color=font_color,
+                min_length=min_length,
+                max_length=max_length,
                 progress_callback=update_progress,
             )
 

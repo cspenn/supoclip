@@ -19,6 +19,8 @@ async def process_video_task(
     font_family: str = "TikTokSans-Regular",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
+    min_length: int = 10,
+    max_length: int = 45,
 ) -> Dict[str, Any]:
     """
     Background worker task to process a video.
@@ -31,6 +33,8 @@ async def process_video_task(
         font_family: Font family for subtitles
         font_size: Font size for subtitles
         font_color: Font color for subtitles
+        min_length: Minimum clip length in seconds (default: 10)
+        max_length: Maximum clip length in seconds (default: 45)
 
     Returns:
         Dict with processing results
@@ -55,7 +59,7 @@ async def process_video_task(
                 await progress.update(task_id, percent, message, "processing")
                 logger.info(f"Task {task_id}: {percent}% - {message}")
 
-            # Process the video
+            # Process the video with clip length settings
             result = await task_service.process_task(
                 task_id=task_id,
                 url=url,
@@ -63,6 +67,8 @@ async def process_video_task(
                 font_family=font_family,
                 font_size=font_size,
                 font_color=font_color,
+                min_length=min_length,
+                max_length=max_length,
                 progress_callback=update_progress,
             )
 

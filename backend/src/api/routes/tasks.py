@@ -75,6 +75,10 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=401, detail="User authentication required")
 
     try:
+        # Get clip length settings from request or use defaults
+        min_length = data.get("min_length", 10)
+        max_length = data.get("max_length", 45)
+
         task_service = TaskService(db, config)
 
         # Create task
@@ -92,7 +96,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             raw_source["url"]
         )
 
-        # Enqueue job for worker
+        # Enqueue job for worker with clip length parameters
         job_id = await JobQueue.enqueue_job(
             process_video_task,
             task_id,
@@ -102,9 +106,13 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             font_family,
             font_size,
             font_color,
+            min_length,
+            max_length,
         )
 
-        logger.info(f"Task {task_id} created and job {job_id} enqueued")
+        logger.info(
+            f"Task {task_id} created and job {job_id} enqueued with clip length settings: min={min_length}s, max={max_length}s"
+        )
 
         return {
             "task_id": task_id,

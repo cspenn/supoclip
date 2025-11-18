@@ -81,7 +81,8 @@ def transcribe_video_mlx(
                 cached_data = json.load(f)
 
             # Check cache version for forward compatibility
-            cached_version = cached_data.get("_cache_version", 1)  # Default to v1 for old caches
+            # Default to v1 for old caches
+            cached_version = cached_data.get("_cache_version", 1)
             if cached_version != TRANSCRIPT_CACHE_VERSION:
                 logger.info(
                     f"Cache version mismatch (cached: v{cached_version}, current: v{TRANSCRIPT_CACHE_VERSION}). "
@@ -151,7 +152,9 @@ def transcribe_video_mlx(
         try:
             with open(cache_path, "w") as f:
                 json.dump(formatted_result, f, indent=2)
-            logger.info(f"Cached transcript (v{TRANSCRIPT_CACHE_VERSION}): {cache_path}")
+            logger.info(
+                f"Cached transcript (v{TRANSCRIPT_CACHE_VERSION}): {cache_path}"
+            )
         except Exception as e:
             logger.warning(f"Failed to cache transcript: {e}")
 

@@ -134,13 +134,22 @@ class VideoService:
             raise
 
     @staticmethod
-    async def analyze_transcript(transcript: str) -> Any:
+    async def analyze_transcript(
+        transcript: str, min_length: int = 10, max_length: int = 45
+    ) -> Any:
         """
         Analyze transcript with AI to find relevant segments.
         This is already async, no need to wrap.
+
+        Args:
+            transcript: Video transcript text
+            min_length: Minimum clip length in seconds (default: 10)
+            max_length: Maximum clip length in seconds (default: 45)
         """
         logger.info("Starting AI analysis of transcript")
-        relevant_parts = await get_most_relevant_parts_by_transcript(transcript)
+        relevant_parts = await get_most_relevant_parts_by_transcript(
+            transcript, min_length=min_length, max_length=max_length
+        )
         logger.info(
             f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
         )
@@ -194,14 +203,24 @@ class VideoService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
+        min_length: int = 10,
+        max_length: int = 45,
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
         Complete video processing pipeline.
         Returns dict with segments and clips info.
 
-        progress_callback: Optional function to call with progress updates
-                          Signature: async def callback(progress: int, message: str)
+        Args:
+            url: Video URL or file path
+            source_type: "youtube" or "upload"
+            font_family: Font family for subtitles
+            font_size: Font size for subtitles
+            font_color: Font color for subtitles
+            min_length: Minimum clip length in seconds (default: 10)
+            max_length: Maximum clip length in seconds (default: 45)
+            progress_callback: Optional function to call with progress updates
+                              Signature: async def callback(progress: int, message: str)
         """
         try:
             # Step 1: Get video path
@@ -220,11 +239,13 @@ class VideoService:
                 f"Step 2 complete: Transcript generated ({len(transcript)} characters)"
             )
 
-            # Step 3: AI analysis
+            # Step 3: AI analysis with clip length settings
             if progress_callback:
                 await progress_callback(50, "Analyzing content with AI...")
 
-            relevant_parts = await VideoService.analyze_transcript(transcript)
+            relevant_parts = await VideoService.analyze_transcript(
+                transcript, min_length=min_length, max_length=max_length
+            )
             logger.info(
                 f"Step 3 complete: AI analysis done ({len(relevant_parts.most_relevant_segments)} segments identified)"
             )

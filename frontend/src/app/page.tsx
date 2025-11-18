@@ -133,6 +133,7 @@ export default function Home() {
       }
 
       // Step 1: Start the task (using new refactored endpoint)
+      // Include clip length settings from user preferences
       const startResponse = await fetch(`${apiUrl}/tasks/`, {
         method: 'POST',
         headers: {
@@ -148,7 +149,10 @@ export default function Home() {
             font_family: fontOptions.family,
             font_size: fontOptions.size,
             font_color: fontOptions.color
-          }
+          },
+          // Clip length settings from user preferences (defaults: min=10s, max=45s)
+          min_length: preferences?.clipMinLength ?? 10,
+          max_length: preferences?.clipMaxLength ?? 45,
         }),
       });
 
