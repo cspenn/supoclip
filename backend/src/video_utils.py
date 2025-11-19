@@ -11,6 +11,7 @@ import json
 
 import cv2
 from moviepy import VideoFileClip, CompositeVideoClip, TextClip  # type: ignore
+from moviepy.video.fx import Margin  # type: ignore
 
 
 from .config import Config
@@ -922,7 +923,7 @@ class SubtitleTextClipCreator:
             )
 
             # Add margin to prevent stroke from being cut off at edges
-            text_clip = text_clip.margin(bottom=3, top=3, left=2, right=2, opacity=0)
+            text_clip = text_clip.with_effects([Margin(bottom=3, top=3, left=2, right=2, opacity=0)])
 
             text_height = text_clip.size[1] if text_clip.size else 40
             estimated_line_height = current_font_size * 1.5
