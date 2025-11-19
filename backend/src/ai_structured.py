@@ -64,7 +64,9 @@ def expand_segment_to_duration(
     new_end_seconds = end_seconds + expand_after
 
     # Format back to MM:SS
-    new_start_time = f"{int(new_start_seconds // 60):02d}:{new_start_seconds % 60:05.2f}"
+    new_start_time = (
+        f"{int(new_start_seconds // 60):02d}:{new_start_seconds % 60:05.2f}"
+    )
     new_end_time = f"{int(new_end_seconds // 60):02d}:{new_end_seconds % 60:05.2f}"
 
     new_duration = new_end_seconds - new_start_seconds
@@ -78,7 +80,8 @@ def expand_segment_to_duration(
     return TranscriptSegment(
         start_time=new_start_time,
         end_time=new_end_time,
-        text=segment.text,  # Keep original text (video processing will fetch actual content)
+        # Keep original text (video processing will fetch actual content)
+        text=segment.text,
         relevance_score=segment.relevance_score,
         reasoning=f"{segment.reasoning} [Auto-expanded to meet {min_length}s minimum duration]",
     )
@@ -368,13 +371,15 @@ async def analyze_transcript_structured(
                         # Validate expanded segment doesn't exceed max_length
                         expanded_start_parts = expanded_segment.start_time.split(":")
                         expanded_end_parts = expanded_segment.end_time.split(":")
-                        expanded_start_seconds = int(expanded_start_parts[0]) * 60 + float(
-                            expanded_start_parts[1]
-                        )
+                        expanded_start_seconds = int(
+                            expanded_start_parts[0]
+                        ) * 60 + float(expanded_start_parts[1])
                         expanded_end_seconds = int(expanded_end_parts[0]) * 60 + float(
                             expanded_end_parts[1]
                         )
-                        expanded_duration = expanded_end_seconds - expanded_start_seconds
+                        expanded_duration = (
+                            expanded_end_seconds - expanded_start_seconds
+                        )
 
                         if expanded_duration > max_length:
                             logger.warning(

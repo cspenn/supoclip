@@ -9,6 +9,8 @@ This script processes a real YouTube video with specific parameters to verify:
 
 Test video: https://www.youtube.com/watch?v=5lN8I4PqLkc
 """
+from src.config import Config
+from src.services.video_service import VideoService
 import asyncio
 import sys
 import logging
@@ -17,13 +19,10 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.services.video_service import VideoService
-from src.config import Config
 
 # Setup logging to see parameter flow
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -65,7 +64,7 @@ async def test_video_processing_with_parameters():
             font_size=24,
             font_color="#FFFFFF",
             min_length=test_min_length,
-            max_length=test_max_length
+            max_length=test_max_length,
         )
 
         logger.info("=" * 80)
@@ -73,8 +72,8 @@ async def test_video_processing_with_parameters():
         logger.info("=" * 80)
 
         # Analyze results
-        segments = result.get('segments', [])
-        clips = result.get('clips', [])
+        segments = result.get("segments", [])
+        clips = result.get("clips", [])
 
         logger.info(f"Number of segments identified: {len(segments)}")
         logger.info(f"Number of clips created: {len(clips)}")
@@ -84,23 +83,29 @@ async def test_video_processing_with_parameters():
         if segments:
             logger.info("Segment Analysis:")
             for i, segment in enumerate(segments, 1):
-                start = segment['start_time']
-                end = segment['end_time']
+                start = segment["start_time"]
+                end = segment["end_time"]
                 duration = end - start
-                logger.info(f"  Segment {i}: {duration:.1f}s ({start:.1f}s - {end:.1f}s)")
+                logger.info(
+                    f"  Segment {i}: {duration:.1f}s ({start:.1f}s - {end:.1f}s)"
+                )
 
                 # Check if duration is within requested range
                 if test_min_length <= duration <= test_max_length:
-                    logger.info(f"    ✓ Duration within range ({test_min_length}s - {test_max_length}s)")
+                    logger.info(
+                        f"    ✓ Duration within range ({test_min_length}s - {test_max_length}s)"
+                    )
                 else:
-                    logger.warning(f"    ✗ Duration outside range! Expected {test_min_length}s-{test_max_length}s, got {duration:.1f}s")
+                    logger.warning(
+                        f"    ✗ Duration outside range! Expected {test_min_length}s-{test_max_length}s, got {duration:.1f}s"
+                    )
             logger.info("")
 
         # Check clip files
         if clips:
             logger.info("Clip Files Created:")
             for i, clip in enumerate(clips, 1):
-                clip_path = clip.get('path', 'unknown')
+                clip_path = clip.get("path", "unknown")
                 logger.info(f"  Clip {i}: {clip_path}")
             logger.info("")
 
@@ -108,30 +113,44 @@ async def test_video_processing_with_parameters():
         logger.info("Font Resolution Check:")
         logger.info(f"  Requested font: {test_font}")
         logger.info("  Check logs above for font resolution messages")
-        logger.info("  Look for: 'Found bundled font' or 'Found system font' or 'Using default font'")
+        logger.info(
+            "  Look for: 'Found bundled font' or 'Found system font' or 'Using default font'"
+        )
         logger.info("")
 
         # Summary
         logger.info("=" * 80)
         logger.info("TEST SUMMARY")
         logger.info("=" * 80)
-        logger.info(f"✓ Video processed successfully")
+        logger.info("✓ Video processed successfully")
         logger.info(f"✓ {len(segments)} segments identified")
         logger.info(f"✓ {len(clips)} clips created")
 
         # Check if any segments are within our requested range
         if segments:
-            in_range = sum(1 for s in segments if test_min_length <= (s['end_time'] - s['start_time']) <= test_max_length)
+            in_range = sum(
+                1
+                for s in segments
+                if test_min_length
+                <= (s["end_time"] - s["start_time"])
+                <= test_max_length
+            )
             total = len(segments)
-            logger.info(f"✓ {in_range}/{total} segments within {test_min_length}s-{test_max_length}s range")
+            logger.info(
+                f"✓ {in_range}/{total} segments within {test_min_length}s-{test_max_length}s range"
+            )
 
             if in_range == 0:
                 logger.warning("⚠ No segments within requested clip length range!")
-                logger.warning("   This may indicate clip length parameters were ignored.")
+                logger.warning(
+                    "   This may indicate clip length parameters were ignored."
+                )
 
         logger.info("")
         logger.info("To verify font selection:")
-        logger.info("  1. Check logs for 'Found bundled font' or 'Found system font' messages")
+        logger.info(
+            "  1. Check logs for 'Found bundled font' or 'Found system font' messages"
+        )
         logger.info("  2. Inspect generated clip files for correct font rendering")
         logger.info("")
 
@@ -155,7 +174,7 @@ async def quick_test_font_resolution():
     test_fonts = [
         "Barlow Condensed Semi Bold",
         "TikTokSans-Regular",
-        "NonExistentFont12345"
+        "NonExistentFont12345",
     ]
 
     for font_name in test_fonts:
@@ -172,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="Run quick font resolution test only (no video processing)"
+        help="Run quick font resolution test only (no video processing)",
     )
 
     args = parser.parse_args()
@@ -189,6 +208,7 @@ if __name__ == "__main__":
 
         # Give user a chance to cancel
         import time
+
         logger.info("Starting in 5 seconds... (Ctrl+C to cancel)")
         try:
             time.sleep(5)
