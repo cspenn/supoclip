@@ -1114,7 +1114,7 @@ def create_optimized_clip(
             logger.info(
                 f"Scaling from {new_width}x{new_height} to {target_width}x{target_height} ({output_resolution})"
             )
-            cropped_clip = cropped_clip.resized(newsize=(target_width, target_height))
+            cropped_clip = cropped_clip.resized(new_size=(target_width, target_height))
             # Update dimensions for subtitle/logo positioning
             new_width, new_height = target_width, target_height
         else:
@@ -1315,7 +1315,7 @@ def apply_transition_effect(
 
         # Resize transition to match clip dimensions
         clip_size = clip1.size
-        transition = transition.resized(clip_size)
+        transition = transition.resized(new_size=clip_size)
 
         # Create fade effect with transition
         fade_duration = 0.5  # Half second fade
