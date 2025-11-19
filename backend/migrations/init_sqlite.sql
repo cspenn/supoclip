@@ -20,7 +20,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     default_font_family TEXT DEFAULT 'TikTokSans-Regular',
     default_font_size INTEGER DEFAULT 24,
-    default_font_color TEXT DEFAULT '#FFFFFF'
+    default_font_color TEXT DEFAULT '#FFFFFF',
+    default_clip_min_length INTEGER DEFAULT 10,
+    default_clip_target_length INTEGER DEFAULT 30,
+    default_clip_max_length INTEGER DEFAULT 45,
+    custom_ai_prompt TEXT,
+    logo_file_path TEXT,
+    logo_corner_position TEXT DEFAULT 'top-right' CHECK (logo_corner_position IN ('top-left', 'top-right', 'bottom-left', 'bottom-right')),
+    output_resolution TEXT DEFAULT '720p' CHECK (output_resolution IN ('480p', '720p', '1080p'))
 );
 
 -- Sources table

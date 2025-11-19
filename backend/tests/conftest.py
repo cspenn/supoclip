@@ -30,9 +30,9 @@ if str(backend_root) not in sys.path:
 from src.database import Base, get_db
 from src.config import Config
 
-# Try to import from main_refactored, fallback to main if needed
+# Import from main (has all endpoints including upload-logo)
 try:
-    from src.main_refactored import app
+    from src.main import app
 except (ModuleNotFoundError, ImportError) as e:
     # Fallback: create a simple FastAPI app for testing
     from fastapi import FastAPI

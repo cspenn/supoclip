@@ -97,7 +97,7 @@ class UserPreferencesService:
                 SELECT default_font_family, default_font_size, default_font_color,
                        default_clip_min_length, default_clip_target_length,
                        default_clip_max_length, custom_ai_prompt,
-                       logo_file_path, logo_corner_position
+                       logo_file_path, logo_corner_position, output_resolution
                 FROM users WHERE id = :user_id
             """
             ),
