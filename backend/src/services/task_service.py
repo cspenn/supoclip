@@ -81,6 +81,8 @@ class TaskService:
         font_color: str = "#FFFFFF",
         min_length: int = 10,
         max_length: int = 45,
+        logo_path: Optional[str] = None,
+        logo_corner_position: Optional[str] = "top-right",
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -120,6 +122,8 @@ class TaskService:
                 font_color=font_color,
                 min_length=min_length,
                 max_length=max_length,
+                logo_path=logo_path,
+                logo_corner_position=logo_corner_position,
                 progress_callback=update_progress,
             )
 

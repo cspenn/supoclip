@@ -6,7 +6,7 @@ This module defines tasks that are executed asynchronously by the local
 job queue (LocalJobQueue). Tasks are executed with asyncio workers.
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,8 @@ async def process_video_task(
     font_color: str = "#FFFFFF",
     min_length: int = 10,
     max_length: int = 45,
+    logo_path: Optional[str] = None,
+    logo_corner_position: Optional[str] = "top-right",
 ) -> Dict[str, Any]:
     """
     Background worker task to process a video.
@@ -35,6 +37,8 @@ async def process_video_task(
         font_color: Font color for subtitles
         min_length: Minimum clip length in seconds (default: 10)
         max_length: Maximum clip length in seconds (default: 45)
+        logo_path: Optional path to logo image file
+        logo_corner_position: Logo corner position (default: "top-right")
 
     Returns:
         Dict with processing results
@@ -69,6 +73,8 @@ async def process_video_task(
                 font_color=font_color,
                 min_length=min_length,
                 max_length=max_length,
+                logo_path=logo_path,
+                logo_corner_position=logo_corner_position,
                 progress_callback=update_progress,
             )
 

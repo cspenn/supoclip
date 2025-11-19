@@ -163,6 +163,8 @@ class VideoService:
         font_size: int = 24,
         font_color: str = "#FFFFFF",
         output_resolution: str = "720p",
+        logo_path: Optional[str] = None,
+        logo_corner_position: str = "top-right",
     ) -> List[Dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.
@@ -181,8 +183,8 @@ class VideoService:
                 font_family,
                 font_size,
                 font_color,
-                None,  # logo_path
-                "top-right",  # logo_position
+                logo_path,  # Use parameter instead of hardcoded None
+                logo_corner_position,  # Use parameter instead of hardcoded "top-right"
                 output_resolution,
             )
 
@@ -210,6 +212,8 @@ class VideoService:
         min_length: int = 10,
         max_length: int = 45,
         output_resolution: str = "720p",
+        logo_path: Optional[str] = None,
+        logo_corner_position: Optional[str] = "top-right",
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -225,6 +229,8 @@ class VideoService:
             min_length: Minimum clip length in seconds (default: 10)
             max_length: Maximum clip length in seconds (default: 45)
             output_resolution: Target resolution - "480p", "720p", or "1080p" (default: 720p)
+            logo_path: Optional path to logo image file
+            logo_corner_position: Logo corner position (default: "top-right")
             progress_callback: Optional function to call with progress updates
                               Signature: async def callback(progress: int, message: str)
         """
@@ -301,6 +307,8 @@ class VideoService:
                 font_size,
                 font_color,
                 output_resolution,
+                logo_path,
+                logo_corner_position,
             )
             logger.info(f"Step 4 complete: Created {len(clips_info)} video clips")
 
