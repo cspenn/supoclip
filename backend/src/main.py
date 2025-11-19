@@ -160,6 +160,7 @@ async def start_task(request: Request, user_id: str = Depends(get_current_user))
                 "clip_target_length": data.get("clip_target_length"),
                 "clip_max_length": data.get("clip_max_length"),
                 "custom_ai_prompt": data.get("custom_ai_prompt"),
+                "output_resolution": data.get("output_resolution"),
             }
 
             preferences = await pref_service.merge_with_request_options(
@@ -187,6 +188,7 @@ async def start_task(request: Request, user_id: str = Depends(get_current_user))
             custom_ai_prompt=preferences["custom_ai_prompt"],
             logo_path=logo_path,
             logo_corner_position=preferences["logo_corner_position"],
+            output_resolution=preferences["output_resolution"],
         )
         return result
 
@@ -226,6 +228,7 @@ async def start_task_with_progress(
                 "clip_target_length": data.get("clip_target_length"),
                 "clip_max_length": data.get("clip_max_length"),
                 "custom_ai_prompt": data.get("custom_ai_prompt"),
+                "output_resolution": data.get("output_resolution"),
             }
 
             preferences = await pref_service.merge_with_request_options(
@@ -264,6 +267,7 @@ async def start_task_with_progress(
                 custom_ai_prompt=preferences["custom_ai_prompt"],
                 logo_path=logo_path,
                 logo_corner_position=preferences["logo_corner_position"],
+                output_resolution=preferences["output_resolution"],
             )
         )
 

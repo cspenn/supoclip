@@ -124,6 +124,7 @@ class AsyncVideoProcessingService:
         custom_ai_prompt: Optional[str] = None,
         logo_path: Optional[Path] = None,
         logo_corner_position: str = "top-right",
+        output_resolution: str = "720p",
     ) -> None:
         """Process video asynchronously in background.
 
@@ -143,6 +144,7 @@ class AsyncVideoProcessingService:
             custom_ai_prompt: Optional custom AI prompt override
             logo_path: Optional path to user logo
             logo_corner_position: Corner position for logo
+            output_resolution: Target resolution - "480p", "720p", or "1080p"
         """
         try:
             logger.info(
@@ -230,6 +232,7 @@ class AsyncVideoProcessingService:
                     font_color,
                     logo_path,
                     logo_corner_position,
+                    output_resolution,
                 )
                 logger.info(
                     f"[SERVICE=ASYNC] Generated {len(clips_info)} video clips with transitions"

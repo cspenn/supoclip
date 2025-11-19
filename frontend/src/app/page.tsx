@@ -57,6 +57,9 @@ export default function Home() {
   const [clipMinLength, setClipMinLength] = useState(10);
   const [clipMaxLength, setClipMaxLength] = useState(45);
 
+  // Output resolution state
+  const [outputResolution, setOutputResolution] = useState<"480p" | "720p" | "1080p">("720p");
+
   // Use useTasks hook to get latest task
   const { tasks, isLoading: isLoadingLatest } = useTasks();
   const latestTask = tasks.length > 0 ? tasks[0] : null;
@@ -72,6 +75,8 @@ export default function Home() {
       // Initialize slider values from user preferences
       setClipMinLength(preferences.clipMinLength ?? 10);
       setClipMaxLength(preferences.clipMaxLength ?? 45);
+      // Initialize output resolution from user preferences
+      setOutputResolution(preferences.outputResolution ?? "720p");
     }
   }, [preferences]);
 
@@ -160,6 +165,8 @@ export default function Home() {
           // Clip length settings from current form state (user-adjusted sliders)
           min_length: clipMinLength,
           max_length: clipMaxLength,
+          // Output resolution setting
+          output_resolution: outputResolution,
         }),
       });
 
@@ -415,6 +422,32 @@ export default function Home() {
               <div className="bg-white rounded p-3 text-sm text-center text-gray-700 font-medium">
                 Current range: <span className="text-blue-600">{clipMinLength}s</span> - <span className="text-green-600">{clipMaxLength}s</span>
               </div>
+            </div>
+
+            {/* Output Resolution Section */}
+            <div className="space-y-2">
+              <label htmlFor="output-resolution" className="text-sm font-medium text-black">
+                Output Resolution
+              </label>
+              <Select value={outputResolution} onValueChange={(value: "480p" | "720p" | "1080p") => setOutputResolution(value)} disabled={isLoading}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select resolution" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="480p">
+                    480p (SD) - Smaller file size, faster processing
+                  </SelectItem>
+                  <SelectItem value="720p">
+                    720p (HD) - Balanced quality and file size (Recommended)
+                  </SelectItem>
+                  <SelectItem value="1080p">
+                    1080p (Full HD) - Best quality, larger file size
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-600">
+                Higher resolutions produce better quality clips but take longer to process and use more storage space.
+              </p>
             </div>
 
             {isLoading && (

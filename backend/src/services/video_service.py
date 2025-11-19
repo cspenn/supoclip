@@ -162,13 +162,14 @@ class VideoService:
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
+        output_resolution: str = "720p",
     ) -> List[Dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.
         Runs in thread pool as video processing is CPU-intensive.
         """
         try:
-            logger.info(f"Creating {len(segments)} video clips")
+            logger.info(f"Creating {len(segments)} video clips at {output_resolution}")
             clips_output_dir = Path(config.temp_dir) / "clips"
             clips_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -180,6 +181,9 @@ class VideoService:
                 font_family,
                 font_size,
                 font_color,
+                None,  # logo_path
+                "top-right",  # logo_position
+                output_resolution,
             )
 
             logger.info(f"Successfully created {len(clips_info)} clips")
@@ -205,6 +209,7 @@ class VideoService:
         font_color: str = "#FFFFFF",
         min_length: int = 10,
         max_length: int = 45,
+        output_resolution: str = "720p",
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
@@ -219,6 +224,7 @@ class VideoService:
             font_color: Font color for subtitles
             min_length: Minimum clip length in seconds (default: 10)
             max_length: Maximum clip length in seconds (default: 45)
+            output_resolution: Target resolution - "480p", "720p", or "1080p" (default: 720p)
             progress_callback: Optional function to call with progress updates
                               Signature: async def callback(progress: int, message: str)
         """
@@ -227,7 +233,7 @@ class VideoService:
             logger.info(
                 f"Processing video with parameters: "
                 f"font_family={font_family}, font_size={font_size}, font_color={font_color}, "
-                f"clip_length={min_length}s-{max_length}s"
+                f"clip_length={min_length}s-{max_length}s, output_resolution={output_resolution}"
             )
 
             # Step 1: Get video path
@@ -289,7 +295,12 @@ class VideoService:
             )
 
             clips_info = await VideoService.create_video_clips(
-                video_path, segments_json, font_family, font_size, font_color
+                video_path,
+                segments_json,
+                font_family,
+                font_size,
+                font_color,
+                output_resolution,
             )
             logger.info(f"Step 4 complete: Created {len(clips_info)} video clips")
 

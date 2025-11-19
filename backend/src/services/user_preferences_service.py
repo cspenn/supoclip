@@ -34,6 +34,7 @@ class UserPreferencesService:
         "custom_ai_prompt": None,
         "logo_file_path": None,
         "logo_corner_position": "top-right",
+        "output_resolution": "720p",
     }
 
     # Mapping from preference keys to database column names
@@ -47,6 +48,7 @@ class UserPreferencesService:
         "custom_ai_prompt": "custom_ai_prompt",
         "logo_file_path": "logo_file_path",
         "logo_corner_position": "logo_corner_position",
+        "output_resolution": "output_resolution",
     }
 
     def __init__(self, db: AsyncSession):

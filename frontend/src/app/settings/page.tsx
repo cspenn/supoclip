@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FontCustomization } from "@/components/FontCustomization";
 import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
 import { useSession } from "@/lib/auth-client";
@@ -19,7 +20,7 @@ import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useApiUrl } from "@/hooks/useApiUrl";
 import { UserPreferences } from "@/types/preferences";
 import Link from "next/link";
-import { PlayCircle, Settings, Clock, Sparkles, Image } from "lucide-react";
+import { PlayCircle, Settings, Clock, Sparkles, Image, Monitor } from "lucide-react";
 
 export default function SettingsPage() {
   const [clipMinLength, setClipMinLength] = useState(10);
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const [customAiPrompt, setCustomAiPrompt] = useState("");
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [defaultPrompt, setDefaultPrompt] = useState("");
+  const [outputResolution, setOutputResolution] = useState<"480p" | "720p" | "1080p">("720p");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -81,6 +83,7 @@ export default function SettingsPage() {
       setClipMaxLength(preferences.clipMaxLength);
       setCustomAiPrompt(preferences.customAiPrompt || "");
       setUseCustomPrompt(!!preferences.customAiPrompt);
+      setOutputResolution(preferences.outputResolution);
     }
   }, [preferences]);
 
@@ -106,6 +109,7 @@ export default function SettingsPage() {
           clipTargetLength,
           clipMaxLength,
           customAiPrompt: useCustomPrompt ? customAiPrompt : null,
+          outputResolution,
         }),
       });
 
@@ -257,6 +261,55 @@ export default function SettingsPage() {
                 disabled={isLoadingPrefs}
                 showPreview={true}
               />
+            </div>
+
+            <Separator className="my-8" />
+
+            {/* Output Resolution Section */}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-black mb-1 flex items-center gap-2">
+                  <Monitor className="w-5 h-5" />
+                  Output Resolution
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Set the default video quality for all generated clips
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-black">
+                  Default Resolution
+                </Label>
+                <Select value={outputResolution} onValueChange={(value: "480p" | "720p" | "1080p") => setOutputResolution(value)} disabled={isLoading}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select resolution" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="480p">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">480p (SD)</span>
+                        <span className="text-xs text-gray-500">Smaller file size, faster processing</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="720p">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">720p (HD) - Recommended</span>
+                        <span className="text-xs text-gray-500">Balanced quality and file size</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="1080p">
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">1080p (Full HD)</span>
+                        <span className="text-xs text-gray-500">Best quality, larger file size</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  Higher resolutions produce better quality clips but take longer to process and use more storage. This setting applies to all new video processing tasks.
+                </p>
+              </div>
             </div>
 
             <Separator className="my-8" />

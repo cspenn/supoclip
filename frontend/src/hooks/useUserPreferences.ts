@@ -21,6 +21,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   clipTargetLength: 30,
   clipMaxLength: 45,
   customAiPrompt: null,
+  outputResolution: "720p",
 };
 
 /**

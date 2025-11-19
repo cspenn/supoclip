@@ -11,6 +11,7 @@ export interface UserPreferences {
   clipTargetLength: number;
   clipMaxLength: number;
   customAiPrompt: string | null;
+  outputResolution: "480p" | "720p" | "1080p";
 }
 
 // end frontend/src/types/preferences.ts

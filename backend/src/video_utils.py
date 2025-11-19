@@ -21,6 +21,14 @@ from .transcription_mlx import (
 logger = logging.getLogger(__name__)
 config = Config()
 
+# Resolution presets for 9:16 vertical format
+# Format: (width, height) - maintains 9:16 aspect ratio
+RESOLUTION_PRESETS = {
+    "480p": (480, 854),  # SD quality - smallest file size
+    "720p": (720, 1280),  # HD quality - balanced size/quality (default)
+    "1080p": (1080, 1920),  # Full HD quality - best quality, largest file size
+}
+
 
 def resolve_font_path(font_family: str) -> str:
     """
@@ -61,6 +69,7 @@ def resolve_font_path(font_family: str) -> str:
     # Try system fonts via database (synchronous lookup)
     try:
         import sqlite3
+
         db_url = config.database_url or "sqlite+aiosqlite:///./supoclip.db"
         db_path = db_url.replace("sqlite+aiosqlite:///", "").replace("sqlite://", "")
 
@@ -69,7 +78,7 @@ def resolve_font_path(font_family: str) -> str:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT file_path FROM system_fonts WHERE name = ? AND is_valid = 1",
-                (font_family,)
+                (font_family,),
             )
             result = cursor.fetchone()
             conn.close()
@@ -82,9 +91,7 @@ def resolve_font_path(font_family: str) -> str:
                     )
                     return system_font_path
                 else:
-                    logger.warning(
-                        f"System font file not found: {system_font_path}"
-                    )
+                    logger.warning(f"System font file not found: {system_font_path}")
     except Exception as e:
         logger.debug(f"Could not query system fonts database: {e}")
 
@@ -914,6 +921,9 @@ class SubtitleTextClipCreator:
                 text_align="center",
             )
 
+            # Add margin to prevent stroke from being cut off at edges
+            text_clip = text_clip.margin(bottom=3, top=3, left=2, right=2, opacity=0)
+
             text_height = text_clip.size[1] if text_clip.size else 40
             estimated_line_height = current_font_size * 1.5
             estimated_lines = text_height / estimated_line_height
@@ -1055,8 +1065,14 @@ def create_optimized_clip(
     font_color: str = "#FFFFFF",
     logo_path: Optional[Path] = None,
     logo_position: str = "top-right",
+    output_resolution: str = "720p",
 ) -> bool:
-    """Create optimized 9:16 clip with AssemblyAI subtitles."""
+    """
+    Create optimized 9:16 clip with AssemblyAI subtitles.
+
+    Args:
+        output_resolution: Target resolution ("480p", "720p", or "1080p")
+    """
     try:
         duration = end_time - start_time
         if duration <= 0:
@@ -1088,6 +1104,23 @@ def create_optimized_clip(
         cropped_clip = clip.cropped(
             x1=x_offset, y1=y_offset, x2=x_offset + new_width, y2=y_offset + new_height
         )
+
+        # Scale to target resolution
+        target_width, target_height = RESOLUTION_PRESETS.get(
+            output_resolution, RESOLUTION_PRESETS["720p"]
+        )
+
+        if (new_width, new_height) != (target_width, target_height):
+            logger.info(
+                f"Scaling from {new_width}x{new_height} to {target_width}x{target_height} ({output_resolution})"
+            )
+            cropped_clip = cropped_clip.resized(newsize=(target_width, target_height))
+            # Update dimensions for subtitle/logo positioning
+            new_width, new_height = target_width, target_height
+        else:
+            logger.info(
+                f"Using native resolution {new_width}x{new_height} (matches {output_resolution})"
+            )
 
         # Add AssemblyAI subtitles
         final_clips = [cropped_clip]
@@ -1179,6 +1212,7 @@ def create_clips_from_segments(
     font_color: str = "#FFFFFF",
     logo_path: Optional[Path] = None,
     logo_position: str = "top-right",
+    output_resolution: str = "720p",
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments."""
     logger.info(f"Creating {len(segments)} clips")
@@ -1221,6 +1255,7 @@ def create_clips_from_segments(
                 font_color,
                 logo_path,
                 logo_position,
+                output_resolution,
             )
 
             if success:
@@ -1331,9 +1366,12 @@ def create_clips_with_transitions(
     font_color: str = "#FFFFFF",
     logo_path: Optional[Path] = None,
     logo_position: str = "top-right",
+    output_resolution: str = "720p",
 ) -> List[Dict[str, Any]]:
     """Create video clips with transition effects between them."""
-    logger.info(f"Creating {len(segments)} clips with transitions")
+    logger.info(
+        f"Creating {len(segments)} clips with transitions at {output_resolution}"
+    )
 
     # First create individual clips
     clips_info = create_clips_from_segments(
@@ -1345,6 +1383,7 @@ def create_clips_with_transitions(
         font_color,
         logo_path,
         logo_position,
+        output_resolution,
     )
 
     if len(clips_info) < 2:
