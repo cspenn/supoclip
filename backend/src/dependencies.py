@@ -51,8 +51,15 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     Raises:
         HTTPException: 401 if user not authenticated or invalid
     """
-    # Try both header formats
-    user_id = request.headers.get("X-User-ID") or request.headers.get("user-id")
+    # Try multiple header formats for compatibility
+    # Standard: X-User-ID (RFC 7230 compliant)
+    # Alternative: user-id (lowercase hyphen)
+    # Legacy: user_id (underscore - for backward compatibility)
+    user_id = (
+        request.headers.get("X-User-ID")
+        or request.headers.get("user-id")
+        or request.headers.get("user_id")
+    )
 
     if not user_id or len(user_id.strip()) == 0:
         logger.warning("Authentication attempt with missing user ID")
