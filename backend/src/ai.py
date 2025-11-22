@@ -58,6 +58,12 @@ SEGMENT SELECTION CRITERIA:
 4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone
 5. ENTERTAINING: Content people would want to share
 
+VERBATIM TEXT REQUIREMENT - CRITICAL:
+- The "text" field MUST contain the EXACT words from the transcript
+- Do NOT summarize, paraphrase, or rewrite the transcript text
+- Copy the text VERBATIM between your selected start_time and end_time
+- The text will be displayed as captions - accuracy is essential
+
 TIMING GUIDELINES:
 - Segments MUST respect the configured duration range for optimal engagement
 - CRITICAL: start_time MUST be different from end_time (minimum duration requirement enforced)

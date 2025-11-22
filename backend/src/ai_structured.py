@@ -141,6 +141,12 @@ SEGMENT SELECTION CRITERIA:
 4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone (NOT partial)
 5. ENTERTAINING: Content people would want to watch (FULL CLIPS, NOT FRAGMENTS)
 
+VERBATIM TEXT REQUIREMENT - CRITICAL:
+- The "text" field MUST contain the EXACT words from the transcript
+- Do NOT summarize, paraphrase, or rewrite the transcript text
+- Copy the text VERBATIM between your selected start_time and end_time
+- The text will be displayed as captions - accuracy is essential
+
 DURATION REQUIREMENTS - ABSOLUTELY CRITICAL:
 - MINIMUM DURATION: {min_length} seconds per segment (DO NOT return segments shorter than {min_length} seconds)
 - MAXIMUM DURATION: {max_length} seconds per segment (DO NOT return segments longer than {max_length} seconds)
