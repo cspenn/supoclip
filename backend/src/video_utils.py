@@ -923,10 +923,11 @@ class SubtitleTextClipCreator:
             )
 
             # Add margin to prevent stroke and descenders from being cut off at edges
-            # Dynamic bottom margin based on font size: 35% of font size accounts for descenders (20-25%)
-            # plus stroke (1px) and buffer. This ensures no clipping at any font size (16-40px).
-            # Examples: 16px->5px, 20px->7px, 24px->8px, 30px->10px, 40px->14px
-            bottom_margin = max(5, int(current_font_size * 0.35))
+            # Dynamic bottom margin: 45% of font size for descenders (25-30%) + stroke (1-2px) + buffer
+            # This ensures no clipping at any font size (16-40px) even with stroke effects.
+            # Examples: 16px->7px, 20px->9px, 24px->11px, 30px->14px, 40px->18px
+            stroke_width = 1  # Current stroke width - used in margin calculation
+            bottom_margin = max(7, int(current_font_size * 0.45) + stroke_width)
             text_clip = text_clip.with_effects(
                 [Margin(bottom=bottom_margin, top=5, left=3, right=3, opacity=0)]
             )
