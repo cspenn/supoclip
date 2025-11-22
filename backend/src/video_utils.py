@@ -894,6 +894,9 @@ class SubtitleTextClipCreator:
     HORIZONTAL_PADDING = 0.1
     MIN_FONT_SIZE = 16
     FONT_SIZE_REDUCTION = 0.85
+    STROKE_WIDTH = (
+        1  # Stroke width for text outline - used in both TextClip and margin calc
+    )
 
     @staticmethod
     def create_text_clip(
@@ -917,17 +920,18 @@ class SubtitleTextClipCreator:
                 font_size=current_font_size,
                 color=font_color,
                 stroke_color="black",
-                stroke_width=1,
+                stroke_width=SubtitleTextClipCreator.STROKE_WIDTH,
                 method="label",  # Changed from "caption" to prevent text cutoff
                 text_align="center",
             )
 
             # Add margin to prevent stroke and descenders from being cut off at edges
-            # Dynamic bottom margin: 45% of font size for descenders (25-30%) + stroke (1-2px) + buffer
+            # Dynamic bottom margin: 45% of font size for descenders (25-30%) + stroke + buffer
             # This ensures no clipping at any font size (16-40px) even with stroke effects.
-            # Examples: 16px->7px, 20px->9px, 24px->11px, 30px->14px, 40px->18px
-            stroke_width = 1  # Current stroke width - used in margin calculation
-            bottom_margin = max(7, int(current_font_size * 0.45) + stroke_width)
+            # Examples: 16px->8px, 20px->10px, 24px->12px, 30px->15px, 40px->19px
+            bottom_margin = max(
+                7, int(current_font_size * 0.45) + SubtitleTextClipCreator.STROKE_WIDTH
+            )
             text_clip = text_clip.with_effects(
                 [Margin(bottom=bottom_margin, top=5, left=3, right=3, opacity=0)]
             )
