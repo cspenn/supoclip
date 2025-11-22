@@ -168,14 +168,30 @@ class UserPreferencesService:
     def get_logo_path(self, preferences: dict[str, Any]) -> Optional[Path]:
         """Extract logo path from preferences.
 
+        Converts relative paths to absolute and validates existence.
+
         Args:
             preferences: Merged preferences dictionary
 
         Returns:
-            Path object if logo configured, None otherwise
+            Absolute Path object if logo exists, None otherwise
         """
         logo_file_path = preferences.get("logo_file_path")
-        return Path(logo_file_path) if logo_file_path else None
+        if not logo_file_path:
+            return None
+
+        logo_path = Path(logo_file_path)
+
+        # Convert to absolute path if relative
+        if not logo_path.is_absolute():
+            logo_path = logo_path.resolve()
+
+        # Validate existence
+        if not logo_path.exists():
+            logger.warning(f"Logo file not found at path: {logo_path}")
+            return None
+
+        return logo_path
 
 
 # end backend/src/services/user_preferences_service.py
