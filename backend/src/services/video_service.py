@@ -164,7 +164,7 @@ class VideoService:
         font_color: str = "#FFFFFF",
         output_resolution: str = "720p",
         logo_path: Optional[str] = None,
-        logo_corner_position: str = "top-right",
+        logo_corner_position: Optional[str] = "top-right",
     ) -> List[Dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.

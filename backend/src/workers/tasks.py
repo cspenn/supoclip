@@ -24,6 +24,9 @@ async def process_video_task(
     logo_path: Optional[str] = None,
     logo_corner_position: Optional[str] = "top-right",
 ) -> Dict[str, Any]:
+    logger.info(
+        f"WORKER RECEIVED: logo_path='{logo_path}', logo_corner_position='{logo_corner_position}'"
+    )
     """
     Background worker task to process a video.
 

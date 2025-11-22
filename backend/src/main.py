@@ -234,7 +234,8 @@ async def start_task_with_progress(
             preferences = await pref_service.merge_with_request_options(
                 user_id, request_opts
             )
-            logo_path = pref_service.get_logo_path(preferences)
+            logo_path_obj = pref_service.get_logo_path(preferences)
+            logo_path = str(logo_path_obj) if logo_path_obj else None
 
             logger.info(f"User {user_id} preferences loaded and merged")
 

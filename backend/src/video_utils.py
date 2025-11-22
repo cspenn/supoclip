@@ -1227,6 +1227,9 @@ def create_optimized_clip(
 
         # Add logo overlay if provided
         if logo_path:
+            logger.info(f"VIDEO_UTILS: Processing logo_path='{logo_path}'")
+            if isinstance(logo_path, str):
+                logger.info(f"VIDEO_UTILS: Exists on disk? {Path(logo_path).exists()}")
             logger.info(f"Logo path provided: {logo_path}")
             # Convert string to Path if needed
             logo_path_obj = Path(logo_path) if isinstance(logo_path, str) else logo_path
