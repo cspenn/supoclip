@@ -19,15 +19,15 @@ TEST_OUTPUT_DIR.mkdir(exist_ok=True)
 
 def measure_descender_depth():
     """Measure actual descender depth for the font at different sizes."""
-    print("="*60)
+    print("=" * 60)
     print("FONT DESCENDER DEPTH MEASUREMENT")
-    print("="*60)
+    print("=" * 60)
 
     font_path = Path(__file__).parent / FONT_PATH
     test_texts = [
         "ABCDEFGH",  # No descenders (uppercase)
         "abcdefgh",  # No descenders (lowercase without descenders)
-        "gpqjy",     # All descenders
+        "gpqjy",  # All descenders
         "what happened instead.",  # User's reported text
         "Typography",  # Mixed
     ]
@@ -55,9 +55,9 @@ def measure_descender_depth():
 
 def test_descender_clipping_with_stroke():
     """Test if stroke extends descenders enough to cause clipping."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DESCENDER + STROKE CLIPPING TEST")
-    print("="*60)
+    print("=" * 60)
 
     video_width, video_height = 720, 1280
     test_text = "what happened instead."
@@ -68,25 +68,25 @@ def test_descender_clipping_with_stroke():
             "name": "no_stroke_3px_margin",
             "stroke_width": 0,
             "bottom_margin": 3,
-            "description": "No stroke, 3px margin"
+            "description": "No stroke, 3px margin",
         },
         {
             "name": "stroke_1px_3px_margin",
             "stroke_width": 1,
             "bottom_margin": 3,
-            "description": "1px stroke, 3px margin (CURRENT)"
+            "description": "1px stroke, 3px margin (CURRENT)",
         },
         {
             "name": "stroke_1px_12px_margin",
             "stroke_width": 1,
             "bottom_margin": 12,
-            "description": "1px stroke, 12px margin (PROPOSED)"
+            "description": "1px stroke, 12px margin (PROPOSED)",
         },
         {
             "name": "stroke_2px_3px_margin",
             "stroke_width": 2,
             "bottom_margin": 3,
-            "description": "2px stroke, 3px margin (worst case)"
+            "description": "2px stroke, 3px margin (worst case)",
         },
     ]
 
@@ -108,15 +108,13 @@ def test_descender_clipping_with_stroke():
         )
 
         # Apply margin
-        text_clip = text_clip.with_effects([
-            Margin(
-                bottom=test_case["bottom_margin"],
-                top=5,
-                left=3,
-                right=3,
-                opacity=0
-            )
-        ])
+        text_clip = text_clip.with_effects(
+            [
+                Margin(
+                    bottom=test_case["bottom_margin"], top=5, left=3, right=3, opacity=0
+                )
+            ]
+        )
 
         text_width, text_height = text_clip.size
         print(f"  TextClip size: {text_width}x{text_height}")
@@ -140,9 +138,7 @@ def test_descender_clipping_with_stroke():
 
         # Create composite
         background = ColorClip(
-            size=(video_width, video_height),
-            color=(30, 30, 30),
-            duration=duration
+            size=(video_width, video_height), color=(30, 30, 30), duration=duration
         )
 
         text_clip_positioned = text_clip.with_duration(duration).with_position(
@@ -154,7 +150,7 @@ def test_descender_clipping_with_stroke():
         img = Image.fromarray(frame)
 
         # Zoom into bottom region to see descenders clearly
-        zoom_img = img.crop((100, video_height-200, video_width-100, video_height))
+        zoom_img = img.crop((100, video_height - 200, video_width - 100, video_height))
 
         # Draw annotations
         draw = ImageDraw.Draw(zoom_img)
@@ -162,13 +158,25 @@ def test_descender_clipping_with_stroke():
         zoom_offset = video_height - 200
 
         # Red line at absolute bottom
-        draw.line([(0, zoom_height-1), (zoom_img.size[0], zoom_height-1)], fill="red", width=2)
+        draw.line(
+            [(0, zoom_height - 1), (zoom_img.size[0], zoom_height - 1)],
+            fill="red",
+            width=2,
+        )
 
         # Yellow line 10px from bottom
-        draw.line([(0, zoom_height-11), (zoom_img.size[0], zoom_height-11)], fill="yellow", width=1)
+        draw.line(
+            [(0, zoom_height - 11), (zoom_img.size[0], zoom_height - 11)],
+            fill="yellow",
+            width=1,
+        )
 
         # Green line 20px from bottom
-        draw.line([(0, zoom_height-21), (zoom_img.size[0], zoom_height-21)], fill="green", width=1)
+        draw.line(
+            [(0, zoom_height - 21), (zoom_img.size[0], zoom_height - 21)],
+            fill="green",
+            width=1,
+        )
 
         output_path = TEST_OUTPUT_DIR / f"{test_case['name']}_zoom.png"
         zoom_img.save(output_path)
@@ -186,7 +194,9 @@ def test_descender_clipping_with_stroke():
         black_pixels = np.sum(np.all(danger_zone < [50, 50, 50], axis=2))
 
         if white_pixels > 50 or black_pixels > 50:
-            print(f"  ⚠️  TEXT IN DANGER ZONE! White={white_pixels}, Black={black_pixels}")
+            print(
+                f"  ⚠️  TEXT IN DANGER ZONE! White={white_pixels}, Black={black_pixels}"
+            )
 
         # Cleanup
         final_clip.close()
@@ -197,9 +207,9 @@ def test_descender_clipping_with_stroke():
 
 def test_actual_user_scenario():
     """Reproduce the exact scenario from user's screenshot."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("USER SCENARIO REPRODUCTION")
-    print("="*60)
+    print("=" * 60)
 
     # Try different resolutions - user might be using 1080p
     resolutions = {
@@ -216,7 +226,9 @@ def test_actual_user_scenario():
         print(f"Resolution: {res_name} ({video_width}x{video_height})")
 
         # Calculate font size (production logic)
-        calculated_font_size = max(20, min(40, int(base_font_size * (video_width / 720))))
+        calculated_font_size = max(
+            20, min(40, int(base_font_size * (video_width / 720)))
+        )
         print(f"Calculated font size: {calculated_font_size}px")
 
         # Current production settings
@@ -232,9 +244,9 @@ def test_actual_user_scenario():
         )
 
         # Current margin
-        text_clip = text_clip.with_effects([
-            Margin(bottom=3, top=3, left=2, right=2, opacity=0)
-        ])
+        text_clip = text_clip.with_effects(
+            [Margin(bottom=3, top=3, left=2, right=2, opacity=0)]
+        )
 
         text_width, text_height = text_clip.size
         vertical_position = int(video_height * 0.75 - text_height // 2)
@@ -249,9 +261,7 @@ def test_actual_user_scenario():
 
         # Create composite
         background = ColorClip(
-            size=(video_width, video_height),
-            color=(30, 30, 30),
-            duration=duration
+            size=(video_width, video_height), color=(30, 30, 30), duration=duration
         )
 
         text_clip_positioned = text_clip.with_duration(duration).with_position(
@@ -273,7 +283,9 @@ def test_actual_user_scenario():
 
         # Zoom into bottom
         zoom_height = 200
-        zoom_img = img.crop((100, img.size[1]-zoom_height, img.size[0]-100, img.size[1]))
+        zoom_img = img.crop(
+            (100, img.size[1] - zoom_height, img.size[0] - 100, img.size[1])
+        )
         output_path_zoom = TEST_OUTPUT_DIR / f"user_scenario_{res_name}_zoom.png"
         zoom_img.save(output_path_zoom)
 
@@ -292,15 +304,16 @@ if __name__ == "__main__":
     if not font_path.exists():
         print(f"❌ Error: Font file not found at {font_path}")
         import sys
+
         sys.exit(1)
 
     measure_descender_depth()
     test_descender_clipping_with_stroke()
     test_actual_user_scenario()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ANALYSIS COMPLETE")
-    print("="*60)
+    print("=" * 60)
     print(f"\nTest images saved to: {TEST_OUTPUT_DIR}")
     print("\nKey findings:")
     print("  1. Check zoom images to see descender rendering")

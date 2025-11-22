@@ -1,12 +1,10 @@
 """
 Test script to verify parakeet-mlx token extraction fix.
 """
-from transcription_mlx import transcribe_video_mlx  # type: ignore
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+from src.transcription_mlx import transcribe_video_mlx
 
 
 # Find a test video

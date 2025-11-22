@@ -49,7 +49,9 @@ def create_test_caption(
     print(f"Test: {test_name}")
     print(f"Text: '{text}'")
     print(f"Font size: {font_size}px")
-    print(f"Margins: top={top_margin}, bottom={bottom_margin}, left={left_margin}, right={right_margin}")
+    print(
+        f"Margins: top={top_margin}, bottom={bottom_margin}, left={left_margin}, right={right_margin}"
+    )
 
     # Create text clip exactly as done in production code
     text_clip = TextClip(
@@ -66,9 +68,17 @@ def create_test_caption(
     print(f"TextClip size before margin: {text_clip.size}")
 
     # Apply margin
-    text_clip = text_clip.with_effects([
-        Margin(bottom=bottom_margin, top=top_margin, left=left_margin, right=right_margin, opacity=0)
-    ])
+    text_clip = text_clip.with_effects(
+        [
+            Margin(
+                bottom=bottom_margin,
+                top=top_margin,
+                left=left_margin,
+                right=right_margin,
+                opacity=0,
+            )
+        ]
+    )
 
     print(f"TextClip size after margin: {text_clip.size}")
 
@@ -94,17 +104,25 @@ def create_test_caption(
     width, height = img.size
 
     # Draw red border to show exact edges
-    draw.rectangle([(0, 0), (width-1, height-1)], outline="red", width=1)
+    draw.rectangle([(0, 0), (width - 1, height - 1)], outline="red", width=1)
 
     # Draw margin guides (green lines)
     if top_margin > 0:
         draw.line([(0, top_margin), (width, top_margin)], fill="green", width=1)
     if bottom_margin > 0:
-        draw.line([(0, height - bottom_margin), (width, height - bottom_margin)], fill="green", width=1)
+        draw.line(
+            [(0, height - bottom_margin), (width, height - bottom_margin)],
+            fill="green",
+            width=1,
+        )
     if left_margin > 0:
         draw.line([(left_margin, 0), (left_margin, height)], fill="green", width=1)
     if right_margin > 0:
-        draw.line([(width - right_margin, 0), (width - right_margin, height)], fill="green", width=1)
+        draw.line(
+            [(width - right_margin, 0), (width - right_margin, height)],
+            fill="green",
+            width=1,
+        )
 
     output_path = TEST_OUTPUT_DIR / f"{test_name}.png"
     img.save(output_path)
@@ -140,57 +158,57 @@ def run_clipping_tests():
             "name": "current_production_20px",
             "font_size": 20,
             "bottom_margin": 3,  # Current production value
-            "description": "Current production settings with 20px font"
+            "description": "Current production settings with 20px font",
         },
         {
             "name": "current_production_24px",
             "font_size": 24,
             "bottom_margin": 3,  # Current production value
-            "description": "Current production settings with 24px font"
+            "description": "Current production settings with 24px font",
         },
         {
             "name": "current_production_30px",
             "font_size": 30,
             "bottom_margin": 3,  # Current production value
-            "description": "Current production settings with 30px font"
+            "description": "Current production settings with 30px font",
         },
         {
             "name": "current_production_40px",
             "font_size": 40,
             "bottom_margin": 3,  # Current production value
-            "description": "Current production settings with 40px font (maximum)"
+            "description": "Current production settings with 40px font (maximum)",
         },
         {
             "name": "increased_margin_8px_24px",
             "font_size": 24,
             "bottom_margin": 8,
-            "description": "Increased margin (8px) with 24px font"
+            "description": "Increased margin (8px) with 24px font",
         },
         {
             "name": "increased_margin_10px_24px",
             "font_size": 24,
             "bottom_margin": 10,
-            "description": "Increased margin (10px) with 24px font"
+            "description": "Increased margin (10px) with 24px font",
         },
         {
             "name": "increased_margin_12px_40px",
             "font_size": 40,
             "bottom_margin": 12,
-            "description": "Increased margin (12px) with 40px font (worst case)"
+            "description": "Increased margin (12px) with 40px font (worst case)",
         },
         {
             "name": "increased_margin_15px_40px",
             "font_size": 40,
             "bottom_margin": 15,
-            "description": "Generous margin (15px) with 40px font"
+            "description": "Generous margin (15px) with 40px font",
         },
     ]
 
     results = []
 
-    print("="*60)
+    print("=" * 60)
     print("CAPTION CLIPPING TEST SUITE")
-    print("="*60)
+    print("=" * 60)
     print(f"Test text: '{test_text}'")
     print(f"Font: {FONT_PATH}")
     print(f"Output directory: {TEST_OUTPUT_DIR}")
@@ -207,26 +225,30 @@ def run_clipping_tests():
                 test_name=test_case["name"],
             )
 
-            results.append({
-                "name": test_case["name"],
-                "description": test_case["description"],
-                "output": output_path,
-                "success": True,
-            })
+            results.append(
+                {
+                    "name": test_case["name"],
+                    "description": test_case["description"],
+                    "output": output_path,
+                    "success": True,
+                }
+            )
 
         except Exception as e:
             print(f"❌ Test failed with error: {e}")
-            results.append({
-                "name": test_case["name"],
-                "description": test_case["description"],
-                "error": str(e),
-                "success": False,
-            })
+            results.append(
+                {
+                    "name": test_case["name"],
+                    "description": test_case["description"],
+                    "error": str(e),
+                    "success": False,
+                }
+            )
 
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     for result in results:
         status = "✅" if result["success"] else "❌"
@@ -236,10 +258,11 @@ def run_clipping_tests():
         else:
             print(f"   Error: {result.get('error', 'Unknown')}")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ANALYSIS")
-    print("="*60)
-    print("""
+    print("=" * 60)
+    print(
+        """
 Descender Analysis:
 - Typical font descender depth: 20-25% of font size
 - Font size 24px: descender ~5-6px
@@ -259,7 +282,8 @@ Recommendation:
 - Current margin (3px) is insufficient for all font sizes
 - Safe margin for all sizes: 12-15px
 - Alternative: Use dynamic margin = int(font_size * 0.35)
-""")
+"""
+    )
 
     print("\nVisual inspection required:")
     print(f"1. Open images in {TEST_OUTPUT_DIR}")
@@ -270,9 +294,9 @@ Recommendation:
 
 def test_dynamic_margin_calculation():
     """Test dynamic margin calculation based on font size."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DYNAMIC MARGIN CALCULATION TEST")
-    print("="*60)
+    print("=" * 60)
 
     test_text = "Typography jest"  # Includes descenders: y, p, j
     font_sizes = [16, 20, 24, 30, 36, 40]
@@ -291,9 +315,13 @@ def test_dynamic_margin_calculation():
                 bottom_margin=dynamic_margin,
                 test_name=f"dynamic_margin_{font_size}px",
             )
-            print(f"{font_size:4d}px    | {dynamic_margin:4d}px         | ✅ {output_path.name}")
+            print(
+                f"{font_size:4d}px    | {dynamic_margin:4d}px         | ✅ {output_path.name}"
+            )
         except Exception as e:
-            print(f"{font_size:4d}px    | {dynamic_margin:4d}px         | ❌ Error: {e}")
+            print(
+                f"{font_size:4d}px    | {dynamic_margin:4d}px         | ❌ Error: {e}"
+            )
 
 
 if __name__ == "__main__":
@@ -308,15 +336,17 @@ if __name__ == "__main__":
     run_clipping_tests()
     test_dynamic_margin_calculation()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("NEXT STEPS")
-    print("="*60)
-    print("""
+    print("=" * 60)
+    print(
+        """
 1. Review generated images in /tmp/caption_tests/
 2. Identify which margin value prevents clipping
 3. Update video_utils.py line 926 with correct margin
 4. Re-test with actual video processing
 5. Verify in production clip output
-""")
+"""
+    )
 
 # end test_caption_clipping.py

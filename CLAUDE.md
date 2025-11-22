@@ -463,3 +463,90 @@ Edit `backend/src/ai.py`:
 - `simplified_system_prompt` - AI instructions for segment selection
 - `TranscriptSegment` - Pydantic model for segment structure
 - `get_most_relevant_parts_by_transcript()` - Main analysis function with validation logic
+
+# DEBUGGING STANDARDS : THE VUW
+
+## How to Debug: "Verifiable Units of Work"
+
+We will no longer provide large, multi-step "plans." Instead, we will provide a sequence of small, isolated **"Verifiable Units of Work" (VUWs)**. Each VUW_ is a micro-plan for a single, contained task to break work down into small, bite-sized chunks. Our developer is inexperienced and unskilled, so we must provide tiny work units and frequent validation.
+
+The core principles of this approach are:
+
+1.  **Extreme Granularity:** Each VUW_will target a single file or a single, specific error across a few files. This minimizes cognitive load and prevents the "tunnel-vision" refactoring problem. No VUW should ever have a diff longer than a single function or class.
+2.  **Verification is the Definition of "Done":** Every VUW_ will have a mandatory, non-negotiable **Verification Checklist**. The task is not complete until that checklist is passed. This moves verification from an assumed skill to an explicit task requirement.
+3.  **Sequential, Not Parallel:** The developer will be given **one VUW_ at a time**. They cannot start the next one until the previous one is submitted and passes a QA check. This prevents them from getting lost or working on unverified code.
+4.  **Repetition Builds Discipline:** The constant repetition of the Verification Checklist on every single task is designed to build the muscle memory of a disciplined workflow.
+5.  **Clarity over Conciseness:** The instructions will be painfully literal, assuming nothing. If an import is needed, the plan will state, "Add this exact import statement to the top of the file." We will use git diffs to show exact changes needed so the developer knows exactly what to type.
+
+---
+
+### The Structure of a "Verifiable Unit of Work" (VUW_)
+
+Every work plan will now follow this exact template:
+
+---
+**VUW_ID:** [A unique identifier, e.g., `BUGFIX-001`]
+
+**Objective:** [A one-sentence explanation of *why* this task is important.]
+*   *Example: "To fix the fatal `ModuleNotFoundError` that prevents the application from starting."*
+
+**Files to Modify:**
+*   `[List of file paths]`
+
+***Mandatory Pre-Work Checkpoint:***
+
+Use git to make a checkpoint in advance of making ANY changes to a file. This is for backup and rollback, and must not be skipped. If you cannot make a checkpoint, stop.
+
+**Step-by-Step Instructions:**
+
+You are not done with this task until you run these commands and they succeed. Check the box only when the command passes.
+
+1.  **[Literal instruction 1]**: *Example: "Open the file `src/crawler/extractor.py`."*
+2.  **[Literal instruction 2]**: *Example: "Find the line: `import pdfplumber.errors`."*
+3.  **[Literal instruction 3]**: *Example: "Delete that line and replace it with: `from pdfplumber.exceptions import PDFSyntaxError`."*
+4.  **[Literal instruction 4]**: *Example: "In the `_extract_from_pdf` method, find the `except` block and change `except (pdfplumber.errors.PDFSyntaxError, ...)` to `except (PDFSyntaxError, ...)`."* - show this as a git diff exactly.
+
+**Mandatory Verification Checklist:**
+
+You are not done with this task until you run these commands and they succeed. Check the box only when the command passes.
+
+*   `[ ]` **Run `./checkpython.sh`**: Must report **zero errors** for tests  **"Success: no issues found"**, **100% passing tests**.
+
+**Self-Attestation:**
+
+*   `[ ]` I attest that I have run checkpython.sh and tests have all passed.
+
+***Mandatory Post-Work Checkpoint:***
+
+Use git to make a checkpoint after a VUW passes all tests. This is for backup and rollback, and must not be skipped. If you cannot make a checkpoint, stop.
+
+---
+
+### The Grand Strategy: Sequencing the VUWs
+
+We will organize the overall repair effort into a series of "Campaigns," where each campaign is a sequence of related VUWs.
+
+**Campaign 1: Application Stability (The Blockers)**
+*   **Goal:** Make the application runnable and the tests executable.
+*   **Sequence of VUWs:**
+    1.  **VUW_BUGFIX-001:** {explanation}
+    2.  **VUW_BUGFIX-002:**  {explanation}
+    3.  ... and so on for every error that prevents `pytest` from running successfully.
+
+**Campaign 2: Type Safety (`mypy` Errors)**
+*   **Goal:** Achieve zero `mypy` errors project-wide.
+*   **Sequence of VUWs:**
+    1.  **VUW_MYPY-001:** {explanation}
+    2.  **VUW_MYPY-002:** {explanation}
+    3.  ... one VUW_for each of the remaining `mypy` errors.
+
+**Campaign 3: Code Quality (`ruff` Errors)**
+*   **Goal:** Achieve zero `ruff` errors project-wide.
+*   **Sequence of VUWs:**
+    *   This will be the longest campaign, with one VUW_for each file that has `ruff` errors, starting with the files that have the most severe violations (like `BLE001` blind exceptions).
+
+By breaking the work down this way, we are building a rigid "scaffolding" of process around the developer. We are not just giving them a map; we are giving them turn-by-turn directions with mandatory checkpoints. This approach directly targets their specific weaknesses—lack of verification, incomplete changes, and getting lost—and forces the adoption of a more disciplined, robust, and successful development workflow.
+
+Build VUW Campaign Workplans with the individual VUWs. Arrange the work plan in order of importance, most important to least important.
+
+# END REMINDERS

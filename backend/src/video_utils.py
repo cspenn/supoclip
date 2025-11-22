@@ -927,7 +927,9 @@ class SubtitleTextClipCreator:
             # plus stroke (1px) and buffer. This ensures no clipping at any font size (16-40px).
             # Examples: 16px->5px, 20px->7px, 24px->8px, 30px->10px, 40px->14px
             bottom_margin = max(5, int(current_font_size * 0.35))
-            text_clip = text_clip.with_effects([Margin(bottom=bottom_margin, top=5, left=3, right=3, opacity=0)])
+            text_clip = text_clip.with_effects(
+                [Margin(bottom=bottom_margin, top=5, left=3, right=3, opacity=0)]
+            )
 
             text_height = text_clip.size[1] if text_clip.size else 40
             estimated_line_height = current_font_size * 1.5
@@ -957,7 +959,7 @@ class SubtitlePositioner:
 
 
 class SubtitleClipBuilder:
-    """Build subtitle clips from word groups."""
+    """Build subtitle clips with word-by-word synchronization (TikTok-style)."""
 
     @staticmethod
     def build_clips(
@@ -967,33 +969,51 @@ class SubtitleClipBuilder:
         font_color: str,
         video_width: int,
         video_height: int,
-        words_per_subtitle: int = 3,
+        words_per_subtitle: int = 1,  # Changed to 1 for word-by-word display
     ) -> List[TextClip]:
-        """Build subtitle clips from grouped words."""
+        """Build individual subtitle clips for each word with exact timing.
+
+        This creates TikTok/YouTube Shorts-style captions where each word appears
+        exactly when spoken, ensuring perfect audio-caption synchronization.
+
+        Args:
+            relevant_words: List of word dictionaries with 'text', 'start', 'end' keys
+            font_path: Path to font file
+            font_size: Font size in pixels
+            font_color: Font color (hex or name)
+            video_width: Video width for text wrapping
+            video_height: Video height for positioning
+            words_per_subtitle: Number of words per caption (default: 1 for word-by-word)
+
+        Returns:
+            List of TextClip objects with precise timing
+        """
         subtitle_clips = []
-        for i in range(0, len(relevant_words), words_per_subtitle):
-            word_group = relevant_words[i : i + words_per_subtitle]
-            if not word_group:
+
+        # Word-by-word mode: create one clip per word
+        for word_data in relevant_words:
+            word_start = word_data["start"]
+            word_end = word_data["end"]
+            word_duration = word_end - word_start
+
+            # Skip very short words (< 50ms) - likely transcription errors
+            if word_duration < 0.05:
+                logger.debug(f"Skipping very short word '{word_data.get('text')}' (duration: {word_duration:.3f}s)")
                 continue
 
-            segment_start = word_group[0]["start"]
-            segment_end = word_group[-1]["end"]
-            segment_duration = segment_end - segment_start
-
-            if segment_duration < 0.1:
-                continue
-
-            text = " ".join(word["text"] for word in word_group)
+            text = word_data["text"]
 
             try:
+                # Create text clip for this single word
                 text_clip = SubtitleTextClipCreator.create_text_clip(
                     text, font_path, font_size, font_color, video_width
                 )
 
                 if text_clip:
-                    text_clip = text_clip.with_duration(segment_duration).with_start(
-                        segment_start
-                    )
+                    # Set exact timing for this word
+                    text_clip = text_clip.with_duration(word_duration).with_start(word_start)
+
+                    # Calculate position (centered, 75% down video)
                     text_height = text_clip.size[1] if text_clip.size else 40
                     position = SubtitlePositioner.calculate_position(
                         video_height, text_height
@@ -1001,10 +1021,13 @@ class SubtitleClipBuilder:
                     text_clip = text_clip.with_position(position)
                     subtitle_clips.append(text_clip)
 
+                    logger.debug(f"Created caption for '{text}' at {word_start:.2f}s-{word_end:.2f}s")
+
             except Exception as e:
                 logger.warning(f"Failed to create subtitle for '{text}': {e}")
                 continue
 
+        logger.info(f"Created {len(subtitle_clips)} word-by-word caption clips")
         return subtitle_clips
 
 
@@ -1068,7 +1091,7 @@ def create_optimized_clip(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[Path] = None,
+    logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
 ) -> bool:
@@ -1144,40 +1167,43 @@ def create_optimized_clip(
             final_clips.extend(subtitle_clips)
 
         # Add logo overlay if provided
-        if logo_path and logo_path.exists():
-            try:
-                from moviepy import ImageClip
+        if logo_path:
+            # Convert string to Path if needed
+            logo_path_obj = Path(logo_path) if isinstance(logo_path, str) else logo_path
+            if logo_path_obj.exists():
+                try:
+                    from moviepy import ImageClip
 
-                logo_clip = ImageClip(str(logo_path))
+                    logo_clip = ImageClip(str(logo_path_obj))
 
-                # Calculate logo position based on corner
-                logo_width, logo_height = logo_clip.size
-                padding = 20  # pixels from edge
+                    # Calculate logo position based on corner
+                    logo_width, logo_height = logo_clip.size
+                    padding = 20  # pixels from edge
 
-                position_map = {
-                    "top-left": (padding, padding),
-                    "top-right": (new_width - logo_width - padding, padding),
-                    "bottom-left": (padding, new_height - logo_height - padding),
-                    "bottom-right": (
-                        new_width - logo_width - padding,
-                        new_height - logo_height - padding,
-                    ),
-                }
+                    position_map = {
+                        "top-left": (padding, padding),
+                        "top-right": (new_width - logo_width - padding, padding),
+                        "bottom-left": (padding, new_height - logo_height - padding),
+                        "bottom-right": (
+                            new_width - logo_width - padding,
+                            new_height - logo_height - padding,
+                        ),
+                    }
 
-                logo_position_coords = position_map.get(
-                    logo_position, position_map["top-right"]
-                )
+                    logo_position_coords = position_map.get(
+                        logo_position, position_map["top-right"]
+                    )
 
-                logo_clip = logo_clip.with_duration(
-                    cropped_clip.duration
-                ).with_position(logo_position_coords)
+                    logo_clip = logo_clip.with_duration(
+                        cropped_clip.duration
+                    ).with_position(logo_position_coords)
 
-                final_clips.append(logo_clip)
+                    final_clips.append(logo_clip)
 
-                logger.info(f"Added logo overlay at {logo_position}")
+                    logger.info(f"Added logo overlay at {logo_position}")
 
-            except Exception as e:
-                logger.warning(f"Failed to add logo overlay: {e}")
+                except Exception as e:
+                    logger.warning(f"Failed to add logo overlay: {e}")
 
         # Compose and encode
         final_clip = (
@@ -1215,7 +1241,7 @@ def create_clips_from_segments(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[Path] = None,
+    logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
 ) -> List[Dict[str, Any]]:
@@ -1369,7 +1395,7 @@ def create_clips_with_transitions(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[Path] = None,
+    logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
 ) -> List[Dict[str, Any]]:

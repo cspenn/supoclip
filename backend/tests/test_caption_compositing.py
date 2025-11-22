@@ -7,7 +7,7 @@ not in the TextClip creation itself.
 """
 
 from pathlib import Path
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip, ColorClip
+from moviepy import TextClip, CompositeVideoClip, ColorClip
 from moviepy.video.fx import Margin
 from PIL import Image
 import numpy as np
@@ -20,9 +20,9 @@ TEST_OUTPUT_DIR.mkdir(exist_ok=True)
 
 def test_composite_clipping():
     """Test if captions get clipped during composition."""
-    print("="*60)
+    print("=" * 60)
     print("CAPTION COMPOSITING CLIPPING TEST")
-    print("="*60)
+    print("=" * 60)
 
     # Create a simple background video (solid color)
     video_width = 720
@@ -36,7 +36,7 @@ def test_composite_clipping():
     background = ColorClip(
         size=(video_width, video_height),
         color=(30, 30, 30),  # Dark gray
-        duration=duration
+        duration=duration,
     )
 
     # Test different scenarios
@@ -46,28 +46,28 @@ def test_composite_clipping():
             "font_size": 30,
             "bottom_margin": 3,
             "y_percent": 0.75,
-            "description": "Current production: 3px margin, 75% position"
+            "description": "Current production: 3px margin, 75% position",
         },
         {
             "name": "increased_margin_same_position",
             "font_size": 30,
             "bottom_margin": 12,
             "y_percent": 0.75,
-            "description": "Increased margin (12px), same position (75%)"
+            "description": "Increased margin (12px), same position (75%)",
         },
         {
             "name": "same_margin_higher_position",
             "font_size": 30,
             "bottom_margin": 3,
             "y_percent": 0.72,
-            "description": "Same margin (3px), higher position (72%)"
+            "description": "Same margin (3px), higher position (72%)",
         },
         {
             "name": "increased_margin_and_higher_position",
             "font_size": 30,
             "bottom_margin": 12,
             "y_percent": 0.72,
-            "description": "Increased margin (12px), higher position (72%)"
+            "description": "Increased margin (12px), higher position (72%)",
         },
     ]
 
@@ -89,22 +89,24 @@ def test_composite_clipping():
         )
 
         # Apply margin
-        text_clip = text_clip.with_effects([
-            Margin(
-                bottom=test_case["bottom_margin"],
-                top=5,
-                left=3,
-                right=3,
-                opacity=0
-            )
-        ])
+        text_clip = text_clip.with_effects(
+            [
+                Margin(
+                    bottom=test_case["bottom_margin"], top=5, left=3, right=3, opacity=0
+                )
+            ]
+        )
 
         text_width, text_height = text_clip.size
         print(f"TextClip size: {text_width}x{text_height}")
 
         # Calculate position (same logic as production)
-        vertical_position = int(video_height * test_case["y_percent"] - text_height // 2)
-        print(f"Y-position: {vertical_position} (center at {test_case['y_percent']*100}%)")
+        vertical_position = int(
+            video_height * test_case["y_percent"] - text_height // 2
+        )
+        print(
+            f"Y-position: {vertical_position} (center at {test_case['y_percent']*100}%)"
+        )
 
         # Check if text will extend beyond video bounds
         text_bottom = vertical_position + text_height
@@ -130,6 +132,7 @@ def test_composite_clipping():
 
         # Draw analysis overlay
         from PIL import ImageDraw
+
         draw = ImageDraw.Draw(img)
 
         # Draw text bounding box in red
@@ -140,13 +143,20 @@ def test_composite_clipping():
 
         # Red box showing where text should be
         draw.rectangle(
-            [(text_left, text_top), (text_right, min(text_bottom_calc, video_height-1))],
+            [
+                (text_left, text_top),
+                (text_right, min(text_bottom_calc, video_height - 1)),
+            ],
             outline="red",
-            width=2
+            width=2,
         )
 
         # Yellow line showing video bottom edge
-        draw.line([(0, video_height-5), (video_width, video_height-5)], fill="yellow", width=3)
+        draw.line(
+            [(0, video_height - 5), (video_width, video_height - 5)],
+            fill="yellow",
+            width=3,
+        )
 
         # Green line showing where text center should be
         center_y = int(video_height * test_case["y_percent"])
@@ -165,12 +175,12 @@ def test_composite_clipping():
         black_pixels = np.sum(np.all(bottom_region < [50, 50, 50], axis=2))
 
         if pixels_beyond > 0 and (white_pixels > 100 or black_pixels > 100):
-            print(f"⚠️  CLIPPING CONFIRMED: Text pixels found at bottom edge")
+            print("⚠️  CLIPPING CONFIRMED: Text pixels found at bottom edge")
             print(f"   White pixels: {white_pixels}, Black pixels: {black_pixels}")
         elif white_pixels > 100 or black_pixels > 100:
-            print(f"✅ Text visible near bottom (no clipping)")
+            print("✅ Text visible near bottom (no clipping)")
         else:
-            print(f"✅ No text near bottom edge")
+            print("✅ No text near bottom edge")
 
         # Cleanup
         final_clip.close()
@@ -178,9 +188,9 @@ def test_composite_clipping():
 
     background.close()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ANALYSIS COMPLETE")
-    print("="*60)
+    print("=" * 60)
     print(f"\nVisual inspection: Open images in {TEST_OUTPUT_DIR}")
     print("\nVisualization guide:")
     print("  - Red box: TextClip bounding box")
@@ -192,7 +202,9 @@ def test_composite_clipping():
     print("  3. Gap between text and yellow line (indicates no clipping)")
 
 
-def calculate_safe_position(video_height: int, text_height: int, bottom_clearance: int = 10) -> int:
+def calculate_safe_position(
+    video_height: int, text_height: int, bottom_clearance: int = 10
+) -> int:
     """
     Calculate a safe Y-position that ensures text doesn't get clipped.
 
@@ -218,9 +230,9 @@ def calculate_safe_position(video_height: int, text_height: int, bottom_clearanc
 
 def test_safe_positioning():
     """Test the safe positioning calculation."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SAFE POSITIONING CALCULATION TEST")
-    print("="*60)
+    print("=" * 60)
 
     video_height = 1280
     font_sizes = [20, 24, 30, 36, 40]
@@ -246,8 +258,10 @@ def test_safe_positioning():
 
         clipping = "⚠️ CLIPS" if current_gap < 0 else "✅"
 
-        print(f"{font_size:3d}px | {text_height:4d}px | {current_y:6d}px | {safe_y:6d}px | "
-              f"{current_gap:6d}px {clipping:8s} | {safe_gap:6d}px")
+        print(
+            f"{font_size:3d}px | {text_height:4d}px | {current_y:6d}px | {safe_y:6d}px | "
+            f"{current_gap:6d}px {clipping:8s} | {safe_gap:6d}px"
+        )
 
 
 if __name__ == "__main__":
@@ -257,15 +271,17 @@ if __name__ == "__main__":
         print(f"❌ Error: Font file not found at {font_path}")
         print("Please ensure you're running from the backend directory.")
         import sys
+
         sys.exit(1)
 
     test_composite_clipping()
     test_safe_positioning()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("RECOMMENDATIONS")
-    print("="*60)
-    print("""
+    print("=" * 60)
+    print(
+        """
 1. ROOT CAUSE: Text positioned too low (75%) with insufficient clearance
 
 2. SOLUTIONS (choose one):
@@ -287,6 +303,7 @@ if __name__ == "__main__":
    - Moves text from 75% to 72% (3% higher)
    - Provides ~40-50px clearance from bottom
    - Maintains desired "lower middle" aesthetic
-""")
+"""
+    )
 
 # end test_caption_compositing.py

@@ -162,7 +162,7 @@ echo ""
 echo -e "${BLUE}Initializing database...${NC}"
 cd backend
 source .venv/bin/activate
-python3 seed.py
+python3 scripts/seed.py
 if [ $? -ne 0 ]; then
     echo -e "${YELLOW}⚠ Database seeding failed (may already be seeded)${NC}"
 fi

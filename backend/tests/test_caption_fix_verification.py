@@ -19,9 +19,9 @@ TEST_OUTPUT_DIR.mkdir(exist_ok=True)
 
 def test_fix_verification():
     """Verify the caption fix at all resolutions with problematic text."""
-    print("="*60)
+    print("=" * 60)
     print("CAPTION FIX VERIFICATION")
-    print("="*60)
+    print("=" * 60)
 
     resolutions = {
         "480p": (480, 854),
@@ -44,10 +44,12 @@ def test_fix_verification():
     for res_name, (video_width, video_height) in resolutions.items():
         print(f"\n{'='*60}")
         print(f"Resolution: {res_name} ({video_width}x{video_height})")
-        print("="*60)
+        print("=" * 60)
 
         # Calculate font size (production logic)
-        calculated_font_size = max(20, min(40, int(base_font_size * (video_width / 720))))
+        calculated_font_size = max(
+            20, min(40, int(base_font_size * (video_width / 720)))
+        )
         print(f"Font size: {calculated_font_size}px")
 
         for test_text in test_texts:
@@ -67,9 +69,9 @@ def test_fix_verification():
             )
 
             # Apply FIXED margin (12px bottom, 5px top, 3px sides)
-            text_clip = text_clip.with_effects([
-                Margin(bottom=12, top=5, left=3, right=3, opacity=0)
-            ])
+            text_clip = text_clip.with_effects(
+                [Margin(bottom=12, top=5, left=3, right=3, opacity=0)]
+            )
 
             text_width, text_height = text_clip.size
             print(f"  TextClip size: {text_width}x{text_height}")
@@ -94,9 +96,7 @@ def test_fix_verification():
 
             # Create composite
             background = ColorClip(
-                size=(video_width, video_height),
-                color=(30, 30, 30),
-                duration=duration
+                size=(video_width, video_height), color=(30, 30, 30), duration=duration
             )
 
             text_clip_positioned = text_clip.with_duration(duration).with_position(
@@ -108,7 +108,9 @@ def test_fix_verification():
 
             # Scale to 720p for viewing if needed
             if video_width > 720:
-                img = Image.fromarray(frame).resize((720, 1280), Image.Resampling.LANCZOS)
+                img = Image.fromarray(frame).resize(
+                    (720, 1280), Image.Resampling.LANCZOS
+                )
             else:
                 img = Image.fromarray(frame)
 
@@ -120,21 +122,37 @@ def test_fix_verification():
             # Create zoom view of bottom region
             zoom_height = 300
             if img.size[1] > zoom_height:
-                zoom_img = img.crop((50, img.size[1]-zoom_height, img.size[0]-50, img.size[1]))
+                zoom_img = img.crop(
+                    (50, img.size[1] - zoom_height, img.size[0] - 50, img.size[1])
+                )
 
                 # Draw reference lines on zoom
                 draw = ImageDraw.Draw(zoom_img)
 
                 # Red line at absolute bottom
-                draw.line([(0, zoom_height-1), (zoom_img.size[0], zoom_height-1)], fill="red", width=2)
+                draw.line(
+                    [(0, zoom_height - 1), (zoom_img.size[0], zoom_height - 1)],
+                    fill="red",
+                    width=2,
+                )
 
                 # Yellow line 20px from bottom
-                draw.line([(0, zoom_height-21), (zoom_img.size[0], zoom_height-21)], fill="yellow", width=1)
+                draw.line(
+                    [(0, zoom_height - 21), (zoom_img.size[0], zoom_height - 21)],
+                    fill="yellow",
+                    width=1,
+                )
 
                 # Green line 50px from bottom
-                draw.line([(0, zoom_height-51), (zoom_img.size[0], zoom_height-51)], fill="green", width=1)
+                draw.line(
+                    [(0, zoom_height - 51), (zoom_img.size[0], zoom_height - 51)],
+                    fill="green",
+                    width=1,
+                )
 
-                output_path_zoom = TEST_OUTPUT_DIR / f"fixed_{res_name}_{safe_text}_zoom.png"
+                output_path_zoom = (
+                    TEST_OUTPUT_DIR / f"fixed_{res_name}_{safe_text}_zoom.png"
+                )
                 zoom_img.save(output_path_zoom)
 
                 # Check if any text pixels are in danger zone (last 15 rows)
@@ -146,13 +164,17 @@ def test_fix_verification():
 
                 # Subtract background pixels (dark gray = 30,30,30)
                 background_pixels = np.sum(np.all(danger_zone < [40, 40, 40], axis=2))
-                actual_text_pixels = (white_pixels + black_stroke_pixels) - background_pixels
+                actual_text_pixels = (
+                    white_pixels + black_stroke_pixels
+                ) - background_pixels
 
                 if actual_text_pixels > 100:
-                    print(f"  ⚠️  WARNING: Text near bottom edge ({actual_text_pixels} pixels)")
+                    print(
+                        f"  ⚠️  WARNING: Text near bottom edge ({actual_text_pixels} pixels)"
+                    )
                     all_passed = False
                 else:
-                    print(f"  ✅ Safe clearance from bottom")
+                    print("  ✅ Safe clearance from bottom")
 
                 print(f"  Saved: {output_path_zoom}")
 
@@ -162,9 +184,9 @@ def test_fix_verification():
             text_clip.close()
             background.close()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("VERIFICATION SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     if all_passed:
         print("\n✅ ALL TESTS PASSED")
@@ -189,24 +211,27 @@ if __name__ == "__main__":
     if not font_path.exists():
         print(f"❌ Error: Font file not found at {font_path}")
         import sys
+
         sys.exit(1)
 
     success = test_fix_verification()
 
     if success:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("FIX VERIFIED SUCCESSFULLY")
-        print("="*60)
+        print("=" * 60)
         print("\nThe caption clipping issue has been resolved.")
         print("Caption text with descenders will no longer be cut off.")
         import sys
+
         sys.exit(0)
     else:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("FIX VERIFICATION FAILED")
-        print("="*60)
+        print("=" * 60)
         print("\nAdditional adjustments may be needed.")
         import sys
+
         sys.exit(1)
 
 # end test_caption_fix_verification.py

@@ -199,7 +199,7 @@ class LegacySyncVideoService:
                 font_family,
                 font_size,
                 font_color,
-                logo_path,
+                str(logo_path) if logo_path else None,
                 logo_corner_position,
                 output_resolution,
             )

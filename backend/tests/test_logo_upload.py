@@ -13,6 +13,7 @@ API_URL = "http://localhost:8008"
 TEST_USER_ID = "local-user"
 LOGO_PATH = Path(__file__).parent / "docs" / "TI_Primary_2Color_Reverse.png"
 
+
 def test_logo_upload():
     """Test logo upload with user_id header (underscore format)."""
     print(f"Testing logo upload to {API_URL}/upload-logo")
@@ -34,9 +35,7 @@ def test_logo_upload():
         "logo": ("TI_Primary_2Color_Reverse.png", open(LOGO_PATH, "rb"), "image/png")
     }
 
-    data = {
-        "corner_position": "bottom-right"
-    }
+    data = {"corner_position": "bottom-right"}
 
     print("\n📤 Sending request...")
     print(f"   Headers: {headers}")
@@ -48,7 +47,7 @@ def test_logo_upload():
             headers=headers,
             files=files,
             data=data,
-            timeout=10
+            timeout=10,
         )
 
         print(f"\n📥 Response status: {response.status_code}")
@@ -71,6 +70,7 @@ def test_logo_upload():
         return False
     finally:
         files["logo"][1].close()
+
 
 if __name__ == "__main__":
     print("=" * 60)

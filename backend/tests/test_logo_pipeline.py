@@ -21,9 +21,7 @@ Current behavior (BUG):
 This test should FAIL until the bug is fixed.
 """
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch, call
 import pytest
 
 # Test configuration
@@ -65,7 +63,9 @@ class TestLogoParameterPassing:
         params = list(sig.parameters.keys())
 
         # Check if logo parameters are present
-        assert "logo_path" in params, "TaskService.process_task missing logo_path parameter"
+        assert (
+            "logo_path" in params
+        ), "TaskService.process_task missing logo_path parameter"
         assert (
             "logo_corner_position" in params
         ), "TaskService.process_task missing logo_corner_position parameter"
@@ -96,7 +96,7 @@ class TestLogoParameterPassing:
     async def test_logo_params_passed_to_clip_creation(self):
         """Test that logo parameters are passed to create_clips_with_transitions."""
         from src.services.video_service import VideoService
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from pathlib import Path
 
         # Mock dependencies
@@ -109,7 +109,6 @@ class TestLogoParameterPassing:
         ) as mock_analyze, patch(
             "src.services.video_service.run_in_thread"
         ) as mock_run_in_thread:
-
             # Setup mocks
             mock_get_video.return_value = Path("/tmp/test_video.mp4")
             mock_transcript.return_value = "test transcript"
@@ -192,7 +191,6 @@ class TestLogoParameterPassing:
         from src.video_utils import create_clips_with_transitions
         from pathlib import Path
         from unittest.mock import patch, MagicMock
-        import logging
 
         # Create a mock logger to capture log messages
         log_messages = []
@@ -225,7 +223,6 @@ class TestLogoParameterPassing:
         ) as mock_logger_info, patch(
             "src.video_utils.logger.warning"
         ) as mock_logger_warning:
-
             # Setup mocks
             mock_video_clip = MagicMock()
             mock_video_clip.duration = 100
@@ -267,7 +264,9 @@ class TestLogoParameterPassing:
                     if not overlay_added:
                         print("❌ Logo overlay code NOT executed")
                         print(f"   Captured log messages: {log_messages}")
-                        pytest.fail("Logo overlay code did not execute - no log message found")
+                        pytest.fail(
+                            "Logo overlay code did not execute - no log message found"
+                        )
                     else:
                         print("✅ Logo overlay code executed successfully")
                         print(f"   Logo messages: {logo_messages}")

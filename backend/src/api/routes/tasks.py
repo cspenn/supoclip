@@ -9,6 +9,7 @@ import logging
 
 from ...database import get_db
 from ...services.task_service import TaskService
+from ...services.user_preferences_service import UserPreferencesService
 from ...workers.job_queue import JobQueue
 from ...workers.tasks import process_video_task
 from ...config import Config
@@ -79,6 +80,25 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
         min_length = data.get("min_length", 10)
         max_length = data.get("max_length", 45)
 
+        # Load user preferences including logo settings
+        pref_service = UserPreferencesService(db)
+
+        # Merge preferences: request > user prefs > defaults
+        request_opts = {
+            "font_family": font_family,
+            "font_size": font_size,
+            "font_color": font_color,
+        }
+
+        preferences = await pref_service.merge_with_request_options(
+            user_id, request_opts
+        )
+        logo_path = pref_service.get_logo_path(preferences)
+        logo_corner_position = preferences.get("logo_corner_position", "top-right")
+
+        # Convert Path to string for serialization (job queue requires JSON-serializable args)
+        logo_path_str = str(logo_path) if logo_path else None
+
         task_service = TaskService(db, config)
 
         # Create task
@@ -96,7 +116,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             raw_source["url"]
         )
 
-        # Enqueue job for worker with clip length parameters
+        # Enqueue job for worker with clip length and logo parameters
         job_id = await JobQueue.enqueue_job(
             process_video_task,
             task_id,
@@ -108,10 +128,12 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             font_color,
             min_length,
             max_length,
+            logo_path_str,
+            logo_corner_position,
         )
 
         logger.info(
-            f"Task {task_id} created and job {job_id} enqueued with clip length settings: min={min_length}s, max={max_length}s"
+            f"Task {task_id} created and job {job_id} enqueued with clip length settings: min={min_length}s, max={max_length}s, logo={'enabled' if logo_path_str else 'disabled'}"
         )
 
         return {

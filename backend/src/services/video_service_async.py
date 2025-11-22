@@ -122,7 +122,7 @@ class AsyncVideoProcessingService:
         clip_target_length: int = 30,
         clip_max_length: int = 45,
         custom_ai_prompt: Optional[str] = None,
-        logo_path: Optional[Path] = None,
+        logo_path: Optional[str] = None,
         logo_corner_position: str = "top-right",
         output_resolution: str = "720p",
     ) -> None:

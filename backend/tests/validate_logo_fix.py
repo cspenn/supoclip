@@ -27,9 +27,9 @@ def check_database_schema():
     columns = cursor.fetchall()
 
     required_columns = {
-        'logo_file_path': False,
-        'logo_corner_position': False,
-        'output_resolution': False
+        "logo_file_path": False,
+        "logo_corner_position": False,
+        "output_resolution": False,
     }
 
     print("\nChecking for required columns:")
@@ -87,7 +87,7 @@ def test_database_operations():
                 output_resolution = ?
             WHERE id = ?
             """,
-            (test_logo_path, test_position, test_resolution, user_id)
+            (test_logo_path, test_position, test_resolution, user_id),
         )
         conn.commit()
         print(f"  ✓ Successfully updated logo fields for user {user_id}")
@@ -103,19 +103,23 @@ def test_database_operations():
             SELECT logo_file_path, logo_corner_position, output_resolution
             FROM users WHERE id = ?
             """,
-            (user_id,)
+            (user_id,),
         )
         row = cursor.fetchone()
 
         if row:
             logo_path, position, resolution = row
-            print(f"  ✓ Successfully read logo fields:")
+            print("  ✓ Successfully read logo fields:")
             print(f"    - logo_file_path: {logo_path}")
             print(f"    - logo_corner_position: {position}")
             print(f"    - output_resolution: {resolution}")
 
             # Verify values match
-            if logo_path == test_logo_path and position == test_position and resolution == test_resolution:
+            if (
+                logo_path == test_logo_path
+                and position == test_position
+                and resolution == test_resolution
+            ):
                 print("  ✓ Values match what was written")
             else:
                 print("  ⚠️  WARNING: Values don't match!")
@@ -130,10 +134,7 @@ def test_database_operations():
         return False
 
     # Clean up test data (set back to NULL)
-    cursor.execute(
-        "UPDATE users SET logo_file_path = NULL WHERE id = ?",
-        (user_id,)
-    )
+    cursor.execute("UPDATE users SET logo_file_path = NULL WHERE id = ?", (user_id,))
     conn.commit()
 
     print("\n✅ SUCCESS: Database operations work correctly")
@@ -154,6 +155,7 @@ async def test_user_preferences_service():
         # Get an existing user
         async with AsyncSessionLocal() as db:
             from sqlalchemy import text
+
             result = await db.execute(text("SELECT id FROM users LIMIT 1"))
             user_row = result.fetchone()
 
@@ -168,13 +170,17 @@ async def test_user_preferences_service():
             service = UserPreferencesService(db)
             prefs = await service.get_user_preferences(user_id)
 
-            print(f"  ✓ Successfully loaded preferences")
+            print("  ✓ Successfully loaded preferences")
             print(f"    - logo_file_path: {prefs.get('logo_file_path')}")
             print(f"    - logo_corner_position: {prefs.get('logo_corner_position')}")
             print(f"    - output_resolution: {prefs.get('output_resolution')}")
 
             # Check that all expected keys exist
-            required_keys = ['logo_file_path', 'logo_corner_position', 'output_resolution']
+            required_keys = [
+                "logo_file_path",
+                "logo_corner_position",
+                "output_resolution",
+            ]
             missing_keys = [k for k in required_keys if k not in prefs]
 
             if missing_keys:
@@ -187,6 +193,7 @@ async def test_user_preferences_service():
     except Exception as e:
         print(f"\n❌ FAILED: Error testing UserPreferencesService: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
