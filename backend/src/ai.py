@@ -72,13 +72,15 @@ CLEAN START RULE - CRITICAL FOR VIRAL CLIPS:
 - Example: ❌ "So the main thing you need..." → ✅ "The main thing you need..." (reasoning: "Original start: 'So the' → Clean start: 'The main'")
 
 TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
-- Use EXACT timestamps as they appear in the transcript
-- Never modify timestamp format (keep MM:SS structure)
+- Use EXACT timestamps as they appear in the transcript WITH MILLISECOND PRECISION
+- Timestamp format MUST be MM:SS.mmm (e.g., 02:35.450, NOT 02:35)
+- Extract milliseconds from transcript timing like [02:35.450 - 02:45.820]
 - start_time MUST be LESS THAN end_time (start_time < end_time)
 - MINIMUM segment duration: 10 seconds (end_time - start_time >= 10 seconds)
-- Look at transcript ranges like [02:25 - 02:35] and use different start/end times
+- Look at transcript ranges like [02:25.120 - 02:35.890] and preserve the milliseconds
 - NEVER use the same timestamp for both start_time and end_time
-- Example: start_time: "02:25", end_time: "02:35" (NOT "02:25" and "02:25")
+- Example CORRECT: start_time: "02:25.120", end_time: "02:35.890"
+- Example INCORRECT: start_time: "02:25", end_time: "02:35" (missing milliseconds)
 
 Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity - choose segments that would genuinely engage viewers and have proper time ranges."""
 
