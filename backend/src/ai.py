@@ -5,6 +5,7 @@ AI-related functions for transcript analysis with enhanced precision.
 from typing import List
 import asyncio
 import logging
+import re
 
 from pydantic_ai import Agent
 from pydantic import BaseModel, Field
@@ -207,6 +208,45 @@ class TimestampParser:
                 f"Too short: {duration:.3f}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)",
             )
         return True, f"Valid: {duration:.3f}s"
+
+
+class TimestampFormatValidator:
+    """Validates timestamp format includes millisecond precision."""
+
+    # Regex for MM:SS.mmm format (milliseconds required)
+    PRECISE_FORMAT = re.compile(r"^\d{1,2}:\d{2}\.\d{1,3}$")
+    # Regex for MM:SS format (milliseconds missing)
+    IMPRECISE_FORMAT = re.compile(r"^\d{1,2}:\d{2}$")
+
+    @staticmethod
+    def validate(timestamp: str) -> tuple[bool, str]:
+        """
+        Validate timestamp has millisecond precision.
+
+        Returns:
+            Tuple of (has_milliseconds, warning_message)
+        """
+        timestamp = timestamp.strip()
+        if TimestampFormatValidator.PRECISE_FORMAT.match(timestamp):
+            return True, "Format OK (MM:SS.mmm)"
+        if TimestampFormatValidator.IMPRECISE_FORMAT.match(timestamp):
+            return (
+                False,
+                f"Missing milliseconds in '{timestamp}' - precision may be reduced",
+            )
+        return False, f"Invalid timestamp format: '{timestamp}'"
+
+    @staticmethod
+    def add_default_milliseconds(timestamp: str) -> str:
+        """
+        Add .000 to timestamps missing milliseconds.
+
+        This is a fallback when AI returns MM:SS format despite instructions.
+        """
+        timestamp = timestamp.strip()
+        if TimestampFormatValidator.IMPRECISE_FORMAT.match(timestamp):
+            return f"{timestamp}.000"
+        return timestamp
 
 
 class TranscriptSegmentValidator:
