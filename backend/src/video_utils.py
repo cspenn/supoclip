@@ -1174,9 +1174,17 @@ def create_optimized_clip(
 
         # Add logo overlay if provided
         if logo_path:
+            logger.info(f"Logo path provided: {logo_path}")
             # Convert string to Path if needed
             logo_path_obj = Path(logo_path) if isinstance(logo_path, str) else logo_path
+
+            # Ensure absolute path
+            if not logo_path_obj.is_absolute():
+                logo_path_obj = logo_path_obj.resolve()
+                logger.info(f"Converted to absolute path: {logo_path_obj}")
+
             if logo_path_obj.exists():
+                logger.info(f"Logo file found, adding overlay from: {logo_path_obj}")
                 try:
                     from moviepy import ImageClip
 
@@ -1210,6 +1218,8 @@ def create_optimized_clip(
 
                 except Exception as e:
                     logger.warning(f"Failed to add logo overlay: {e}")
+            else:
+                logger.warning(f"Logo file NOT found at: {logo_path_obj}")
 
         # Compose and encode
         final_clip = (
