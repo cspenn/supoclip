@@ -173,9 +173,9 @@ class TimestampParser:
     MIN_DURATION_SECONDS = 5
 
     @staticmethod
-    def parse_timestamp(timestamp: str) -> int:
+    def parse_timestamp(timestamp: str) -> float:
         """
-        Parse MM:SS timestamp to seconds.
+        Parse MM:SS or MM:SS.mmm timestamp to seconds with millisecond precision.
 
         Raises:
             ValueError: If timestamp format is invalid
@@ -184,29 +184,29 @@ class TimestampParser:
             parts = timestamp.split(":")
             if len(parts) != 2:
                 raise ValueError(f"Invalid format: {timestamp}")
-            minutes, seconds = int(parts[0]), int(parts[1])
+            minutes, seconds = int(parts[0]), float(parts[1])
             return minutes * 60 + seconds
         except (ValueError, IndexError) as e:
             raise ValueError(f"Cannot parse timestamp '{timestamp}': {e}")
 
     @staticmethod
-    def calculate_duration(start_time: str, end_time: str) -> int:
+    def calculate_duration(start_time: str, end_time: str) -> float:
         """Calculate duration between two timestamps in seconds."""
         start_seconds = TimestampParser.parse_timestamp(start_time)
         end_seconds = TimestampParser.parse_timestamp(end_time)
         return end_seconds - start_seconds
 
     @staticmethod
-    def validate_duration(duration: int) -> tuple[bool, str]:
+    def validate_duration(duration: float) -> tuple[bool, str]:
         """Validate duration meets minimum requirement."""
         if duration <= 0:
-            return False, f"Invalid duration: {duration}s (must be positive)"
+            return False, f"Invalid duration: {duration:.3f}s (must be positive)"
         if duration < TimestampParser.MIN_DURATION_SECONDS:
             return (
                 False,
-                f"Too short: {duration}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)",
+                f"Too short: {duration:.3f}s (min {TimestampParser.MIN_DURATION_SECONDS}s required)",
             )
-        return True, f"Valid: {duration}s"
+        return True, f"Valid: {duration:.3f}s"
 
 
 class TranscriptSegmentValidator:
