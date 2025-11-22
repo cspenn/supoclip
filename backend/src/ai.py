@@ -269,6 +269,22 @@ class TranscriptSegmentValidator:
     @staticmethod
     def validate_timestamps(segment: TranscriptSegment) -> tuple[bool, str]:
         """Validate segment timestamps."""
+        # Check format precision and log warnings
+        start_has_ms, start_msg = TimestampFormatValidator.validate(segment.start_time)
+        end_has_ms, end_msg = TimestampFormatValidator.validate(segment.end_time)
+
+        if not start_has_ms:
+            logger.warning(f"Timestamp precision warning: {start_msg}")
+            # Apply fallback: add .000 if missing
+            segment.start_time = TimestampFormatValidator.add_default_milliseconds(
+                segment.start_time
+            )
+        if not end_has_ms:
+            logger.warning(f"Timestamp precision warning: {end_msg}")
+            segment.end_time = TimestampFormatValidator.add_default_milliseconds(
+                segment.end_time
+            )
+
         if segment.start_time == segment.end_time:
             return False, "Start and end times are identical"
         try:
@@ -277,7 +293,7 @@ class TranscriptSegmentValidator:
             )
             is_valid, reason = TimestampParser.validate_duration(duration)
             if is_valid:
-                return True, f"Valid ({duration}s)"
+                return True, f"Valid ({duration:.3f}s)"
             return False, reason
         except ValueError as e:
             return False, f"Invalid timestamp format: {e}"
