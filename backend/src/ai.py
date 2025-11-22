@@ -18,8 +18,12 @@ config = Config()
 class TranscriptSegment(BaseModel):
     """Represents a relevant segment of transcript with precise timing."""
 
-    start_time: str = Field(description="Start timestamp in MM:SS format")
-    end_time: str = Field(description="End timestamp in MM:SS format")
+    start_time: str = Field(
+        description="Start timestamp in MM:SS.mmm format (e.g., 02:35.450)"
+    )
+    end_time: str = Field(
+        description="End timestamp in MM:SS.mmm format (e.g., 02:45.820)"
+    )
     text: str = Field(description="The transcript text for this segment")
     relevance_score: float = Field(
         description="Relevance score from 0.0 to 1.0", ge=0.0, le=1.0

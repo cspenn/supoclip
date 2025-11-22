@@ -998,7 +998,9 @@ class SubtitleClipBuilder:
 
             # Skip very short words (< 50ms) - likely transcription errors
             if word_duration < 0.05:
-                logger.debug(f"Skipping very short word '{word_data.get('text')}' (duration: {word_duration:.3f}s)")
+                logger.debug(
+                    f"Skipping very short word '{word_data.get('text')}' (duration: {word_duration:.3f}s)"
+                )
                 continue
 
             text = word_data["text"]
@@ -1011,7 +1013,9 @@ class SubtitleClipBuilder:
 
                 if text_clip:
                     # Set exact timing for this word
-                    text_clip = text_clip.with_duration(word_duration).with_start(word_start)
+                    text_clip = text_clip.with_duration(word_duration).with_start(
+                        word_start
+                    )
 
                     # Calculate position (centered, 75% down video)
                     text_height = text_clip.size[1] if text_clip.size else 40
@@ -1021,7 +1025,9 @@ class SubtitleClipBuilder:
                     text_clip = text_clip.with_position(position)
                     subtitle_clips.append(text_clip)
 
-                    logger.debug(f"Created caption for '{text}' at {word_start:.2f}s-{word_end:.2f}s")
+                    logger.debug(
+                        f"Created caption for '{text}' at {word_start:.2f}s-{word_end:.2f}s"
+                    )
 
             except Exception as e:
                 logger.warning(f"Failed to create subtitle for '{text}': {e}")
