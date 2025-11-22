@@ -148,26 +148,27 @@ DURATION REQUIREMENTS - ABSOLUTELY CRITICAL:
 - If a segment is more than {max_length} seconds, DO NOT include it in your response
 - Return COMPLETE CLIPS, not word fragments or sentence fragments
 
-TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
-- Use EXACT timestamps as they appear in the transcript
-- Never modify timestamp format (keep MM:SS structure)
+TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT (MILLISECOND PRECISION REQUIRED):
+- Use EXACT timestamps as they appear in the transcript WITH MILLISECOND PRECISION
+- Timestamp format MUST be MM:SS.mmm (e.g., 02:35.450, NOT 02:35)
+- Extract milliseconds from transcript timing like [02:35.450 - 02:45.820]
 - start_time MUST be LESS THAN end_time (start_time < end_time)
 - MINIMUM segment duration: {min_length} seconds (end_time - start_time >= {min_length} seconds)
 - MAXIMUM segment duration: {max_length} seconds (end_time - start_time <= {max_length} seconds)
-- Look at transcript ranges like [02:25 - 02:35] and use different start/end times
+- Look at transcript ranges like [02:25.120 - 02:35.890] and PRESERVE the milliseconds
 - NEVER use the same timestamp for both start_time and end_time
 - VERIFY DURATION BEFORE RETURNING: Calculate (end_time - start_time) and ensure it's between {min_length} and {max_length} seconds
-- Example CORRECT (if min={min_length}, max={max_length}): start_time: "02:25", end_time: "02:35" (10 second duration)
-- Example INCORRECT: start_time: "02:25", end_time: "02:26" (1 second - TOO SHORT)
-- Example INCORRECT: start_time: "02:25", end_time: "02:25" (0 seconds - INVALID)
+- Example CORRECT: start_time: "02:25.120", end_time: "02:35.890" (10.77 second duration)
+- Example INCORRECT: start_time: "02:25", end_time: "02:35" (missing milliseconds - PRECISION LOST)
+- Example INCORRECT: start_time: "02:25.000", end_time: "02:25.000" (0 seconds - INVALID)
 
 OUTPUT FORMAT:
 Return a JSON object with this exact structure:
 {{
   "most_relevant_segments": [
     {{
-      "start_time": "MM:SS",
-      "end_time": "MM:SS",
+      "start_time": "MM:SS.mmm",
+      "end_time": "MM:SS.mmm",
       "text": "segment text (must be substantial and complete)",
       "relevance_score": 0.85,
       "reasoning": "why this is relevant (be specific)"
