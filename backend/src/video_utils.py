@@ -227,6 +227,54 @@ def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
         return None
 
 
+def extract_text_from_cache(
+    video_path: Path, start_time_seconds: float, end_time_seconds: float
+) -> Optional[str]:
+    """
+    Extract verbatim text from transcript cache for a given time range.
+
+    This ensures captions display the exact words spoken in the video,
+    not the AI's summary or paraphrase.
+
+    Args:
+        video_path: Path to the video file (cache file shares the same stem)
+        start_time_seconds: Start time in seconds
+        end_time_seconds: End time in seconds
+
+    Returns:
+        Verbatim text from transcript, or None if cache unavailable
+    """
+    transcript_data = load_cached_transcript_data(video_path)
+    if not transcript_data or "words" not in transcript_data:
+        logger.warning(f"No transcript cache available for {video_path}")
+        return None
+
+    start_ms = int(start_time_seconds * 1000)
+    end_ms = int(end_time_seconds * 1000)
+
+    words_in_range = []
+    for word in transcript_data["words"]:
+        word_start = word.get("start", 0)
+        word_end = word.get("end", 0)
+        word_text = word.get("text", "")
+
+        # Include word if it overlaps with the time range
+        if word_end > start_ms and word_start < end_ms:
+            words_in_range.append(word_text)
+
+    if words_in_range:
+        extracted_text = " ".join(words_in_range)
+        logger.info(
+            f"Extracted {len(words_in_range)} words from cache for {start_time_seconds:.2f}s-{end_time_seconds:.2f}s"
+        )
+        return extracted_text
+
+    logger.warning(
+        f"No words found in cache for time range {start_time_seconds:.2f}s-{end_time_seconds:.2f}s"
+    )
+    return None
+
+
 def format_ms_to_timestamp(ms: int) -> str:
     """Format milliseconds to MM:SS format."""
     seconds = ms // 1000
