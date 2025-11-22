@@ -307,7 +307,7 @@ class TranscriptSegmentValidator:
             return False, f"Invalid timestamp format: {e}"
 
     @staticmethod
-    def validate_segment(segment: TranscriptSegment) -> tuple[bool, str, int]:
+    def validate_segment(segment: TranscriptSegment) -> tuple[bool, str, float]:
         """
         Validate entire segment for clip generation.
 
@@ -319,17 +319,17 @@ class TranscriptSegmentValidator:
             segment.text
         )
         if not is_valid:
-            return False, f"Text validation: {reason}", 0
+            return False, f"Text validation: {reason}", 0.0
 
         # Check clean start
         is_clean, reason = CleanStartValidator.validate(segment.text)
         if not is_clean:
-            return False, f"Clean start validation: {reason}", 0
+            return False, f"Clean start validation: {reason}", 0.0
 
         # Check timestamps
         is_valid, reason = TranscriptSegmentValidator.validate_timestamps(segment)
         if not is_valid:
-            return False, f"Timestamp validation: {reason}", 0
+            return False, f"Timestamp validation: {reason}", 0.0
 
         # Calculate final duration for logging
         try:
@@ -338,7 +338,7 @@ class TranscriptSegmentValidator:
             )
             return True, "Valid segment", duration
         except ValueError:
-            return False, "Duration calculation failed", 0
+            return False, "Duration calculation failed", 0.0
 
 
 async def get_most_relevant_parts_by_transcript(
