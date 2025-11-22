@@ -538,6 +538,7 @@ async def upload_logo(request: Request, user_id: str = Depends(get_current_user)
             # Save resized logo
             logo_filename = f"{user_id}_logo.png"
             logo_path = logos_dir / logo_filename
+            logo_path = logo_path.resolve()  # Convert to absolute path
             resized.save(logo_path, "PNG")
 
         # Delete temp file
