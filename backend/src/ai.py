@@ -3,7 +3,6 @@ AI-related functions for transcript analysis with enhanced precision.
 """
 
 from typing import List
-import asyncio
 import logging
 import re
 
@@ -341,6 +340,93 @@ class TranscriptSegmentValidator:
             return False, "Duration calculation failed", 0.0
 
 
+async def _analyze_with_structured_model(
+    transcript: str,
+    min_length: int,
+    max_length: int,
+    custom_prompt: str | None,
+) -> TranscriptAnalysis:
+    """Analyze using Groq Structured Outputs API (Llama 4 Scout)."""
+    logger.info("Using Groq Structured Outputs API for Llama 4 Scout compatibility")
+    from .ai_structured import analyze_transcript_structured
+
+    try:
+        structured_result = await analyze_transcript_structured(
+            transcript,
+            min_length=min_length,
+            max_length=max_length,
+            custom_prompt=custom_prompt,
+        )
+        # Convert from ai_structured.TranscriptAnalysis to ai.TranscriptAnalysis
+        converted_segments = [
+            TranscriptSegment(
+                start_time=seg.start_time,
+                end_time=seg.end_time,
+                text=seg.text,
+                relevance_score=seg.relevance_score,
+                reasoning=seg.reasoning,
+            )
+            for seg in structured_result.most_relevant_segments
+        ]
+        return TranscriptAnalysis(
+            most_relevant_segments=converted_segments,
+            summary=structured_result.summary,
+            key_topics=structured_result.key_topics,
+        )
+    except ValueError as e:
+        logger.error(f"Groq Structured Outputs validation failed: {e}")
+        raise ValueError(
+            f"AI analysis failed: {e}. "
+            f"Try reducing clip duration requirements (recommended: 10-45 seconds)."
+        ) from e
+    except Exception as e:
+        logger.error(f"Groq Structured Outputs API error: {e}")
+        raise
+
+
+async def _analyze_with_standard_model(
+    analysis_prompt: str,
+) -> TranscriptAnalysis:
+    """Analyze using standard Pydantic AI agent (Tool Calling)."""
+    # Lazy initialize agent on first use
+    agent = _get_transcript_agent()
+    result = await agent.run(analysis_prompt)
+
+    analysis = result.data
+    logger.info(f"AI analysis found {len(analysis.most_relevant_segments)} segments")
+
+    # Validate and filter segments
+    validated_segments = []
+    for segment in analysis.most_relevant_segments:
+        is_valid, reason, duration = TranscriptSegmentValidator.validate_segment(
+            segment
+        )
+
+        if not is_valid:
+            logger.warning(f"Skipping segment: {reason} - '{segment.text[:50]}...'")
+            continue
+
+        validated_segments.append(segment)
+        logger.info(
+            f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s)"
+        )
+
+    # Sort by relevance
+    validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
+
+    final_analysis = TranscriptAnalysis(
+        most_relevant_segments=validated_segments,
+        summary=analysis.summary,
+        key_topics=analysis.key_topics,
+    )
+
+    logger.info(f"Selected {len(validated_segments)} segments for processing")
+    if validated_segments:
+        logger.info(f"Top segment score: {validated_segments[0].relevance_score:.2f}")
+
+    return final_analysis
+
+
 async def get_most_relevant_parts_by_transcript(
     transcript: str,
     min_length: int = 10,
@@ -389,87 +475,12 @@ async def get_most_relevant_parts_by_transcript(
         # Check if using Llama 4 Scout - use Groq Structured Outputs instead of tool calling
         model_str = config.llm if not config.local_llm_enabled else ""
         if "llama-4-scout" in model_str or "llama-4-maverick" in model_str:
-            logger.info(
-                "Using Groq Structured Outputs API for Llama 4 Scout compatibility"
+            return await _analyze_with_structured_model(
+                transcript, min_length, max_length, custom_prompt
             )
-            from .ai_structured import analyze_transcript_structured
-
-            try:
-                # Get result from structured API
-                structured_result = await analyze_transcript_structured(
-                    transcript,
-                    min_length=min_length,
-                    max_length=max_length,
-                    custom_prompt=custom_prompt,
-                )
-                # Convert from ai_structured.TranscriptAnalysis to ai.TranscriptAnalysis
-                converted_segments = [
-                    TranscriptSegment(
-                        start_time=seg.start_time,
-                        end_time=seg.end_time,
-                        text=seg.text,
-                        relevance_score=seg.relevance_score,
-                        reasoning=seg.reasoning,
-                    )
-                    for seg in structured_result.most_relevant_segments
-                ]
-                return TranscriptAnalysis(
-                    most_relevant_segments=converted_segments,
-                    summary=structured_result.summary,
-                    key_topics=structured_result.key_topics,
-                )
-            except ValueError as e:
-                logger.error(f"Groq Structured Outputs validation failed: {e}")
-                raise ValueError(
-                    f"AI analysis failed: {e}. "
-                    f"Try reducing clip duration requirements (recommended: 10-45 seconds)."
-                ) from e
-            except Exception as e:
-                logger.error(f"Groq Structured Outputs API error: {e}")
-                raise
 
         # For all other models, use Pydantic AI (tool calling)
-        # Lazy initialize agent on first use
-        agent = _get_transcript_agent()
-        result = await agent.run(analysis_prompt)
-
-        analysis = result.data
-        logger.info(
-            f"AI analysis found {len(analysis.most_relevant_segments)} segments"
-        )
-
-        # Validate and filter segments
-        validated_segments = []
-        for segment in analysis.most_relevant_segments:
-            is_valid, reason, duration = TranscriptSegmentValidator.validate_segment(
-                segment
-            )
-
-            if not is_valid:
-                logger.warning(f"Skipping segment: {reason} - '{segment.text[:50]}...'")
-                continue
-
-            validated_segments.append(segment)
-            logger.info(
-                f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s)"
-            )
-
-        # Sort by relevance
-        validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
-
-        final_analysis = TranscriptAnalysis(
-            most_relevant_segments=validated_segments,
-            summary=analysis.summary,
-            key_topics=analysis.key_topics,
-        )
-
-        logger.info(f"Selected {len(validated_segments)} segments for processing")
-        if validated_segments:
-            logger.info(
-                f"Top segment score: {validated_segments[0].relevance_score:.2f}"
-            )
-
-        return final_analysis
+        return await _analyze_with_standard_model(analysis_prompt)
 
     except ValueError as e:
         # Re-raise validation errors so tasks correctly mark as failed
@@ -479,8 +490,3 @@ async def get_most_relevant_parts_by_transcript(
         # Re-raise other exceptions so tasks correctly mark as failed
         logger.error(f"Error in transcript analysis: {e}", exc_info=True)
         raise
-
-
-def get_most_relevant_parts_sync(transcript: str) -> TranscriptAnalysis:
-    """Synchronous wrapper for the async function."""
-    return asyncio.run(get_most_relevant_parts_by_transcript(transcript))
