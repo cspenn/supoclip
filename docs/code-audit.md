@@ -35,7 +35,7 @@ This audit identifies unused code, orphaned files, dead dependencies, and outdat
 
 ## Cleanup Execution Log (2025-12-27)
 
-### Completed VUWs
+### Phase 1: Safe Deletions (Commits: 2f74020, d9b0450)
 
 | VUW | Action | Files Deleted | Lines Removed | Verification |
 |-----|--------|---------------|---------------|--------------|
@@ -43,10 +43,26 @@ This audit identifies unused code, orphaned files, dead dependencies, and outdat
 | DEAD-002 | Delete PostgreSQL schema | `/init.sql` | ~200 | grep + SQLite confirmed |
 | DEAD-003 | Delete unused hook + test | `frontend/src/hooks/useClips.ts`, `__tests__/useClips.test.ts` | ~370 | npm run build |
 | DEAD-004 | Delete unused hook + test | `frontend/src/hooks/useSSE.ts`, `__tests__/useSSE.test.ts` | ~360 | npm run build |
+| DEAD-005 | Commit Phase 1 | 7 files | ~1,057 | git commit |
+| DEAD-006 | Remove Docker/legacy files | 11 files | ~1,441 | git status |
 
-**Total Lines Removed:** ~930 lines
-**Files Deleted:** 5 files
-**Build Status:** Frontend build passed, Backend checkpython.sh ran (pre-existing issues unrelated to cleanup)
+### Phase 2: Medium Confidence Deletions (Commit: 3997525)
+
+| VUW | Action | Files | Lines | Verification |
+|-----|--------|-------|-------|--------------|
+| DEAD-007 | Archive debug tests | 5 files → `tests/archive/debugging/` | 0 (moved) | ls |
+| DEAD-008 | Remove alembic dep | `pyproject.toml` | 1 | grep + deptry |
+| DEAD-009 | Delete ProcessingStatus | `ProcessingStatus.tsx` + test | ~444 | npm run build |
+| DEAD-010 | Delete Toaster/sonner | `sonner.tsx` + deps | ~25 + 2 deps | npm run build |
+
+### Summary
+
+**Phase 1:** ~2,500 lines removed, 18 files deleted
+**Phase 2:** ~470 lines removed, 3 files deleted, 5 files archived, 3 deps removed
+**Total Lines Removed:** ~2,970 lines
+**Total Files Deleted:** 21 files
+**Dependencies Removed:** alembic (backend), sonner, next-themes (frontend)
+**Build Status:** All builds passed
 
 ---
 
