@@ -1,6 +1,7 @@
 """
 Task repository - handles all database operations for tasks.
 """
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional, Dict, Any, List
@@ -27,7 +28,11 @@ def parse_sqlite_datetime(dt_value: str | datetime | None) -> datetime | None:
     """
     if dt_value is None or isinstance(dt_value, datetime):
         return dt_value
-    return datetime.fromisoformat(dt_value)
+    try:
+        return datetime.fromisoformat(dt_value)
+    except ValueError as e:
+        logger.warning(f"Failed to parse datetime '{dt_value}': {e}")
+        return None
 
 
 class TaskRepository:

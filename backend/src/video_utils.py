@@ -4,17 +4,22 @@ Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any, Union
 import logging
-import numpy as np
 import json
-
+import numpy as np
 import cv2
-from moviepy import VideoFileClip, CompositeVideoClip, TextClip  # type: ignore
-from moviepy.video.fx import Margin  # type: ignore
+
+from moviepy import (
+    VideoFileClip,
+    CompositeVideoClip,
+    ImageClip,
+)
+from moviepy.video.fx import Margin
 
 
 from .config import Config
+from .subtitle_renderer import BrowserSubtitleRenderer
 from .transcription_mlx import (
     transcribe_video_mlx,
 )
@@ -369,8 +374,8 @@ class CenterCropCalculator:
 class TranscriptLineBreaker:
     """Determine when to break lines in transcripts."""
 
-    MAX_WORDS_PER_LINE = 6
-    BREAK_PUNCTUATION = {".", "!", "?", ","}
+    MAX_WORDS_PER_LINE = 20
+    BREAK_PUNCTUATION = {".", "!", "?"}
 
     @staticmethod
     def should_break_line(word_text: str, word_count: int) -> bool:
@@ -383,13 +388,23 @@ class TranscriptLineBreaker:
         Returns:
             True if line should break, False otherwise
         """
-        if word_count >= TranscriptLineBreaker.MAX_WORDS_PER_LINE:
-            return True
-        if word_text and any(
-            word_text.endswith(punct)
+        # Always break on strong punctuation (sentence boundaries)
+        # Fix: strip whitespace to handle tokens like "word. "
+        clean_text = word_text.strip()
+        if clean_text and any(
+            clean_text.endswith(punct)
             for punct in TranscriptLineBreaker.BREAK_PUNCTUATION
         ):
             return True
+
+        # Break on commas only if line is getting long to avoid chopping phrases
+        if clean_text and clean_text.endswith(",") and word_count > 15:
+            return True
+
+        # Hard limit to preventing extremely long lines
+        if word_count >= TranscriptLineBreaker.MAX_WORDS_PER_LINE:
+            return True
+
         return False
 
 
@@ -947,13 +962,74 @@ class SubtitleTextClipCreator:
     )
 
     @staticmethod
+    def _create_clip_candidate(
+        text: str,
+        font_path: str,
+        font_size: int,
+        font_color: str,
+        max_text_width: int,
+        is_single_word: bool,
+        style_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[ImageClip]:
+        """
+        Create a subtitle clip using BrowserSubtitleRenderer.
+
+        This replaces the old TextClip method. It renders the text to a PNG
+        using Playwright and then loads it as an ImageClip.
+        """
+        style_options = style_options or {}
+
+        try:
+            # We use a context manager for the renderer to ensure browser starts/stops if needed
+            # In a production env, instance persistence would be better, but for now this ensures safety
+            with BrowserSubtitleRenderer() as renderer:
+                # Extract font family from path or default to standard
+                # Note: Playwright uses system fonts. If custom font path is provided,
+                # we'd need to load it via @font-face in CSS.
+                # For now, we assume the font name matches the file name or is standard.
+                font_family = Path(font_path).stem
+
+                image_path = renderer.render_text_to_image(
+                    text=text,
+                    font_family=font_family,
+                    font_size=font_size,
+                    color=font_color,
+                    width=max_text_width,
+                    stroke_width=style_options.get(
+                        "stroke_width", SubtitleTextClipCreator.STROKE_WIDTH
+                    ),
+                    stroke_color=style_options.get("stroke_color", "black"),
+                    shadow_color=style_options.get("shadow_color"),
+                    shadow_offset=style_options.get("shadow_offset", 2),
+                    text_transform=style_options.get("text_transform", "none"),
+                    font_weight=style_options.get("font_weight", "bold"),
+                )
+
+                if image_path:
+                    # Load the generated image as a clip
+                    img_clip = ImageClip(str(image_path))
+                    # Set duration placeholder (will be set by caller)
+                    # We deleted the temp file in renderer but loading might need it to persist...
+                    # Actually local ImageClip needs file to exist. BrowserRenderer creates temp file.
+                    # We should rely on OS temp cleanup or explicitly manage it.
+                    # For this implementation, we let Python/OS handle temp file lifecycle.
+                    return img_clip
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Browser rendering failed in factory: {e}")
+            return None
+
+    @staticmethod
     def create_text_clip(
         text: str,
         font_path: str,
         font_size: int,
         font_color: str,
         video_width: int,
-    ) -> Optional[TextClip]:
+        style_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[ImageClip]:
         """Create text clip with automatic size adjustment to fit lines."""
         max_text_width = int(
             video_width * (1 - 2 * SubtitleTextClipCreator.HORIZONTAL_PADDING)
@@ -961,54 +1037,197 @@ class SubtitleTextClipCreator:
         current_font_size = font_size
         max_attempts = 3
 
+        # Determine method based on content
+        is_single_word = len(text.strip().split()) == 1
+
         for attempt in range(max_attempts):
-            text_clip = TextClip(
-                text=text,
-                font=font_path,
-                font_size=current_font_size,
-                color=font_color,
-                stroke_color="black",
-                stroke_width=SubtitleTextClipCreator.STROKE_WIDTH,
-                method="label",  # Changed from "caption" to prevent text cutoff
-                text_align="center",
+            text_clip = SubtitleTextClipCreator._create_clip_candidate(
+                text,
+                font_path,
+                current_font_size,
+                font_color,
+                max_text_width,
+                is_single_word,
+                style_options,
             )
 
+            if not text_clip:
+                return None
+
             # Add margin to prevent stroke and descenders from being cut off at edges
-            # Dynamic bottom margin: 45% of font size for descenders (25-30%) + stroke + buffer
-            # This ensures no clipping at any font size (16-40px) even with stroke effects.
-            # Examples: 16px->8px, 20px->10px, 24px->12px, 30px->15px, 40px->19px
             bottom_margin = max(
-                7, int(current_font_size * 0.45) + SubtitleTextClipCreator.STROKE_WIDTH
+                10, int(current_font_size * 0.60) + SubtitleTextClipCreator.STROKE_WIDTH
             )
             text_clip = text_clip.with_effects(
                 [Margin(bottom=bottom_margin, top=5, left=3, right=3, opacity=0)]
             )
 
-            text_height = text_clip.size[1] if text_clip.size else 40
+            # Check if it fits within max lines
+            text_height = (
+                text_clip.size[1]
+                if hasattr(text_clip, "size") and text_clip.size
+                else 40
+            )
             estimated_line_height = current_font_size * 1.5
             estimated_lines = text_height / estimated_line_height
 
             if estimated_lines <= SubtitleTextClipCreator.MAX_SUBTITLE_LINES:
                 return text_clip
 
+            # Reduce font size and try again
             current_font_size = int(
                 current_font_size * SubtitleTextClipCreator.FONT_SIZE_REDUCTION
             )
             if current_font_size < SubtitleTextClipCreator.MIN_FONT_SIZE:
                 current_font_size = SubtitleTextClipCreator.MIN_FONT_SIZE
-                break
+                # One last attempt at min font size will happen in next loop if range permits,
+                # but if we are already at min, we might just have to accept it or break.
+                # Logic below: loop wraps around. If we are at attempt 2 and hit min size, loop finishes.
+                if attempt == max_attempts - 1:
+                    break  # Return what we have
 
-        return text_clip
+
+def snap_segment_to_sentence_start(
+    video_path: Path, start_time_seconds: float, search_window_seconds: float = 5.0
+) -> Tuple[float, str, str]:
+    """
+    Find the nearest valid sentence start to the given timestamp.
+
+    Strategies:
+    1. Find the word corresponding to the start time.
+    2. Search backwards (up to search_window_seconds) for a 'Sentence Starter'.
+       - A word that starts with an Uppercase letter AND matches strict criteria.
+       - Criteria: Previous word ends with [.!?] OR it's the very first word.
+
+    Returns:
+        Tuple(new_start_seconds, matched_word_text, conversion_reason)
+        If no better start found, returns original start time.
+    """
+    transcript_data = load_cached_transcript_data(video_path)
+    if not transcript_data or "words" not in transcript_data:
+        return start_time_seconds, "", "No cache available"
+
+    words = transcript_data["words"]
+    start_ms = int(start_time_seconds * 1000)
+    window_ms = int(search_window_seconds * 1000)
+
+    # 1. Find the word index closest to start_time
+    closest_idx = -1
+    min_diff = float("inf")
+
+    for i, word in enumerate(words):
+        word_start = word.get("start", 0)
+        diff = abs(word_start - start_ms)
+        if diff < min_diff:
+            min_diff = diff
+            closest_idx = i
+
+    if closest_idx == -1:
+        return start_time_seconds, "", "No words found"
+
+    # 2. Search backwards for sentence start
+    # We look from closest_idx down to 0, but stop if we go beyond the window
+    initial_word_start = words[closest_idx].get("start", 0)
+
+    best_start_idx = -1
+
+    # Check current and previous words
+    for i in range(closest_idx, -1, -1):
+        word = words[i]
+        curr_start = word.get("start", 0)
+        text = word.get("text", "").strip()
+
+        # Stop if we've gone too far back from the TARGET start time
+        if (start_ms - curr_start) > window_ms:
+            break
+
+        # Stop if we've gone forward significantly (shouldn't happen much)
+        if (curr_start - start_ms) > 2000:
+            continue
+
+        # Check for sentence start characteristics
+        is_candidate = False
+
+        if i == 0:
+            is_candidate = True
+        else:
+            prev_word = words[i - 1]
+            prev_text = prev_word.get("text", "").strip()
+
+            # Condition: Starts with Capital AND Previous ends with punctuation
+            if text and text[0].isupper():
+                if prev_text and prev_text[-1] in [".", "!", "?"]:
+                    is_candidate = True
+
+        if is_candidate:
+            best_start_idx = i
+            break
+
+    if best_start_idx != -1:
+        new_word = words[best_start_idx]
+        new_start_ms = new_word.get("start", 0)
+        new_start_seconds = new_start_ms / 1000.0
+
+        return (
+            new_start_seconds,
+            new_word.get("text", ""),
+            f"Snapped to '{new_word.get('text', '')}'",
+        )
+
+    return start_time_seconds, "", "No better start found"
 
 
 class SubtitlePositioner:
     """Calculate subtitle positioning on video."""
 
     @staticmethod
-    def calculate_position(video_height: int, text_height: int) -> Tuple[str, int]:
-        """Calculate subtitle position (lower middle of video)."""
-        vertical_position = int(video_height * 0.75 - text_height // 2)
-        return ("center", vertical_position)
+    def calculate_position(
+        video_height: int,
+        text_height: int,
+        video_width: int = 0,  # Unused if centering, but needed for future absolute X
+        position_options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Union[str, int], int]:
+        """
+        Calculate subtitle position based on provided options or defaults.
+
+        Args:
+            video_height: Height of video
+            text_height: Height of subtitle clip
+            video_width: Width of video
+            position_options: Dict with 'x', 'y' (float 0-1) and 'alignment'
+
+        Returns:
+            Tuple (x_pos, y_pos) compatible with MoviePy
+        """
+        # Default options
+        x_rel = 0.5  # Center
+        y_rel = 0.65  # Lower third
+        alignment = "center"
+
+        if position_options:
+            x_rel = position_options.get("x", x_rel)
+            y_rel = position_options.get("y", y_rel)
+            alignment = position_options.get("alignment", alignment)
+
+        # Calculate Y position
+        # If centering vertically at that point: y_px - height/2
+        vertical_position = int(video_height * y_rel - text_height // 2)
+
+        # Calculate X position
+        if alignment == "center" and position_options is None:
+            return ("center", vertical_position)
+
+        # If explicit X provided
+        horizontal_position = "center"  # Default
+        if position_options and "x" in position_options:
+            horizontal_position = int(video_width * x_rel)
+            # If centered alignment, offset by width/2?
+            # For MoviePy, 'center' is magic string. If we use int, it's absolute.
+            # Let's support 'center' string if x is 0.5 and alignment is center
+            if x_rel == 0.5 and alignment == "center":
+                horizontal_position = "center"
+
+        return (horizontal_position, vertical_position)
 
 
 class SubtitleClipBuilder:
@@ -1022,8 +1241,10 @@ class SubtitleClipBuilder:
         font_color: str,
         video_width: int,
         video_height: int,
-        words_per_subtitle: int = 1,  # Changed to 1 for word-by-word display
-    ) -> List[TextClip]:
+        words_per_subtitle: int = 1,
+        style_options: Optional[Dict[str, Any]] = None,
+        position_options: Optional[Dict[str, Any]] = None,
+    ) -> List[ImageClip]:
         """Build individual subtitle clips for each word with exact timing.
 
         This creates TikTok/YouTube Shorts-style captions where each word appears
@@ -1039,7 +1260,7 @@ class SubtitleClipBuilder:
             words_per_subtitle: Number of words per caption (default: 1 for word-by-word)
 
         Returns:
-            List of TextClip objects with precise timing
+            List of ImageClip objects with precise timing
         """
         subtitle_clips = []
 
@@ -1061,7 +1282,7 @@ class SubtitleClipBuilder:
             try:
                 # Create text clip for this single word
                 text_clip = SubtitleTextClipCreator.create_text_clip(
-                    text, font_path, font_size, font_color, video_width
+                    text, font_path, font_size, font_color, video_width, style_options
                 )
 
                 if text_clip:
@@ -1070,10 +1291,10 @@ class SubtitleClipBuilder:
                         word_start
                     )
 
-                    # Calculate position (centered, 75% down video)
+                    # Calculate position
                     text_height = text_clip.size[1] if text_clip.size else 40
                     position = SubtitlePositioner.calculate_position(
-                        video_height, text_height
+                        video_height, text_height, video_width, position_options
                     )
                     text_clip = text_clip.with_position(position)
                     subtitle_clips.append(text_clip)
@@ -1099,7 +1320,9 @@ def create_assemblyai_subtitles(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-) -> List[TextClip]:
+    subtitle_style: Optional[Dict[str, Any]] = None,
+    subtitle_position: Optional[Dict[str, Any]] = None,
+) -> List[ImageClip]:
     """
     Create subtitles using parakeet-mlx's precise word timing.
 
@@ -1135,6 +1358,9 @@ def create_assemblyai_subtitles(
         font_color,
         video_width,
         video_height,
+        1,  # words_per_subtitle
+        subtitle_style,
+        subtitle_position,
     )
 
     logger.info(f"Created {len(subtitle_clips)} subtitle elements from AssemblyAI data")
@@ -1153,6 +1379,8 @@ def create_optimized_clip(
     logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
+    subtitle_style: Optional[Dict[str, Any]] = None,
+    subtitle_position: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Create optimized 9:16 clip with AssemblyAI subtitles.
@@ -1180,7 +1408,11 @@ def create_optimized_clip(
             video.close()
             return False
 
-        end_time = min(end_time, video.duration)
+        # Add audio buffer (0.15s) to prevent cutting off words
+        buffer = 0.15
+        start_time = max(0, start_time - buffer)
+        end_time = min(video.duration, end_time + buffer)
+
         clip = video.subclipped(start_time, end_time)
 
         # Get optimal crop
@@ -1222,6 +1454,8 @@ def create_optimized_clip(
                 font_family,
                 font_size,
                 font_color,
+                subtitle_style,
+                subtitle_position,
             )
             final_clips.extend(subtitle_clips)
 
@@ -1270,7 +1504,12 @@ def create_optimized_clip(
 
                     final_clips.append(logo_clip)
 
-                    logger.info(f"Added logo overlay at {logo_position}")
+                    logger.info(
+                        f"Added logo overlay at {logo_position} with coords: {logo_position_coords}"
+                    )
+                    logger.info(
+                        f"Logo size: {logo_width}x{logo_height}, Video size: {new_width}x{new_height}"
+                    )
 
                 except Exception as e:
                     logger.warning(f"Failed to add logo overlay: {e}")
@@ -1316,6 +1555,8 @@ def create_clips_from_segments(
     logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
+    subtitle_style: Optional[Dict[str, Any]] = None,
+    subtitle_position: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments."""
     logger.info(f"Creating {len(segments)} clips")
@@ -1327,24 +1568,37 @@ def create_clips_from_segments(
         try:
             # Debug log the segment data
             logger.info(
-                f"Processing segment {i+1}: start='{segment.get('start_time')}', end='{segment.get('end_time')}'"
+                f"Processing segment {i + 1}: start='{segment.get('start_time')}', end='{segment.get('end_time')}'"
             )
 
             start_seconds = parse_timestamp_to_seconds(segment["start_time"])
             end_seconds = parse_timestamp_to_seconds(segment["end_time"])
 
+            # Snap to nearest sentence start for better audio alignment
+            snapped_start, _, reason = snap_segment_to_sentence_start(
+                video_path, start_seconds
+            )
+            if snapped_start != start_seconds:
+                logger.info(
+                    f"Clip {i + 1}: Snapped start time {start_seconds:.2f}s -> {snapped_start:.2f}s ({reason})"
+                )
+                # Adjust duration if start time moved significantly to preserve end boundary intent
+                # or just let end_seconds stay fixed?
+                # If we move start back, duration increases. This is usually safe and desired (capture the full sentence).
+                start_seconds = snapped_start
+
             duration = end_seconds - start_seconds
             logger.info(
-                f"Segment {i+1} duration: {duration:.1f}s (start: {start_seconds}s, end: {end_seconds}s)"
+                f"Segment {i + 1} duration: {duration:.1f}s (start: {start_seconds}s, end: {end_seconds}s)"
             )
 
             if duration <= 0:
                 logger.warning(
-                    f"Skipping clip {i+1}: invalid duration {duration:.1f}s (start: {start_seconds}s, end: {end_seconds}s)"
+                    f"Skipping clip {i + 1}: invalid duration {duration:.1f}s (start: {start_seconds}s, end: {end_seconds}s)"
                 )
                 continue
 
-            clip_filename = f"clip_{i+1}_{segment['start_time'].replace(':', '')}-{segment['end_time'].replace(':', '')}.mp4"
+            clip_filename = f"clip_{i + 1}_{segment['start_time'].replace(':', '')}-{segment['end_time'].replace(':', '')}.mp4"
             clip_path = output_dir / clip_filename
 
             success = create_optimized_clip(
@@ -1359,6 +1613,8 @@ def create_clips_from_segments(
                 logo_path,
                 logo_position,
                 output_resolution,
+                subtitle_style,
+                subtitle_position,
             )
 
             if success:
@@ -1374,12 +1630,12 @@ def create_clips_from_segments(
                     "reasoning": segment["reasoning"],
                 }
                 clips_info.append(clip_info)
-                logger.info(f"Created clip {i+1}: {duration:.1f}s")
+                logger.info(f"Created clip {i + 1}: {duration:.1f}s")
             else:
-                logger.error(f"Failed to create clip {i+1}")
+                logger.error(f"Failed to create clip {i + 1}")
 
         except Exception as e:
-            logger.error(f"Error processing clip {i+1}: {e}")
+            logger.error(f"Error processing clip {i + 1}: {e}")
 
     logger.info(f"Successfully created {len(clips_info)}/{len(segments)} clips")
     return clips_info
@@ -1470,6 +1726,8 @@ def create_clips_with_transitions(
     logo_path: Optional[str] = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
+    subtitle_style: Optional[Dict[str, Any]] = None,
+    subtitle_position: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Create video clips with transition effects between them."""
     logger.info(
@@ -1487,6 +1745,8 @@ def create_clips_with_transitions(
         logo_path,
         logo_position,
         output_resolution,
+        subtitle_style,
+        subtitle_position,
     )
 
     if len(clips_info) < 2:
@@ -1535,12 +1795,12 @@ def create_clips_with_transitions(
                 enhanced_clip_info["path"] = str(transition_output_path)
                 enhanced_clip_info["has_transition"] = True
                 enhanced_clips.append(enhanced_clip_info)
-                logger.info(f"Added transition to clip {i+1}")
+                logger.info(f"Added transition to clip {i + 1}")
             else:
                 # Fallback to original clip if transition fails
                 enhanced_clips.append(clip_info)
                 logger.warning(
-                    f"Failed to add transition to clip {i+1}, using original"
+                    f"Failed to add transition to clip {i + 1}, using original"
                 )
 
     logger.info(f"Successfully created {len(enhanced_clips)} clips with transitions")

@@ -16,6 +16,9 @@ class Config:
     - Local asyncio queue for jobs (not Redis/arq)
     """
 
+    # Default ports
+    DEFAULT_BACKEND_PORT = 8008
+
     def __init__(self) -> None:
         """Initialize configuration from environment variables."""
         # parakeet-mlx transcription model
@@ -79,7 +82,9 @@ class Config:
         self.log_retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
 
         # Backend URL (for generating full URLs to clips)
-        self.backend_url = os.getenv("BACKEND_URL", "http://localhost:8008")
+        self.backend_url = os.getenv(
+            "BACKEND_URL", f"http://localhost:{self.DEFAULT_BACKEND_PORT}"
+        )
 
         # Gradual rollout percentage for async service
         # 0 = all traffic to legacy sync service
@@ -150,7 +155,6 @@ class Config:
         level = self.log_level.upper()
         if level not in valid_levels:
             raise ValueError(
-                f"Invalid log level: {level}. "
-                f"Must be one of: {', '.join(valid_levels)}"
+                f"Invalid log level: {level}. Must be one of: {', '.join(valid_levels)}"
             )
         return level

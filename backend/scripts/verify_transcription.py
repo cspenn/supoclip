@@ -1,6 +1,7 @@
 """
 Test script to verify parakeet-mlx token extraction fix.
 """
+
 import sys
 from pathlib import Path
 

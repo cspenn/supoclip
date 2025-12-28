@@ -11,7 +11,6 @@ Tests:
 - Multiple concurrent workers
 """
 import asyncio
-import pytest
 import sys
 from pathlib import Path
 from datetime import datetime

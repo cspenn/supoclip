@@ -8,7 +8,6 @@ Tests:
 - Basic API structure
 - CORS configuration
 """
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -61,12 +60,7 @@ class TestHealthCheckEndpoints:
         assert "database" in data
         assert data["database"] == "connected"
 
-    def test_redis_health_check_endpoint_exists(self, async_client: TestClient):
-        """Test that Redis health endpoint exists."""
-        # May fail if Redis not available, but endpoint should exist
-        response = async_client.get("/health/redis")
-        # Accept either 200 (healthy) or other status indicating Redis unavailable
-        assert response.status_code in [200, 500, 503]
+    # Redis health check removed - we now use local asyncio queue instead of Redis
 
 
 class TestAPIDocumentation:

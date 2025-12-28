@@ -25,7 +25,6 @@ class TestFontFallbackWhenSystemFontNotAccessible:
         This test verifies the OLD behavior - immediate fallback.
         """
         from src.video_utils import resolve_font_path
-        import sqlite3
 
         # Request a font that doesn't exist in bundled fonts
         non_existent_font = "NonExistentFont12345"

@@ -79,6 +79,9 @@ class User(Base):
     logo_corner_position: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True, server_default=text("'top-right'")
     )
+    output_resolution: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, server_default=text("'720p'")
+    )
 
     # Table constraints
     __table_args__ = (
@@ -143,6 +146,9 @@ class Task(Base):
     source: Mapped[Optional["Source"]] = relationship("Source", back_populates="tasks")
     generated_clips: Mapped[List["GeneratedClip"]] = relationship(
         "GeneratedClip", back_populates="task", cascade="all, delete-orphan"
+    )
+    output_resolution: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True, server_default=text("'720p'")
     )
 
 

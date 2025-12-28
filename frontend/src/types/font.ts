@@ -19,6 +19,16 @@ export interface FontOptions {
   family: string;
   size: number;
   color: string;
+  // Extended Styling
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowColor?: string;
+  shadowOffset?: number;
+  textTransform?: "none" | "uppercase" | "lowercase";
+  // Positioning
+  positionX?: number; // 0.0 to 1.0
+  positionY?: number; // 0.0 to 1.0
+  alignment?: "left" | "center" | "right";
 }
 
 // end frontend/src/types/font.ts

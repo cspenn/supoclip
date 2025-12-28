@@ -9,7 +9,6 @@ Tests:
 - Database and model configuration
 """
 import os
-import pytest
 import sys
 from pathlib import Path
 
@@ -26,17 +25,17 @@ class TestConfigLoading:
         assert test_config is not None
         assert isinstance(test_config, Config)
 
-    def test_mlx_whisper_model_default(self, monkeypatch):
-        """Test MLX Whisper model defaults to medium."""
-        monkeypatch.delenv("MLX_WHISPER_MODEL", raising=False)
+    def test_parakeet_model_default(self, monkeypatch):
+        """Test parakeet-mlx model defaults to parakeet-tdt-0.6b-v2."""
+        monkeypatch.delenv("PARAKEET_MODEL", raising=False)
         config = Config()
-        assert config.mlx_whisper_model == "medium"
+        assert config.parakeet_model == "mlx-community/parakeet-tdt-0.6b-v2"
 
-    def test_mlx_whisper_model_from_env(self, monkeypatch):
-        """Test MLX Whisper model can be set from environment."""
-        monkeypatch.setenv("MLX_WHISPER_MODEL", "large")
+    def test_parakeet_model_from_env(self, monkeypatch):
+        """Test parakeet-mlx model can be set from environment."""
+        monkeypatch.setenv("PARAKEET_MODEL", "mlx-community/parakeet-tdt-1.1b")
         config = Config()
-        assert config.mlx_whisper_model == "large"
+        assert config.parakeet_model == "mlx-community/parakeet-tdt-1.1b"
 
     def test_llm_model_default(self, monkeypatch):
         """Test LLM model defaults to empty string (local-first)."""
@@ -252,13 +251,13 @@ class TestOfflineCapability:
         config = Config()
         assert config is not None
 
-    def test_mlx_whisper_available_offline(self, monkeypatch):
-        """Test MLX Whisper is configured for offline use."""
-        monkeypatch.setenv("MLX_WHISPER_MODEL", "tiny")
+    def test_parakeet_available_offline(self, monkeypatch):
+        """Test parakeet-mlx is configured for offline use."""
+        monkeypatch.setenv("PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2")
         config = Config()
 
-        # MLX Whisper models are downloaded locally, not cloud-based
-        assert config.mlx_whisper_model == "tiny"
+        # parakeet-mlx models are downloaded locally, not cloud-based
+        assert config.parakeet_model == "mlx-community/parakeet-tdt-0.6b-v2"
 
     def test_local_job_queue_configuration(self, monkeypatch):
         """Test that local job queue is configured."""

@@ -18,9 +18,7 @@ SupoClip is an open-source alternative to OpusClip - an AI-powered video clippin
 supoclip/
 ├── backend/       # Python FastAPI backend
 ├── frontend/      # Next.js 15 main app
-├── waitlist/      # Next.js 15 landing page
-├── docker-compose.yml
-└── init.sql       # PostgreSQL schema
+└── waitlist/      # Next.js 15 landing page
 ```
 
 ### Technology Stack
@@ -42,7 +40,7 @@ supoclip/
 - Server-side rendering patterns
 
 **Database:**
-- PostgreSQL 15 with tables: users, tasks, sources, generated_clips, session, account, verification
+- SQLite with tables: users, tasks, sources, generated_clips, session, account, system_fonts
 - Uses both snake_case (tasks) and camelCase (Better Auth tables) conventions
 
 ## Development Commands
@@ -62,8 +60,13 @@ source .venv/bin/activate  # macOS/Linux
 # Install dependencies
 uv sync
 
-# Run development server
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+# Run development server with AUTOMATIC PORT SELECTION (Recommended)
+python -m src.main
+# OR if using uv:
+uv run run-dev
+
+# WARNING: Running uvicorn directly bypasses the port selector!
+# uvicorn src.main:app --reload --port 8000
 ```
 
 **Prerequisites:**
@@ -118,27 +121,10 @@ npm install
 npm run dev
 ```
 
-### Docker Development
-
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-
-# Rebuild after changes
-docker-compose up -d --build
-```
-
 Services:
 - Frontend: http://localhost:3000
 - Backend: http://localhost:8000 (API docs at /docs)
-- PostgreSQL: localhost:5432
-- Redis: localhost:6379
+- SQLite: ./backend/supoclip.db (local file database)
 
 ## Key Architecture Patterns
 
@@ -159,7 +145,7 @@ Services:
 - Better Auth handles authentication with email/password
 - Frontend uses Prisma Client with Better Auth adapter
 - Backend receives `user_id` via request headers
-- Session management via PostgreSQL session table
+- Session management via SQLite session table
 
 ### Database Access Patterns
 
@@ -297,7 +283,6 @@ This project adheres to strict coding standards documented in `docs/standards.md
 - `docs/polish.md` - Refinement checklist
 - `checkpython.sh` - Automated quality checks (never modify)
 - `.pre-commit-config.yaml` - Pre-commit framework configuration
-- `migrations/` - Alembic database migration scripts (when applicable)
 
 **Project-Specific Note:** This project uses `uv` for dependency management instead of Poetry. Environment variables are stored in `.env` files for local development.
 
@@ -330,12 +315,11 @@ This project adheres to strict coding standards documented in `docs/standards.md
 ### Database Access
 
 **Backend Database Patterns:**
-- Currently uses raw SQL via asyncpg for performance (as documented in `backend/src/database.py`)
+- Uses SQLite via aiosqlite for async database access
 - SQLAlchemy models in `backend/src/models.py` for type safety
 - Async sessions via `AsyncSessionLocal` context manager
 - No direct database connection calls outside database module
-- When migrating to SQLite: use SQLAlchemy Core/ORM for all operations (raw SQL forbidden in app code)
-- Use Alembic for all schema migrations (manual schema changes are forbidden)
+- Schema managed via Prisma for frontend and SQLAlchemy for backend
 
 **Frontend Database Access:**
 - Prisma Client via Better Auth adapter
@@ -374,7 +358,6 @@ Backend uses emoji-based logging: 🚀 (startup), 📝 (info), ✅ (success), �
   - Pydantic model validation
   - Database logic (using test database or fixtures)
   - API interactions (using pytest-httpx mocking)
-  - Alembic migrations (when applicable)
   - Configuration loading
 - Update tests whenever code changes
 - All tests must pass before committing (`pytest` shows 100% passing)
@@ -423,25 +406,21 @@ For complex changes and bug fixes, work is organized into **Verifiable Units of 
 
 ### Project-Specific Deviations
 
-This project currently deviates from some docs/standards.md recommendations:
+This project deviates from some docs/standards.md recommendations:
 
-| Standard | Project Current | Migration Plan |
-|----------|-----------------|---|
-| Dependency Manager | Uses `uv` | Keep `uv` (better than Poetry for this project) |
-| Configuration | Uses `.env` files | May migrate to YAML if project grows |
-| Database (Backend) | Raw SQL via asyncpg | Will migrate to SQLAlchemy for offline version |
-| Database (Current) | PostgreSQL | Will migrate to SQLite for offline version |
-| Job Queue | Redis + arq | Will replace with local asyncio queue |
-
-These deviations are documented and tracked in the migration plan (`docs/progress/fixes/migration-mlx-no-docker-2025-11-14.md`).
+| Standard | Project Current | Notes |
+|----------|-----------------|-------|
+| Dependency Manager | Uses `uv` | Preferred for this project (faster than Poetry) |
+| Configuration | Uses `.env` files | Simple and effective for local dev |
+| Database | SQLite | Local file-based database (no server needed) |
+| Job Queue | Local asyncio queue | No external dependencies required |
 
 ## Testing and Development Tips
 
 - Backend API docs available at http://localhost:8000/docs (Swagger UI)
 - Check backend logs for detailed processing steps (uses emoji logging 🚀📝✅❌)
 - Frontend uses React 19 and Next.js 15 - be aware of breaking changes
-- Database initialized via `init.sql` on first PostgreSQL container start
-- Use `docker-compose logs -f backend` to debug video processing issues
+- SQLite database created automatically on first backend start
 
 ## Common Workflows
 

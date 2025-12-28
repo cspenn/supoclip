@@ -3,7 +3,6 @@
 """Unit tests for FontService database models."""
 
 import pytest
-from pathlib import Path
 from datetime import datetime
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -104,7 +103,6 @@ async def test_system_font_database_model(test_db):
 @pytest.mark.asyncio
 async def test_system_font_unique_constraint(test_db):
     """Test that font names are unique."""
-    from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
     import uuid
 

@@ -43,6 +43,11 @@ model User {
   // Custom AI prompt
   custom_ai_prompt          String?
 
+  // Logo branding preferences
+  logo_file_path            String?
+  logo_corner_position      String?   @default("top-right")
+  output_resolution         String?   @default("720p")
+
   // Relationships
   tasks         Task[]
   sessions      Session[]
@@ -62,6 +67,11 @@ model Task {
   font_family          String?   @default("TikTokSans-Regular")
   font_size            Int?      @default(24)
   font_color           String?   @default("#FFFFFF")
+
+  // Progress tracking
+  progress             Int       @default(0)
+  progress_message     String?
+  output_resolution    String?   @default("720p")
 
   created_at           DateTime  @default(now())
   updated_at           DateTime  @default(now()) @updatedAt

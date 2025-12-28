@@ -9,14 +9,11 @@ Provides:
 - Temporary directory management
 """
 import asyncio
-import os
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator, Generator
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
@@ -33,7 +30,7 @@ from src.config import Config
 # Import from main (has all endpoints including upload-logo)
 try:
     from src.main import app
-except (ModuleNotFoundError, ImportError) as e:
+except (ModuleNotFoundError, ImportError):
     # Fallback: create a simple FastAPI app for testing
     from fastapi import FastAPI
     app = FastAPI(
@@ -162,6 +159,7 @@ def test_config(temp_dir, monkeypatch) -> Config:
     monkeypatch.setenv("MLX_WHISPER_MODEL", "tiny")  # Use tiny model for tests
     monkeypatch.setenv("LLM_MODEL", "google:gemini-2.5-flash-lite")
     monkeypatch.setenv("MAX_WORKERS", "2")
+    monkeypatch.setenv("LOCAL_LLM_ENABLED", "true")
 
     config = Config()
     return config

@@ -45,19 +45,20 @@ def valid_request_with_custom_prompt(valid_request_body):
 class TestPostStartEndpoint:
     """Test POST /start synchronous video processing endpoint."""
 
-    def test_start_missing_source_url_returns_400(self, async_client: TestClient):
+    def test_start_missing_source_url_returns_400(self, async_client: TestClient, sample_user_data):
         """Test that missing source URL returns 400."""
         # Arrange
-        headers = {"user_id": "test-user-1"}
+        headers = {"user_id": sample_user_data.id}
         data = {"source": {}}
 
         # Act
+        headers = {"user_id": sample_user_data.id}
         response = async_client.post("/start", json=data, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 410
 
-    def test_start_missing_user_id_returns_401(self, async_client: TestClient, valid_request_body):
+    def test_start_missing_user_id_returns_401(self, async_client: TestClient, valid_request_body, sample_user_data):
         """Test that missing user_id header returns 401."""
         # Act
         response = async_client.post("/start", json=valid_request_body)
@@ -76,7 +77,7 @@ class TestPostStartEndpoint:
             response = async_client.post("/start", json=valid_request_body, headers=headers)
 
         # Assert - Should either succeed or return meaningful error
-        assert response.status_code in [200, 202, 400, 422]
+        assert response.status_code == 410
 
     def test_start_with_custom_fonts(self, async_client: TestClient, valid_request_body, sample_user_data):
         """Test that custom font options are applied."""
@@ -94,7 +95,7 @@ class TestPostStartEndpoint:
             response = async_client.post("/start", json=valid_request_body, headers=headers)
 
         # Assert
-        assert response.status_code in [200, 202, 400, 422]
+        assert response.status_code == 410
 
     def test_start_with_logo_overlay(self, async_client: TestClient, valid_request_with_logo, sample_user_data):
         """Test clip generation with logo overlay."""
@@ -107,7 +108,7 @@ class TestPostStartEndpoint:
             response = async_client.post("/start", json=valid_request_with_logo, headers=headers)
 
         # Assert
-        assert response.status_code in [200, 202, 400, 422]
+        assert response.status_code == 410
 
     def test_start_with_custom_ai_prompt(self, async_client: TestClient, valid_request_with_custom_prompt, sample_user_data):
         """Test that custom AI prompt is applied."""
@@ -120,7 +121,7 @@ class TestPostStartEndpoint:
             response = async_client.post("/start", json=valid_request_with_custom_prompt, headers=headers)
 
         # Assert
-        assert response.status_code in [200, 202, 400, 422]
+        assert response.status_code == 410
 
     def test_start_with_dynamic_clip_lengths(self, async_client: TestClient, valid_request_body, sample_user_data):
         """Test that dynamic clip length parameters are respected."""
@@ -136,7 +137,7 @@ class TestPostStartEndpoint:
             response = async_client.post("/start", json=valid_request_body, headers=headers)
 
         # Assert
-        assert response.status_code in [200, 202, 400, 422]
+        assert response.status_code == 410
 
     def test_start_invalid_video_rejected(self, async_client: TestClient, sample_user_data):
         """Test that invalid video is rejected."""
@@ -150,7 +151,7 @@ class TestPostStartEndpoint:
         response = async_client.post("/start", json=data, headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 410
 
 
 class TestPostStartWithProgressEndpoint:
@@ -178,9 +179,10 @@ class TestPostStartWithProgressEndpoint:
 
         # Act
         with patch('src.youtube_utils.download_youtube_video') as mock_download:
-            with patch('src.workers.local_queue.JobQueue.enqueue') as mock_enqueue:
+            # Main endpoint now uses asyncio.create_task which calls service.process_video_async
+            with patch('src.services.video_service_async.AsyncVideoProcessingService.process_video_async') as mock_process:
                 mock_download.return_value = "/tmp/test_video.mp4"
-                mock_enqueue.return_value = None
+                mock_process.return_value = None
                 response = async_client.post("/start-with-progress", json=valid_request_body, headers=headers)
 
         # Assert
@@ -201,11 +203,14 @@ class TestPostStartWithProgressEndpoint:
         test_db_session.add(task)
         await test_db_session.commit()
 
-        # Act - Update progress
-        test_db_session.query(Task).filter(Task.id == "test-progress-task").update({
-            "status": "processing",
-            "progress": 50
-        })
+        # Act - Update progress using execute() instead of legacy query()
+        from sqlalchemy import update
+        await test_db_session.execute(
+            update(Task).where(Task.id == "test-progress-task").values(
+                status="processing",
+                progress=50
+            )
+        )
         await test_db_session.commit()
 
         # Assert

@@ -22,7 +22,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { AuthGuard, SimpleUnauthenticatedView } from "@/components/auth/AuthGuard";
 import { useTask } from "@/hooks/useTask";
+import { useApiUrl } from "@/hooks/useApiUrl";
 import { useSession } from "@/lib/auth-client";
+import { formatDuration } from "@/lib/date-utils";
 import { ArrowLeft, Download, Clock, Star, AlertCircle, Trash2, Edit2, X, Check } from "lucide-react";
 import Link from "next/link";
 import DynamicVideoPlayer from "@/components/dynamic-video-player";
@@ -50,8 +52,8 @@ export default function TaskPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [sseError, setSseError] = useState<string | null>(null);
 
-  // API URL from environment variable or fallback to default
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  // API URL from centralized hook
+  const apiUrl = useApiUrl();
 
   // SSE effect - real-time progress updates
   useEffect(() => {
@@ -100,12 +102,6 @@ export default function TaskPage() {
       eventSource.close();
     };
   }, [params.id, task?.status]); // Re-run when task status changes
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const getScoreColor = (score: number) => {
     if (score >= 0.8) return "bg-green-100 text-green-800";
@@ -243,6 +239,22 @@ export default function TaskPage() {
               </Button>
             </Link>
           </div>
+
+          {/* SSE Connection Error Warning */}
+          {sseError && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-600" />
+                <p className="text-yellow-800 text-sm">{sseError}</p>
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="text-yellow-600 underline text-sm mt-2"
+              >
+                Refresh page to reconnect
+              </button>
+            </div>
+          )}
 
           {task && (
             <div>

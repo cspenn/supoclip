@@ -10,7 +10,7 @@ This test simulates the complete flow:
 This demonstrates that the fix is complete and functional across the entire pipeline.
 """
 import pytest
-from src.ai_structured import TranscriptSegment, TranscriptAnalysis
+from src.ai_structured import TranscriptSegment
 from src.video_utils import parse_timestamp_to_seconds
 
 

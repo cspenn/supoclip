@@ -1,6 +1,7 @@
 """
 Video service - handles video processing business logic.
 """
+
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 import logging
@@ -11,7 +12,13 @@ from ..youtube_utils import (
     get_youtube_video_title,
     get_youtube_video_id,
 )
-from ..video_utils import get_video_transcript, create_clips_with_transitions
+from ..video_utils import (
+    get_video_transcript,
+    create_clips_with_transitions,
+    parse_timestamp_to_seconds,
+    snap_segment_to_sentence_start,
+    format_ms_to_timestamp_precise,
+)
 from ..ai import get_most_relevant_parts_by_transcript
 from ..config import Config
 
@@ -267,17 +274,17 @@ class VideoService:
                 logger.warning(f"min_length {min_length}s too short. Setting to 10s.")
                 min_length = 10
 
-            if min_length > 45:
+            if min_length > 60:
                 logger.warning(
-                    f"min_length {min_length}s exceeds recommended maximum. Capping at 45s."
+                    f"min_length {min_length}s exceeds recommended maximum. Capping at 60s."
                 )
-                min_length = 45
+                min_length = 60
 
-            if max_length > 60:
+            if max_length > 120:
                 logger.warning(
-                    f"max_length {max_length}s exceeds recommended maximum. Capping at 60s."
+                    f"max_length {max_length}s exceeds recommended maximum. Capping at 120s."
                 )
-                max_length = 60
+                max_length = 120
 
             if max_length < min_length:
                 logger.warning(
@@ -299,6 +306,53 @@ class VideoService:
             segments_json = VideoProcessingResponse.segments_to_json(
                 relevant_parts.most_relevant_segments
             )
+
+            # CRITICAL FIX: Overwrite AI-generated text with verbatim transcript text
+            # This ensures the "Transcript" UI matches the video subtitles exactly,
+            # preventing "Ghost Words" where the AI summarizes/paraphrases but the video shows original audio.
+            from ..video_utils import extract_text_from_cache
+
+            logger.info("Overwriting AI segment text with verbatim transcript text...")
+            for segment in segments_json:
+                # NEW: Snap segment start to nearest valid sentence start
+                # This fixes "mid-sentence hook" issues by using the word-level timestamp data
+                # to find the true beginning of the sentence.
+                # We do this BEFORE extracting text so we get the full correct text.
+                original_start_ts = segment["start_time"]
+                start_sec = parse_timestamp_to_seconds(original_start_ts)
+
+                new_start_sec, snapped_word, snap_reason = (
+                    snap_segment_to_sentence_start(video_path, start_sec)
+                )
+
+                if abs(new_start_sec - start_sec) > 0.01:
+                    new_start_ts = format_ms_to_timestamp_precise(
+                        int(new_start_sec * 1000)
+                    )
+                    logger.info(
+                        f"Snapped segment start: {original_start_ts} -> {new_start_ts} "
+                        f"({snap_reason})"
+                    )
+                    segment["start_time"] = new_start_ts
+                    # Note: We don't adjust end_time, so the duration changes slightly.
+                    # Usually expanding backwards, so duration increases.
+
+                # Now extract text using the potentially adjusted start time
+                verbatim_text = extract_text_from_cache(
+                    video_path,
+                    parse_timestamp_to_seconds(segment["start_time"]),
+                    parse_timestamp_to_seconds(segment["end_time"]),
+                )
+                if verbatim_text:
+                    original_ai_text = segment["text"]
+                    segment["text"] = verbatim_text
+                    logger.info(
+                        f"Replaced text for segment {segment['start_time']}: '{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
+                    )
+                else:
+                    logger.warning(
+                        f"Could not extract verbatim text for segment {segment['start_time']}"
+                    )
 
             clips_info = await VideoService.create_video_clips(
                 video_path,

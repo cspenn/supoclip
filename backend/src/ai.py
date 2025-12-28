@@ -2,43 +2,16 @@
 AI-related functions for transcript analysis with enhanced precision.
 """
 
-from typing import List
 import logging
 import re
 
 from pydantic_ai import Agent
-from pydantic import BaseModel, Field
 
 from .config import Config
+from .ai_types.ai_models import TranscriptSegment, TranscriptAnalysis
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-
-class TranscriptSegment(BaseModel):
-    """Represents a relevant segment of transcript with precise timing."""
-
-    start_time: str = Field(
-        description="Start timestamp in MM:SS.mmm format (e.g., 02:35.450)"
-    )
-    end_time: str = Field(
-        description="End timestamp in MM:SS.mmm format (e.g., 02:45.820)"
-    )
-    text: str = Field(
-        description="VERBATIM transcript text for this segment - copy exactly from transcript, do not summarize"
-    )
-    relevance_score: float = Field(
-        description="Relevance score from 0.0 to 1.0", ge=0.0, le=1.0
-    )
-    reasoning: str = Field(description="Explanation for why this segment is relevant")
-
-
-class TranscriptAnalysis(BaseModel):
-    """Analysis result for transcript segments."""
-
-    most_relevant_segments: List[TranscriptSegment]
-    summary: str = Field(description="Brief summary of the video content")
-    key_topics: List[str] = Field(description="List of main topics discussed")
 
 
 # Simplified system prompt that trusts AssemblyAI timing

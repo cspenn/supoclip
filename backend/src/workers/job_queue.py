@@ -8,6 +8,7 @@ a unified interface.
 
 MODULE: backend/src/workers/job_queue.py
 """
+
 import logging
 from typing import Optional, Callable, Any
 

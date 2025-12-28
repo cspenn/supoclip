@@ -4,7 +4,6 @@ Tests the utilities for extracting and validating font customization
 options from API requests.
 """
 
-import pytest
 from src.utils.font_options import (
     parse_font_options,
     merge_with_defaults,

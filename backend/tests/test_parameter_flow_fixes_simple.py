@@ -8,7 +8,7 @@ These tests verify the three critical fixes without complex mocking:
 """
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 import sqlite3
 
 

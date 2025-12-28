@@ -1,18 +1,15 @@
 """
-Test suite to reproduce database schema mismatch issues.
+Test suite to verify database schema includes progress and progress_message columns.
 
-This test SHOULD FAIL until the database schema is fixed to include
-progress and progress_message columns.
-
-Expected failure: sqlite3.OperationalError: no such column: progress
+These tests validate that the schema migration was successful and
+progress tracking fields work correctly.
 """
 import pytest
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import OperationalError
 
-from src.models import Base, User, Task
+from src.models import Base, User
 from src.repositories.task_repository import TaskRepository
 
 
@@ -84,14 +81,11 @@ async def test_task_creation_without_progress(test_db: AsyncSession, test_user: 
 
 
 @pytest.mark.asyncio
-async def test_task_status_update_with_progress_fails(test_db: AsyncSession, test_user: User):
+async def test_task_status_update_with_progress_succeeds(test_db: AsyncSession, test_user: User):
     """
-    Reproduces: Task status update with progress fails due to missing column.
+    Test that task status update with progress works correctly.
 
-    Expected: Update should set status, progress, and progress_message
-    Actual: Fails with "no such column: progress"
-
-    This test SHOULD FAIL until the schema is fixed.
+    Validates that the schema includes progress and progress_message columns.
     """
     source_id = str(uuid.uuid4())
 
@@ -103,32 +97,29 @@ async def test_task_status_update_with_progress_fails(test_db: AsyncSession, tes
         status="queued"
     )
 
-    # Attempt to update with progress - THIS SHOULD FAIL
-    with pytest.raises(OperationalError) as exc_info:
-        await TaskRepository.update_task_status(
-            db=test_db,
-            task_id=task_id,
-            status="processing",
-            progress=0,
-            progress_message="Starting..."
-        )
+    # Update with progress - this should succeed now
+    await TaskRepository.update_task_status(
+        db=test_db,
+        task_id=task_id,
+        status="processing",
+        progress=50,
+        progress_message="Processing video..."
+    )
 
-    # Verify the specific error
-    error_message = str(exc_info.value)
-    assert "no such column: progress" in error_message.lower(), \
-        f"Expected 'no such column: progress', got: {error_message}"
+    # Verify the update
+    task = await TaskRepository.get_task_by_id(test_db, task_id)
+    assert task is not None
+    assert task["status"] == "processing"
+    assert task["progress"] == 50
+    assert task["progress_message"] == "Processing video..."
 
 
 @pytest.mark.asyncio
-async def test_task_status_update_with_progress_message_only_fails(test_db: AsyncSession, test_user: User):
+async def test_task_status_update_with_progress_message_only_succeeds(test_db: AsyncSession, test_user: User):
     """
-    Reproduces: Error handler fails when trying to save progress_message.
+    Test error handler pattern: update status with progress_message.
 
-    Expected: Update should set status and progress_message (during error handling)
-    Actual: Fails with "no such column: progress_message"
-
-    This test SHOULD FAIL until the schema is fixed.
-    This is critical because error handlers use this pattern!
+    This pattern is used by error handlers to store error messages.
     """
     source_id = str(uuid.uuid4())
 
@@ -140,28 +131,27 @@ async def test_task_status_update_with_progress_message_only_fails(test_db: Asyn
         status="queued"
     )
 
-    # Attempt to update with only progress_message (error handler pattern)
-    with pytest.raises(OperationalError) as exc_info:
-        await TaskRepository.update_task_status(
-            db=test_db,
-            task_id=task_id,
-            status="error",
-            progress_message="An error occurred"
-        )
+    # Update with progress_message (error handler pattern)
+    await TaskRepository.update_task_status(
+        db=test_db,
+        task_id=task_id,
+        status="error",
+        progress_message="An error occurred"
+    )
 
-    # Verify the specific error
-    error_message = str(exc_info.value)
-    assert "no such column: progress_message" in error_message.lower(), \
-        f"Expected 'no such column: progress_message', got: {error_message}"
+    # Verify the update
+    task = await TaskRepository.get_task_by_id(test_db, task_id)
+    assert task is not None
+    assert task["status"] == "error"
+    assert task["progress_message"] == "An error occurred"
 
 
 @pytest.mark.asyncio
-async def test_task_get_with_progress_gracefully_handles_missing_columns(test_db: AsyncSession, test_user: User):
+async def test_task_get_returns_default_progress_values(test_db: AsyncSession, test_user: User):
     """
-    Test that reading tasks gracefully handles missing progress columns.
+    Test that reading tasks returns default progress values.
 
-    The repository uses getattr() with defaults, so reads should work.
-    This test SHOULD PASS even with missing columns.
+    Progress defaults to 0, progress_message defaults to None.
     """
     source_id = str(uuid.uuid4())
 
@@ -173,24 +163,24 @@ async def test_task_get_with_progress_gracefully_handles_missing_columns(test_db
         status="queued"
     )
 
-    # Get task - should return None for progress fields
+    # Get task - should return default values for progress fields
     task = await TaskRepository.get_task_by_id(test_db, task_id)
 
     assert task is not None
     assert task["id"] == task_id
     assert task["status"] == "queued"
 
-    # These should be None due to getattr() defaults
-    assert task["progress"] is None, "Should gracefully return None for missing progress"
-    assert task["progress_message"] is None, "Should gracefully return None for missing progress_message"
+    # Progress defaults to 0, progress_message defaults to None
+    assert task["progress"] == 0, "Progress should default to 0"
+    assert task["progress_message"] is None, "Progress message should default to None"
 
 
 @pytest.mark.asyncio
-async def test_connection_cleanup_after_failed_update(test_db: AsyncSession, test_user: User):
+async def test_multiple_progress_updates_work(test_db: AsyncSession, test_user: User):
     """
-    Test that database connections are properly cleaned up after failed updates.
+    Test that multiple progress updates work correctly.
 
-    This validates hypothesis #2 - that failed transactions should still clean up properly.
+    Validates that database connections are properly managed during updates.
     """
     source_id = str(uuid.uuid4())
 
@@ -202,22 +192,19 @@ async def test_connection_cleanup_after_failed_update(test_db: AsyncSession, tes
         status="queued"
     )
 
-    # Attempt multiple failed updates
+    # Perform multiple updates
     for i in range(5):
-        try:
-            await TaskRepository.update_task_status(
-                db=test_db,
-                task_id=task_id,
-                status="processing",
-                progress=i * 10,
-                progress_message=f"Step {i}"
-            )
-        except OperationalError:
-            # Expected to fail
-            pass
+        await TaskRepository.update_task_status(
+            db=test_db,
+            task_id=task_id,
+            status="processing",
+            progress=i * 20,
+            progress_message=f"Step {i + 1}"
+        )
 
-    # Session should still be usable for other operations
-    # This verifies connections aren't leaked
+    # Session should still be usable
     task = await TaskRepository.get_task_by_id(test_db, task_id)
-    assert task is not None, "Session should still work after failed updates"
-    assert task["status"] == "queued", "Status should be unchanged"
+    assert task is not None, "Session should still work after updates"
+    assert task["status"] == "processing"
+    assert task["progress"] == 80  # Last update was 4 * 20
+    assert task["progress_message"] == "Step 5"

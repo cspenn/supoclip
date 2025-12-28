@@ -16,7 +16,6 @@ from pathlib import Path
 # Setup imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.config import Config
-from src.database import AsyncSessionLocal
 from src.workers.local_queue import LocalJobQueue
 
 

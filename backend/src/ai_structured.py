@@ -10,107 +10,10 @@ import json
 import os
 from typing import List
 from groq import AsyncGroq
-from pydantic import BaseModel, Field
+
+from .ai_types.ai_models import TranscriptSegment, TranscriptAnalysis
 
 logger = logging.getLogger(__name__)
-
-
-def expand_segment_to_duration(
-    segment: "TranscriptSegment",
-    min_length: int,
-    max_length: int,
-    current_duration: float,
-) -> "TranscriptSegment":
-    """
-    Expand a segment to meet minimum duration requirements.
-
-    Strategy:
-    - If segment is too short, expand it symmetrically (both directions)
-    - Respect max_length constraint
-    - Try to expand by whole seconds for cleaner timestamps
-
-    Args:
-        segment: The segment to expand
-        min_length: Minimum required duration in seconds
-        max_length: Maximum allowed duration in seconds
-        current_duration: Current duration of the segment
-
-    Returns:
-        Expanded TranscriptSegment with updated timestamps
-    """
-    if current_duration >= min_length:
-        return segment
-
-    # Calculate how much to expand
-    needed_expansion = min_length - current_duration
-
-    # Don't exceed max_length
-    if min_length > max_length:
-        needed_expansion = max_length - current_duration
-
-    # Expand symmetrically: half before, half after
-    expand_before = needed_expansion / 2
-    expand_after = needed_expansion / 2
-
-    # Parse current timestamps
-    start_parts = segment.start_time.split(":")
-    end_parts = segment.end_time.split(":")
-
-    start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
-    end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
-
-    # Calculate new boundaries
-    new_start_seconds = max(0, start_seconds - expand_before)
-    new_end_seconds = end_seconds + expand_after
-
-    # Format back to MM:SS
-    new_start_time = (
-        f"{int(new_start_seconds // 60):02d}:{new_start_seconds % 60:05.2f}"
-    )
-    new_end_time = f"{int(new_end_seconds // 60):02d}:{new_end_seconds % 60:05.2f}"
-
-    new_duration = new_end_seconds - new_start_seconds
-
-    logger.info(
-        f"EXPANDED: {segment.start_time}-{segment.end_time} ({current_duration:.2f}s) → "
-        f"{new_start_time}-{new_end_time} ({new_duration:.2f}s) to meet min_length={min_length}s"
-    )
-
-    # Create expanded segment
-    return TranscriptSegment(
-        start_time=new_start_time,
-        end_time=new_end_time,
-        # Keep original text (video processing will fetch actual content)
-        text=segment.text,
-        relevance_score=segment.relevance_score,
-        reasoning=f"{segment.reasoning} [Auto-expanded to meet {min_length}s minimum duration]",
-    )
-
-
-class TranscriptSegment(BaseModel):
-    """Represents a relevant segment of transcript with precise timing."""
-
-    start_time: str = Field(
-        description="Start timestamp in MM:SS.mmm format (e.g., 02:35.450)"
-    )
-    end_time: str = Field(
-        description="End timestamp in MM:SS.mmm format (e.g., 02:45.820)"
-    )
-    text: str = Field(
-        description="VERBATIM transcript text for this segment - copy exactly from transcript, do not summarize"
-    )
-    relevance_score: float = Field(
-        description="Relevance score from 0.0 to 1.0", ge=0.0, le=1.0
-    )
-    reasoning: str = Field(description="Explanation for why this segment is relevant")
-
-
-class TranscriptAnalysis(BaseModel):
-    """Analysis result for transcript segments."""
-
-    most_relevant_segments: List[TranscriptSegment]
-    summary: str = Field(description="Brief summary of the video content")
-    key_topics: List[str] = Field(description="List of main topics discussed")
 
 
 def build_system_prompt(min_length: int = 10, max_length: int = 45) -> str:
@@ -140,6 +43,12 @@ SEGMENT SELECTION CRITERIA:
 3. EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration (complete reaction)
 4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone (NOT partial)
 5. ENTERTAINING: Content people would want to watch (FULL CLIPS, NOT FRAGMENTS)
+
+CRITICAL HOOK RULES:
+- The segment MUST start at the beginning of a sentence.
+- The segment MUST NOT start with a lowercase letter.
+- The segment MUST NOT start with conjunctions like "and", "but", "so", "because", or "or" unless it's a deliberate stylistic choice starting a new sentence.
+- The segment MUST NOT start mid-phrase (e.g., "been too vague..."). It MUST allow the viewer to understand the context immediately.
 
 VERBATIM TEXT REQUIREMENT - CRITICAL:
 - The "text" field MUST contain the EXACT words from the transcript
@@ -192,6 +101,151 @@ QUALITY REQUIREMENTS:
 - Quality over quantity - choose segments that would genuinely engage viewers
 - Include enough text and context that the segment makes sense without external info
 - Only return segments that are COMPLETE THOUGHTS or COMPLETE SCENES, never fragments"""
+
+
+def build_user_prompt(
+    transcript: str, min_length: int, max_length: int, custom_prompt: str | None = None
+) -> str:
+    """Build the user prompt for the AI."""
+    user_prompt_parts = [
+        "Analyze this video transcript and identify the most engaging segments for short-form content.",
+        f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
+    ]
+
+    if custom_prompt:
+        user_prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
+
+    user_prompt_parts.append(
+        "\nFind segments that would be compelling as standalone clips for social media."
+    )
+    user_prompt_parts.append(f"\nTranscript:\n{transcript}")
+
+    return "\n".join(user_prompt_parts)
+
+
+def _get_duration(segment: TranscriptSegment) -> float:
+    """Calculate duration of a segment in seconds."""
+    start_parts = segment.start_time.split(":")
+    end_parts = segment.end_time.split(":")
+    start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
+    end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
+    return end_seconds - start_seconds
+
+
+def _analyze_response_durations(segments: List[TranscriptSegment]) -> List[float]:
+    """Analyze and log statistics about response durations."""
+    durations = []
+    for segment in segments:
+        try:
+            duration = _get_duration(segment)
+            if duration > 0:
+                durations.append(duration)
+        except (ValueError, IndexError):
+            pass
+
+    if durations:
+        avg_duration = sum(durations) / len(durations)
+        logger.info(
+            f"Groq response duration analysis: "
+            f"avg={avg_duration:.2f}s, min={min(durations):.2f}s, max={max(durations):.2f}s"
+        )
+
+        if avg_duration < 5.0:
+            logger.warning(
+                f"WARNING: Groq response has very short segments (avg {avg_duration:.2f}s). "
+                f"Model may be returning fragments instead of complete clips."
+            )
+    return durations
+
+
+def _validate_and_adjust_segments(
+    segments: List[TranscriptSegment], min_length: int, max_length: int
+) -> List[TranscriptSegment]:
+    """Validate, expand, or trim segments to meet constraints."""
+    validated_segments = []
+
+    for segment in segments:
+        # Validate text content
+        if not segment.text.strip() or len(segment.text.split()) < 3:
+            logger.warning(
+                f"REJECTED: Insufficient text content - '{segment.text[:50]}...' "
+                f"({len(segment.text.split())} words, min 3 required)"
+            )
+            continue
+
+        # Validate timestamps
+        if segment.start_time == segment.end_time:
+            logger.warning(
+                f"REJECTED: Identical start/end times - {segment.start_time} "
+                f"(duration 0s, min {min_length}s required)"
+            )
+            continue
+
+        try:
+            duration = _get_duration(segment)
+
+            if duration <= 0:
+                logger.warning(
+                    f"REJECTED: Invalid duration - {segment.start_time} to {segment.end_time} = {duration}s "
+                    f"(min {min_length}s required)"
+                )
+                continue
+            # Handle too short
+            if duration < min_length:
+                # CRITICAL: Do NOT auto-expand. Auto-expansion blindly adds time to start/end,
+                # which ruins hooks by picking up mid-sentence fragments from previous lines.
+                # Better to have a short good clip than a long broken one.
+                if duration < 5.0:
+                    logger.warning(
+                        f"REJECTED: Segment too short ({duration:.2f}s) and < 5.0s hard limit."
+                    )
+                    continue
+
+                logger.warning(
+                    f"ACCEPTED (UNDERLENGTH): Segment {segment.start_time}-{segment.end_time} "
+                    f"({duration:.2f}s) is shorter than min {min_length}s. "
+                    f"Keeping original to preserve hook integrity."
+                )
+
+            # Handle too long
+            if duration > max_length:
+                logger.warning(
+                    f"Target segment too long: {segment.start_time} to {segment.end_time} = {duration:.2f}s "
+                    f"(max {max_length}s allowed). Trimming to limits."
+                )
+
+                # Calculate new end time
+                start_parts = segment.start_time.split(":")
+                start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
+                new_end_seconds = start_seconds + max_length
+                new_end_time = (
+                    f"{int(new_end_seconds // 60):02d}:{new_end_seconds % 60:05.2f}"
+                )
+
+                logger.info(
+                    f"TRIMMED: {segment.start_time}-{segment.end_time} ({duration:.2f}s) → "
+                    f"{segment.start_time}-{new_end_time} ({max_length:.2f}s)"
+                )
+
+                segment.end_time = new_end_time
+                segment.reasoning = (
+                    f"{segment.reasoning} [Auto-trimmed from longer segment]"
+                )
+                duration = max_length
+
+            validated_segments.append(segment)
+            logger.info(
+                f"ACCEPTED: Segment {segment.start_time}-{segment.end_time} ({duration:.2f}s, "
+                f"score {segment.relevance_score:.2f}). Text: '{segment.text[:50]}...'"
+            )
+
+        except (ValueError, IndexError) as e:
+            logger.warning(
+                f"Skipping segment with invalid timestamp format: {segment.start_time}-{segment.end_time}: {e}"
+            )
+            continue
+
+    return validated_segments
 
 
 async def analyze_transcript_structured(
@@ -248,26 +302,10 @@ async def analyze_transcript_structured(
         )
         logger.info(f"Using model: {model}")
         logger.info(f"Clip length settings - Min: {min_length}s, Max: {max_length}s")
-        if custom_prompt:
-            logger.info(f"Using custom AI prompt: {custom_prompt[:100]}...")
 
-        # Build the dynamic user prompt
-        user_prompt_parts = [
-            "Analyze this video transcript and identify the most engaging segments for short-form content.",
-            f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
-        ]
-
-        if custom_prompt:
-            user_prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
-
-        user_prompt_parts.append(
-            "\nFind segments that would be compelling as standalone clips for social media."
+        user_prompt = build_user_prompt(
+            transcript, min_length, max_length, custom_prompt
         )
-        user_prompt_parts.append(f"\nTranscript:\n{transcript}")
-
-        user_prompt = "\n".join(user_prompt_parts)
-
-        # Build dynamic system prompt with user's clip length parameters
         system_prompt = build_system_prompt(min_length, max_length)
 
         # Create the completion with structured outputs
@@ -289,7 +327,6 @@ async def analyze_transcript_structured(
             max_tokens=4096,
         )
 
-        # Extract and parse the response
         response_content = completion.choices[0].message.content or ""
         if not response_content:
             raise ValueError("Empty response from Groq API")
@@ -303,142 +340,21 @@ async def analyze_transcript_structured(
             f"AI analysis found {len(analysis.most_relevant_segments)} segments"
         )
 
-        # Fix 5: Add Groq response validation for duration warnings
-        # Check if segments are statistically too short (diagnostic for Groq issues)
-        if analysis.most_relevant_segments:
-            durations = []
-            for segment in analysis.most_relevant_segments:
-                try:
-                    start_parts = segment.start_time.split(":")
-                    end_parts = segment.end_time.split(":")
-                    start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
-                    end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
-                    duration = end_seconds - start_seconds
-                    if duration > 0:
-                        durations.append(duration)
-                except (ValueError, IndexError):
-                    pass
+        # Analyze durations (diagnostic)
+        durations = _analyze_response_durations(analysis.most_relevant_segments)
 
-            if durations:
-                avg_duration = sum(durations) / len(durations)
-                min_duration = min(durations)
-                max_duration = max(durations)
-                logger.info(
-                    f"Groq response duration analysis: "
-                    f"avg={avg_duration:.2f}s, min={min_duration:.2f}s, max={max_duration:.2f}s"
-                )
-
-                # Warning if average is suspiciously short (< 5 seconds)
-                if avg_duration < 5.0:
-                    logger.warning(
-                        f"WARNING: Groq response has very short segments (avg {avg_duration:.2f}s). "
-                        f"Model may be returning fragments instead of complete clips."
-                    )
-
-        # Validate segments
-        validated_segments = []
-        for segment in analysis.most_relevant_segments:
-            # Validate text content (Fix 2: Enhanced diagnostic logging)
-            if not segment.text.strip() or len(segment.text.split()) < 3:
-                logger.warning(
-                    f"REJECTED: Insufficient text content - '{segment.text[:50]}...' "
-                    f"({len(segment.text.split())} words, min 3 required)"
-                )
-                continue
-
-            # Validate timestamps (using user-configured min_length)
-            if segment.start_time == segment.end_time:
-                logger.warning(
-                    f"REJECTED: Identical start/end times - {segment.start_time} "
-                    f"(duration 0s, min {min_length}s required)"
-                )
-                continue
-
-            # Parse timestamps to validate duration (Fix 2: Enhanced diagnostic logging)
-            try:
-                start_parts = segment.start_time.split(":")
-                end_parts = segment.end_time.split(":")
-
-                start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
-                end_seconds = int(end_parts[0]) * 60 + float(end_parts[1])
-
-                duration = end_seconds - start_seconds
-
-                if duration <= 0:
-                    logger.warning(
-                        f"REJECTED: Invalid duration - {segment.start_time} to {segment.end_time} = {duration}s "
-                        f"(min {min_length}s required)"
-                    )
-                    continue
-
-                if duration < min_length:
-                    # Try to expand segment to meet minimum duration
-                    logger.info(
-                        f"EXPANDING: Segment {segment.start_time} to {segment.end_time} = {duration:.2f}s "
-                        f"is shorter than min {min_length}s. Attempting expansion..."
-                    )
-                    try:
-                        expanded_segment = expand_segment_to_duration(
-                            segment, min_length, max_length, duration
-                        )
-                        # Validate expanded segment doesn't exceed max_length
-                        expanded_start_parts = expanded_segment.start_time.split(":")
-                        expanded_end_parts = expanded_segment.end_time.split(":")
-                        expanded_start_seconds = int(
-                            expanded_start_parts[0]
-                        ) * 60 + float(expanded_start_parts[1])
-                        expanded_end_seconds = int(expanded_end_parts[0]) * 60 + float(
-                            expanded_end_parts[1]
-                        )
-                        expanded_duration = (
-                            expanded_end_seconds - expanded_start_seconds
-                        )
-
-                        if expanded_duration > max_length:
-                            logger.warning(
-                                f"REJECTED: Expanded segment would exceed max_length "
-                                f"({expanded_duration:.2f}s > {max_length}s)"
-                            )
-                            continue
-
-                        # Use expanded segment
-                        segment = expanded_segment
-                        duration = expanded_duration
-                    except Exception as e:
-                        logger.warning(
-                            f"REJECTED: Failed to expand segment - {segment.start_time} to {segment.end_time}: {e}"
-                        )
-                        continue
-
-                if duration > max_length:
-                    logger.warning(
-                        f"REJECTED: Too long - {segment.start_time} to {segment.end_time} = {duration:.2f}s "
-                        f"(max {max_length}s allowed). Text: '{segment.text[:40]}...'"
-                    )
-                    continue
-
-                validated_segments.append(segment)
-                logger.info(
-                    f"ACCEPTED: Segment {segment.start_time}-{segment.end_time} ({duration:.2f}s, "
-                    f"score {segment.relevance_score:.2f}). Text: '{segment.text[:50]}...'"
-                )
-
-            except (ValueError, IndexError) as e:
-                logger.warning(
-                    f"Skipping segment with invalid timestamp format: {segment.start_time}-{segment.end_time}: {e}"
-                )
-                continue
+        # Validate and adjust segments
+        validated_segments = _validate_and_adjust_segments(
+            analysis.most_relevant_segments, min_length, max_length
+        )
 
         # Sort by relevance
         validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
 
-        # CRITICAL: Raise error if no segments passed validation (Fix 1)
-        # This prevents silent failures where task completes with 0 clips
         if not validated_segments:
-            # Calculate average duration for diagnostics
-            avg_duration_str = "N/A"
-            if durations:
-                avg_duration_str = f"{sum(durations)/len(durations):.1f}s"
+            avg_duration_str = (
+                f"{sum(durations) / len(durations):.1f}s" if durations else "N/A"
+            )
 
             logger.error(
                 "ERROR: All AI-identified segments were rejected during validation"
@@ -446,12 +362,9 @@ async def analyze_transcript_structured(
             logger.error(
                 f"Original segments from AI: {len(analysis.most_relevant_segments)}"
             )
-            logger.error(
-                "Possible causes: Groq returned ultra-short segments, "
-                "invalid timestamps, or insufficient content"
-            )
+
             raise ValueError(
-                f"No valid segments found. All {len(analysis.most_relevant_segments)} segments rejected. "
+                f"No valid segments found. All {len(analysis.most_relevant_segments)} segments rejected (too short or AI model fragments). "
                 f"Requested: {min_length}-{max_length}s. AI returned average: {avg_duration_str}. "
                 f"Recommendation: Try shorter clip durations (10-45 seconds work best for viral content)."
             )

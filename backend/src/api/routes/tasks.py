@@ -1,6 +1,7 @@
 """
 Task API routes using refactored architecture.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse

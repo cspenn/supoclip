@@ -488,8 +488,21 @@ class FontService:
         Returns:
             FontMetadata object or None if not found
         """
-        # TODO: Implement font lookup by name
         logger.debug(f"🔎 Looking up font: {font_name}")
+
+        # Get all fonts and search for exact or case-insensitive match
+        all_fonts = await self.get_all_fonts()
+        font_name_lower = font_name.lower()
+
+        for font in all_fonts:
+            # Exact match on name
+            if font.name.lower() == font_name_lower:
+                return font
+            # Match on family name
+            if font.family and font.family.lower() == font_name_lower:
+                return font
+
+        logger.debug(f"⚠️ Font not found: {font_name}")
         return None
 
     async def refresh_system_fonts(self) -> int:
@@ -499,9 +512,20 @@ class FontService:
         Returns:
             Number of fonts detected
         """
-        # TODO: Implement system font refresh
         logger.info("🔄 Refreshing system fonts...")
-        return 0
+
+        try:
+            # Detect all system fonts
+            system_fonts = await self.detect_system_fonts()
+
+            # Cache them to database
+            await self.cache_fonts(system_fonts)
+
+            logger.info(f"✅ Refreshed {len(system_fonts)} system fonts")
+            return len(system_fonts)
+        except Exception as e:
+            logger.error(f"❌ Failed to refresh system fonts: {e}")
+            return 0
 
 
 # end backend/src/services/font_service.py

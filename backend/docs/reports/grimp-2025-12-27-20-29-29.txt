@@ -1,0 +1,43 @@
+======================================================================
+GRIMP IMPORT ANALYSIS
+======================================================================
+Package: src
+Modules analyzed: 38
+
+No circular dependencies found.
+
+======================================================================
+HIGHLY COUPLED MODULES (>10 total connections)
+======================================================================
+  src.config: fan_in=13, fan_out=0 (total=13)
+  src.main: fan_in=0, fan_out=12 (total=12)
+
+======================================================================
+LEAF MODULES (no internal imports): 18
+======================================================================
+  - src
+  - src.ai_types.ai_models
+  - src.api
+  - src.api.routes
+  - src.config
+  - src.database
+  - src.logging_config
+  - src.repositories
+  - src.repositories.clip_repository
+  - src.repositories.task_repository
+  - src.services
+  - src.subtitle_renderer
+  - src.utils
+  - src.utils.async_helpers
+  - src.utils.font_options
+  - src.workers
+  - src.workers.local_progress
+  - src.workers.local_queue
+
+======================================================================
+SUMMARY
+======================================================================
+  Total modules: 38
+  Circular dependencies: 0
+  Highly coupled modules: 2
+  Leaf modules: 18

@@ -264,7 +264,7 @@ class TestTranscriptSegmentValidator:
         )
         is_valid, reason, duration = TranscriptSegmentValidator.validate_segment(valid_segment)
         assert is_valid, f"Valid segment should pass: {reason}"
-        assert duration == 10, f"Duration should be 10s"
+        assert duration == 10, "Duration should be 10s"
 
     def test_validate_segment_with_forbidden_start(self):
         """Verify comprehensive validation rejects forbidden starts."""

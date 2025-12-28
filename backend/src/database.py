@@ -71,11 +71,37 @@ async def init_db() -> None:
             if migration_path.exists():
                 with open(migration_path) as f:
                     sql = f.read()
-                    # For SQLite, we need to execute statements one by one
-                    # Split on semicolon and execute each statement
-                    statements = [s.strip() for s in sql.split(";") if s.strip()]
-                    for statement in statements:
+
+                # For SQLite, we need to execute statements one by one.
+                # We use a state machine to avoid splitting inside BEGIN...END blocks (common in triggers).
+
+                statements = []
+                current_stmt = []
+                depth = 0
+                for line in sql.splitlines():
+                    clean_line = line.strip()
+                    if not clean_line or clean_line.startswith("--"):
+                        continue
+
+                    current_stmt.append(line)
+                    # Simple token-based depth tracking
+                    upper_line = clean_line.upper()
+                    if "BEGIN" in upper_line:
+                        depth += 1
+                    if "END" in upper_line:
+                        depth -= 1
+
+                    if clean_line.endswith(";") and depth <= 0:
+                        statements.append("\n".join(current_stmt))
+                        current_stmt = []
+
+                if current_stmt:
+                    statements.append("\n".join(current_stmt))
+
+                for statement in statements:
+                    if statement.strip():
                         await conn.execute(text(statement))
+
                 logger.info("✅ Applied system_fonts migration")
         except Exception as e:
             logger.warning(f"⚠️ Migration already applied or failed: {e}")

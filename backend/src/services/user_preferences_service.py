@@ -188,6 +188,18 @@ class UserPreferencesService:
 
         # Validate existence
         if not logo_path.exists():
+            # Try relative to temp dir
+            try:
+                from ..config import Config
+
+                config = Config()
+                temp_path = Path(config.temp_dir) / logo_file_path
+                if temp_path.exists():
+                    logger.info(f"Found logo in temp dir: {temp_path}")
+                    return temp_path
+            except Exception as e:
+                logger.warning(f"Failed to check temp dir for logo: {e}")
+
             logger.warning(f"Logo file not found at path: {logo_path}")
             return None
 

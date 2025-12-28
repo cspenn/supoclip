@@ -5,8 +5,14 @@ Worker tasks - background jobs processed by local asyncio queue.
 This module defines tasks that are executed asynchronously by the local
 job queue (LocalJobQueue). Tasks are executed with asyncio workers.
 """
+
 import logging
 from typing import Dict, Any, Optional
+
+from ..database import AsyncSessionLocal
+from ..services.task_service import TaskService
+from ..workers.local_progress import get_progress_tracker
+from ..config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +52,6 @@ async def process_video_task(
     Returns:
         Dict with processing results
     """
-    from ..database import AsyncSessionLocal
-    from ..services.task_service import TaskService
-    from ..workers.local_progress import get_progress_tracker
-    from ..config import Config
-
     logger.info(f"Worker processing task {task_id}")
 
     # Create progress tracker (local in-memory version)
@@ -87,7 +88,7 @@ async def process_video_task(
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-            await progress.update(task_id, 0, f"Error: {str(e)}", "error")
+            await progress.update(task_id, 0, f"Error: {e}", "error")
             raise
 
 

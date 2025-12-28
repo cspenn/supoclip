@@ -255,12 +255,16 @@ class TestGetLogoPath:
     def test_get_logo_path_returns_path_object(self, preferences_service):
         """Test that get_logo_path returns a Path object when logo is configured."""
         from pathlib import Path
+        from unittest.mock import patch
+        
         preferences = {"logo_file_path": "/path/to/logo.png"}
-        logo_path = preferences_service.get_logo_path(preferences)
+        
+        with patch.object(Path, "exists", return_value=True):
+            logo_path = preferences_service.get_logo_path(preferences)
 
-        assert logo_path is not None
-        assert isinstance(logo_path, Path)
-        assert str(logo_path) == "/path/to/logo.png"
+            assert logo_path is not None
+            assert isinstance(logo_path, Path)
+            assert str(logo_path) == "/path/to/logo.png"
 
     def test_get_logo_path_returns_none_when_not_configured(self, preferences_service):
         """Test that get_logo_path returns None when logo is not configured."""

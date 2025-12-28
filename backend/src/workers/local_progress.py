@@ -4,6 +4,7 @@ Provides real-time progress updates with async generators for SSE streaming.
 
 Module: backend/src/workers/local_progress.py
 """
+
 import asyncio
 import logging
 from typing import Dict, Optional, AsyncGenerator

@@ -4,8 +4,10 @@ Uses asyncio.Queue for lightweight job processing without external dependencies.
 
 Module: backend/src/workers/local_queue.py
 """
+
 import asyncio
 import logging
+import traceback
 from typing import Callable, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -95,7 +97,7 @@ class LocalJobQueue:
                     logger.info(f"Job {job.job_id} completed successfully")
 
                 except Exception as e:
-                    job.error = str(e)
+                    job.error = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
                     job.status = "error"
                     logger.error(f"Job {job.job_id} failed: {e}", exc_info=True)
 

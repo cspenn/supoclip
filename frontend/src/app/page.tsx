@@ -51,6 +51,13 @@ export default function Home() {
     family: "TikTokSans-Regular",
     size: 24,
     color: "#FFFFFF",
+    strokeColor: "#000000",
+    strokeWidth: 2,
+    shadowColor: "#000000",
+    shadowOffset: 2,
+    textTransform: "uppercase",
+    positionY: 0.65,
+    positionX: 0.5,
   });
 
   // Clip length slider states (for current form submission)
@@ -162,6 +169,19 @@ export default function Home() {
             font_size: fontOptions.size,
             font_color: fontOptions.color
           },
+          // Extended Style & Position
+          subtitle_style: {
+            stroke_color: fontOptions.strokeColor,
+            stroke_width: fontOptions.strokeWidth,
+            shadow_color: fontOptions.shadowColor,
+            shadow_offset: fontOptions.shadowOffset,
+            text_transform: fontOptions.textTransform,
+          },
+          subtitle_position: {
+            x: fontOptions.positionX,
+            y: fontOptions.positionY,
+            alignment: fontOptions.alignment || "center",
+          },
           // Clip length settings from current form state (user-adjusted sliders)
           min_length: clipMinLength,
           max_length: clipMaxLength,
@@ -201,340 +221,340 @@ export default function Home() {
 
   return (
     <AuthGuard>
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b bg-white">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-black flex items-center justify-center">
-                <PlayCircle className="w-5 h-5 text-white" />
-              </div>
-              <h1 className="text-xl font-bold text-black">SupoClip</h1>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Link href="/list">
-                <Button variant="outline" size="sm">
-                  All Generations
-                </Button>
-              </Link>
-              <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={session.user.image || ""} />
-                  <AvatarFallback className="bg-gray-100 text-black text-sm">
-                    {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-black">{session.user.name}</p>
-                  <p className="text-xs text-gray-500">{session.user.email}</p>
+      <div className="min-h-screen bg-white">
+        {/* Header */}
+        <div className="border-b bg-white">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-black flex items-center justify-center">
+                  <PlayCircle className="w-5 h-5 text-white" />
                 </div>
-              </Link>
+                <h1 className="text-xl font-bold text-black">SupoClip</h1>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link href="/list">
+                  <Button variant="outline" size="sm">
+                    All Generations
+                  </Button>
+                </Link>
+                <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={session.user.image || ""} />
+                    <AvatarFallback className="bg-gray-100 text-black text-sm">
+                      {session.user.name?.charAt(0) || session.user.email?.charAt(0) || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="hidden sm:block">
+                    <p className="text-sm font-medium text-black">{session.user.name}</p>
+                    <p className="text-xs text-gray-500">{session.user.email}</p>
+                  </div>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-16">
-        <div className="max-w-xl mx-auto">
-          {/* Latest Generation Preview */}
-          {latestTask && (
-            <div className="mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-black">Latest Generation</h2>
-                <Link href="/list">
-                  <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
-                    See All <ArrowRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
+        {/* Main Content */}
+        <div className="max-w-4xl mx-auto px-4 py-16">
+          <div className="max-w-xl mx-auto">
+            {/* Latest Generation Preview */}
+            {latestTask && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-black">Latest Generation</h2>
+                  <Link href="/list">
+                    <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
+                      See All <ArrowRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </Link>
+                </div>
 
-              <TaskCard task={latestTask} dateFormat="simple" />
+                <TaskCard task={latestTask} dateFormat="simple" />
 
-              <Separator className="my-8" />
-            </div>
-          )}
-
-          {isLoadingLatest && (
-            <div className="mb-8">
-              <Skeleton className="h-5 w-32 mb-4" />
-              <Card>
-                <CardContent className="p-6">
-                  <Skeleton className="h-5 w-64 mb-2" />
-                  <Skeleton className="h-4 w-48" />
-                </CardContent>
-              </Card>
-              <Separator className="my-8" />
-            </div>
-          )}
-
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-black mb-2">
-              Video Processing
-            </h2>
-            <p className="text-gray-600">
-              Submit a YouTube URL or upload a video for automated clip generation with customizable fonts
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Source Type Selector */}
-            <div className="space-y-2">
-              <label htmlFor="source-type" className="text-sm font-medium text-black">
-                Source Type
-              </label>
-              <Select value={sourceType} onValueChange={(value: "youtube" | "upload") => {
-                setSourceType(value);
-                // Reset file input and fileName when switching to YouTube
-                if (value === "youtube") {
-                  setFileName(null);
-                  fileRef.current = null;
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = "";
-                  }
-                }
-              }} disabled={isLoading}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select source type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="youtube">
-                    <div className="flex items-center gap-2">
-                      <Youtube className="w-4 h-4" />
-                      YouTube URL
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="upload">
-                    <div className="flex items-center gap-2">
-                      <ArrowRight className="w-4 h-4" />
-                      Upload Video
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Dynamic Input Based on Source Type */}
-            {sourceType === "youtube" ? (
-              <div className="space-y-2">
-                <label htmlFor="youtube-url" className="text-sm font-medium text-black">
-                  YouTube URL
-                </label>
-                <Input
-                  id="youtube-url"
-                  type="url"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  disabled={isLoading}
-                  className="h-11"
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label htmlFor="video-upload" className="text-sm font-medium text-black">
-                  Upload Video
-                </label>
-                <Input
-                  id="video-upload"
-                  type="file"
-                  accept="video/*"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  disabled={isLoading}
-                  className="h-11"
-                // Do not set value prop, keep input uncontrolled
-                />
-                {fileName && (
-                  <div className="text-xs text-gray-600 mt-1">
-                    Selected: {fileName}
-                  </div>
-                )}
+                <Separator className="my-8" />
               </div>
             )}
 
-            {/* Font Customization Section */}
-            <FontCustomization
-              value={fontOptions}
-              onChange={setFontOptions}
-              showPreview={true}
-              collapsible={true}
-            />
-
-            {/* Clip Length Settings Section */}
-            <div className="space-y-4 border rounded-lg p-4 bg-gray-50">
-              <div>
-                <h3 className="text-sm font-semibold text-black mb-1">
-                  Clip Length Settings
-                </h3>
-                <p className="text-xs text-gray-600">
-                  Configure the desired length for generated clips (in seconds)
-                </p>
+            {isLoadingLatest && (
+              <div className="mb-8">
+                <Skeleton className="h-5 w-32 mb-4" />
+                <Card>
+                  <CardContent className="p-6">
+                    <Skeleton className="h-5 w-64 mb-2" />
+                    <Skeleton className="h-4 w-48" />
+                  </CardContent>
+                </Card>
+                <Separator className="my-8" />
               </div>
+            )}
 
-              {/* Minimum Length Slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium text-black">
-                    Minimum Length
-                  </label>
-                  <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    {clipMinLength}s
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="5"
-                  max="120"
-                  value={clipMinLength}
-                  onChange={(e) => setClipMinLength(parseInt(e.target.value))}
-                  disabled={isLoading}
-                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <p className="text-xs text-gray-600">Range: 5 - {clipMaxLength}s</p>
-              </div>
-
-              {/* Maximum Length Slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium text-black">
-                    Maximum Length
-                  </label>
-                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">
-                    {clipMaxLength}s
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={clipMinLength}
-                  max="300"
-                  value={clipMaxLength}
-                  onChange={(e) => setClipMaxLength(parseInt(e.target.value))}
-                  disabled={isLoading}
-                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-green-600"
-                />
-                <p className="text-xs text-gray-600">Range: {clipMinLength}s - 300s</p>
-              </div>
-
-              {/* Display current range */}
-              <div className="bg-white rounded p-3 text-sm text-center text-gray-700 font-medium">
-                Current range: <span className="text-blue-600">{clipMinLength}s</span> - <span className="text-green-600">{clipMaxLength}s</span>
-              </div>
-            </div>
-
-            {/* Output Resolution Section */}
-            <div className="space-y-2">
-              <label htmlFor="output-resolution" className="text-sm font-medium text-black">
-                Output Resolution
-              </label>
-              <Select value={outputResolution} onValueChange={(value: "480p" | "720p" | "1080p") => setOutputResolution(value)} disabled={isLoading}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select resolution" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="480p">
-                    480p (SD) - Smaller file size, faster processing
-                  </SelectItem>
-                  <SelectItem value="720p">
-                    720p (HD) - Balanced quality and file size (Recommended)
-                  </SelectItem>
-                  <SelectItem value="1080p">
-                    1080p (Full HD) - Best quality, larger file size
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-600">
-                Higher resolutions produce better quality clips but take longer to process and use more storage space.
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-black mb-2">
+                Video Processing
+              </h2>
+              <p className="text-gray-600">
+                Submit a YouTube URL or upload a video for automated clip generation with customizable fonts
               </p>
             </div>
 
-            {isLoading && (
-              <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Source Type Selector */}
+              <div className="space-y-2">
+                <label htmlFor="source-type" className="text-sm font-medium text-black">
+                  Source Type
+                </label>
+                <Select value={sourceType} onValueChange={(value: "youtube" | "upload") => {
+                  setSourceType(value);
+                  // Reset file input and fileName when switching to YouTube
+                  if (value === "youtube") {
+                    setFileName(null);
+                    fileRef.current = null;
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
+                  }
+                }} disabled={isLoading}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select source type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="youtube">
+                      <div className="flex items-center gap-2">
+                        <Youtube className="w-4 h-4" />
+                        YouTube URL
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="upload">
+                      <div className="flex items-center gap-2">
+                        <ArrowRight className="w-4 h-4" />
+                        Upload Video
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dynamic Input Based on Source Type */}
+              {sourceType === "youtube" ? (
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Processing</span>
-                    <span className="text-black">{progress}%</span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
+                  <label htmlFor="youtube-url" className="text-sm font-medium text-black">
+                    YouTube URL
+                  </label>
+                  <Input
+                    id="youtube-url"
+                    type="url"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    disabled={isLoading}
+                    className="h-11"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label htmlFor="video-upload" className="text-sm font-medium text-black">
+                    Upload Video
+                  </label>
+                  <Input
+                    id="video-upload"
+                    type="file"
+                    accept="video/*"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    disabled={isLoading}
+                    className="h-11"
+                  // Do not set value prop, keep input uncontrolled
+                  />
+                  {fileName && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      Selected: {fileName}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Font Customization Section */}
+              <FontCustomization
+                value={fontOptions}
+                onChange={setFontOptions}
+                showPreview={true}
+                collapsible={true}
+              />
+
+              {/* Clip Length Settings Section */}
+              <div className="space-y-4 border rounded-lg p-4 bg-gray-50">
+                <div>
+                  <h3 className="text-sm font-semibold text-black mb-1">
+                    Clip Length Settings
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    Configure the desired length for generated clips (in seconds)
+                  </p>
                 </div>
 
-                {/* Detailed Status Display */}
-                {currentStep && statusMessage && (
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-3">
-                      {getStepIcon(currentStep)}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-black">{statusMessage}</p>
-                        {sourceTitle && (
-                          <p className="text-xs text-gray-500 mt-1">Processing: {sourceTitle}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Step Progress Indicator */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'validation' || currentStep === 'user_check' ? 'bg-blue-100' : progress > 15 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress > 15 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress > 15 ? 'text-green-700' : 'text-gray-600'}>Validation</span>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'download' || currentStep === 'youtube_info' ? 'bg-green-100' : progress > 30 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress > 30 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress > 30 ? 'text-green-700' : 'text-gray-600'}>Download</span>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'transcript' ? 'bg-purple-100' : progress > 45 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress > 45 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress > 45 ? 'text-green-700' : 'text-gray-600'}>Transcript</span>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'ai_analysis' ? 'bg-orange-100' : progress > 60 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress > 60 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress > 60 ? 'text-green-700' : 'text-gray-600'}>AI Analysis</span>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'clip_generation' ? 'bg-indigo-100' : progress > 75 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress > 75 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress > 75 ? 'text-green-700' : 'text-gray-600'}>Create Clips</span>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'complete' ? 'bg-green-100' : progress >= 100 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        <CheckCircle className={`w-3 h-3 ${progress >= 100 ? 'text-green-500' : 'text-gray-400'}`} />
-                        <span className={progress >= 100 ? 'text-green-700' : 'text-gray-600'}>Complete</span>
-                      </div>
-                    </div>
+                {/* Minimum Length Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-black">
+                      Minimum Length
+                    </label>
+                    <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      {clipMinLength}s
+                    </span>
                   </div>
-                )}
+                  <input
+                    type="range"
+                    min="5"
+                    max="120"
+                    value={clipMinLength}
+                    onChange={(e) => setClipMinLength(parseInt(e.target.value))}
+                    disabled={isLoading}
+                    className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <p className="text-xs text-gray-600">Range: 5 - {clipMaxLength}s</p>
+                </div>
+
+                {/* Maximum Length Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-black">
+                      Maximum Length
+                    </label>
+                    <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">
+                      {clipMaxLength}s
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={clipMinLength}
+                    max="300"
+                    value={clipMaxLength}
+                    onChange={(e) => setClipMaxLength(parseInt(e.target.value))}
+                    disabled={isLoading}
+                    className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-green-600"
+                  />
+                  <p className="text-xs text-gray-600">Range: {clipMinLength}s - 300s</p>
+                </div>
+
+                {/* Display current range */}
+                <div className="bg-white rounded p-3 text-sm text-center text-gray-700 font-medium">
+                  Current range: <span className="text-blue-600">{clipMinLength}s</span> - <span className="text-green-600">{clipMaxLength}s</span>
+                </div>
               </div>
-            )}
 
-            {error && (
-              <ErrorAlert message={error} className="mt-6" />
-            )}
+              {/* Output Resolution Section */}
+              <div className="space-y-2">
+                <label htmlFor="output-resolution" className="text-sm font-medium text-black">
+                  Output Resolution
+                </label>
+                <Select value={outputResolution} onValueChange={(value: "480p" | "720p" | "1080p") => setOutputResolution(value)} disabled={isLoading}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select resolution" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="480p">
+                      480p (SD) - Smaller file size, faster processing
+                    </SelectItem>
+                    <SelectItem value="720p">
+                      720p (HD) - Balanced quality and file size (Recommended)
+                    </SelectItem>
+                    <SelectItem value="1080p">
+                      1080p (Full HD) - Best quality, larger file size
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-600">
+                  Higher resolutions produce better quality clips but take longer to process and use more storage space.
+                </p>
+              </div>
 
-            <Button
-              type="submit"
-              className="w-full h-11"
-              disabled={
-                (sourceType === "youtube" && !url.trim()) ||
-                (sourceType === "upload" && !fileRef.current) ||
-                isLoading
-              }
-            >
-              {isLoading ? "Processing..." : "Process Video"}
-            </Button>
+              {isLoading && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Processing</span>
+                      <span className="text-black">{progress}%</span>
+                    </div>
+                    <Progress value={progress} className="h-2" />
+                  </div>
 
-            {((sourceType === "youtube" && url) || (sourceType === "upload" && fileName)) && !isLoading && (
-              <Alert className="mt-6">
-                <AlertDescription className="text-sm">
-                  Ready to process: {sourceType === "youtube"
-                    ? (url.length > 50 ? url.substring(0, 50) + "..." : url)
-                    : fileName
-                  }
-                </AlertDescription>
-              </Alert>
-            )}
-          </form>
+                  {/* Detailed Status Display */}
+                  {currentStep && statusMessage && (
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        {getStepIcon(currentStep)}
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-black">{statusMessage}</p>
+                          {sourceTitle && (
+                            <p className="text-xs text-gray-500 mt-1">Processing: {sourceTitle}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Step Progress Indicator */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'validation' || currentStep === 'user_check' ? 'bg-blue-100' : progress > 15 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress > 15 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress > 15 ? 'text-green-700' : 'text-gray-600'}>Validation</span>
+                        </div>
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'download' || currentStep === 'youtube_info' ? 'bg-green-100' : progress > 30 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress > 30 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress > 30 ? 'text-green-700' : 'text-gray-600'}>Download</span>
+                        </div>
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'transcript' ? 'bg-purple-100' : progress > 45 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress > 45 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress > 45 ? 'text-green-700' : 'text-gray-600'}>Transcript</span>
+                        </div>
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'ai_analysis' ? 'bg-orange-100' : progress > 60 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress > 60 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress > 60 ? 'text-green-700' : 'text-gray-600'}>AI Analysis</span>
+                        </div>
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'clip_generation' ? 'bg-indigo-100' : progress > 75 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress > 75 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress > 75 ? 'text-green-700' : 'text-gray-600'}>Create Clips</span>
+                        </div>
+                        <div className={`flex items-center gap-2 p-2 rounded ${currentStep === 'complete' ? 'bg-green-100' : progress >= 100 ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <CheckCircle className={`w-3 h-3 ${progress >= 100 ? 'text-green-500' : 'text-gray-400'}`} />
+                          <span className={progress >= 100 ? 'text-green-700' : 'text-gray-600'}>Complete</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <ErrorAlert message={error} className="mt-6" />
+              )}
+
+              <Button
+                type="submit"
+                className="w-full h-11"
+                disabled={
+                  (sourceType === "youtube" && !url.trim()) ||
+                  (sourceType === "upload" && !fileRef.current) ||
+                  isLoading
+                }
+              >
+                {isLoading ? "Processing..." : "Process Video"}
+              </Button>
+
+              {((sourceType === "youtube" && url) || (sourceType === "upload" && fileName)) && !isLoading && (
+                <Alert className="mt-6">
+                  <AlertDescription className="text-sm">
+                    Ready to process: {sourceType === "youtube"
+                      ? (url.length > 50 ? url.substring(0, 50) + "..." : url)
+                      : fileName
+                    }
+                  </AlertDescription>
+                </Alert>
+              )}
+            </form>
+          </div>
         </div>
       </div>
-    </div>
     </AuthGuard>
   );
 }

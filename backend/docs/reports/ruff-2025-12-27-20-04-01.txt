@@ -1,0 +1,37 @@
+F821 Undefined name `cache_path`
+   --> src/transcription_mlx.py:110:23
+    |
+108 |         formatted_result["_cache_version"] = TRANSCRIPT_CACHE_VERSION
+109 |         try:
+110 |             with open(cache_path, "w") as f:
+    |                       ^^^^^^^^^^
+111 |                 json.dump(formatted_result, f, indent=2)
+112 |             logger.info(
+    |
+
+F821 Undefined name `cache_path`
+   --> src/transcription_mlx.py:113:69
+    |
+111 |                 json.dump(formatted_result, f, indent=2)
+112 |             logger.info(
+113 |                 f"Cached transcript (v{TRANSCRIPT_CACHE_VERSION}): {cache_path}"
+    |                                                                     ^^^^^^^^^^
+114 |             )
+115 |         except Exception as e:
+    |
+
+F841 Local variable `initial_word_start` is assigned to but never used
+    --> src/video_utils.py:1130:5
+     |
+1128 |     # 2. Search backwards for sentence start
+1129 |     # We look from closest_idx down to 0, but stop if we go beyond the window
+1130 |     initial_word_start = words[closest_idx].get("start", 0)
+     |     ^^^^^^^^^^^^^^^^^^
+1131 |
+1132 |     best_start_idx = -1
+     |
+help: Remove assignment to unused variable `initial_word_start`
+
+Found 3 errors.
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).
+45 files left unchanged

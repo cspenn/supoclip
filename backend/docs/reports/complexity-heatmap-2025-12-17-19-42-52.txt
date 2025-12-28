@@ -1,0 +1,46 @@
+======================================================================
+COMPLEXITY HEATMAP
+======================================================================
+
+Summary:
+  Files analyzed: 40
+  Average maintainability index: 70.75
+  High-complexity functions (CC >= 10): 16
+
+======================================================================
+HOTSPOTS (Functions needing refactoring)
+======================================================================
+  [D] CC=30  src/ai_structured.py:203 analyze_transcript_structured
+  [D] CC=22  src/scripts/utility_complexity_heatmap.py:140 main
+  [C] CC=19  src/video_utils.py:948 SubtitleTextClipCreator
+  [C] CC=18  src/video_utils.py:960 create_text_clip
+  [C] CC=18  src/scripts/utility_dependency_graph.py:110 main
+  [C] CC=17  src/ai.py:344 get_most_relevant_parts_by_transcript
+  [C] CC=14  src/scripts/utility_grimp_analysis.py:90 analyze_package
+  [C] CC=13  src/video_utils.py:1196 create_optimized_clip
+  [C] CC=13  src/database.py:60 init_db
+  [C] CC=13  src/services/video_service.py:211 process_video_complete
+  [C] CC=12  src/transcription_mlx.py:38 transcribe_video_mlx
+  [B] CC=10  src/video_utils.py:34 resolve_font_path
+  [B] CC=10  src/youtube_utils.py:115 get_youtube_video_id
+  [B] CC=10  src/youtube_utils.py:248 download_youtube_video
+  [B] CC=10  src/scripts/utility_complexity_heatmap.py:80 scan_codebase
+  [B] CC=10  src/services/video_service_async.py:113 process_video_async
+
+======================================================================
+LOW MAINTAINABILITY FILES (MI < 50)
+======================================================================
+  MI=  9.9  src/video_utils.py
+  MI= 43.3  src/main.py
+  MI= 46.5  src/ai.py
+  MI= 47.0  src/scripts/utility_complexity_heatmap.py
+  MI= 48.0  src/scripts/utility_dependency_graph.py
+  MI= 49.3  src/ai_structured.py
+  MI= 49.9  src/api/routes/tasks.py
+
+======================================================================
+MAINTAINABILITY DISTRIBUTION
+======================================================================
+  Files with MI >= 80 (Excellent): 11
+  Files with MI 50-79 (Good): 22
+  Files with MI < 50 (Needs work): 7

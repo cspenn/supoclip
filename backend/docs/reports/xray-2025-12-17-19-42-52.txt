@@ -1,0 +1,863 @@
+======================================================================
+CODEBASE X-RAY (Architectural Skeleton)
+======================================================================
+Path: src
+Files: 40
+======================================================================
+
+# FILE: src/__init__.py
+
+
+# FILE: src/ai.py
+from typing import List
+import asyncio
+import logging
+import re
+from pydantic_ai import Agent
+from pydantic import BaseModel, Field
+from config import Config
+class TranscriptSegment(BaseModel):
+class TranscriptAnalysis(BaseModel):
+def _get_llm_model():
+    ...
+def _get_transcript_agent():
+    ...
+class CleanStartValidator:
+    def validate(segment_text) -> tuple[bool, str]:
+        ...
+def validate_clean_start(segment_text) -> tuple[bool, str]:
+    ...
+class TimestampParser:
+    def parse_timestamp(timestamp) -> float:
+        ...
+    def calculate_duration(start_time, end_time) -> float:
+        ...
+    def validate_duration(duration) -> tuple[bool, str]:
+        ...
+class TimestampFormatValidator:
+    def validate(timestamp) -> tuple[bool, str]:
+        ...
+    def add_default_milliseconds(timestamp) -> str:
+        ...
+class TranscriptSegmentValidator:
+    def validate_text_content(text) -> tuple[bool, str]:
+        ...
+    def validate_timestamps(segment) -> tuple[bool, str]:
+        ...
+    def validate_segment(segment) -> tuple[bool, str, float]:
+        ...
+async def get_most_relevant_parts_by_transcript(transcript, min_length, max_length, custom_prompt) -> TranscriptAnalysis:  # CC:17
+    ...
+def get_most_relevant_parts_sync(transcript) -> TranscriptAnalysis:
+    ...
+
+# FILE: src/ai_structured.py
+import logging
+import json
+import os
+from typing import List
+from groq import AsyncGroq
+from pydantic import BaseModel, Field
+def expand_segment_to_duration(segment, min_length, max_length, current_duration) -> 'TranscriptSegment':
+    ...
+class TranscriptSegment(BaseModel):
+class TranscriptAnalysis(BaseModel):
+def build_system_prompt(min_length, max_length) -> str:
+    ...
+async def analyze_transcript_structured(transcript, min_length, max_length, custom_prompt, model) -> TranscriptAnalysis:  # CC:30
+    ...
+
+# FILE: src/api/__init__.py
+
+
+# FILE: src/api/routes/__init__.py
+
+
+# FILE: src/api/routes/fonts.py
+from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi.responses import FileResponse
+from pathlib import Path
+from typing import List, Dict, Any
+import logging
+from services.font_service import FontService
+from dependencies import get_font_service
+async def list_fonts(source, service) -> List[Dict[str, Any]]:
+    ...
+async def search_fonts(q, service) -> List[Dict[str, Any]]:
+    ...
+async def refresh_fonts(service) -> Dict[str, Any]:
+    ...
+async def get_font_file(font_name, service) -> FileResponse:
+    ...
+
+# FILE: src/api/routes/media.py
+from fastapi import APIRouter, HTTPException, Request
+from pathlib import Path
+import logging
+import uuid
+import aiofiles
+from config import Config
+async def get_available_transitions():
+    ...
+async def upload_video(request):
+    ...
+
+# FILE: src/api/routes/tasks.py
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
+import json
+import logging
+from database import get_db
+from services.task_service import TaskService
+from services.user_preferences_service import UserPreferencesService
+from workers.job_queue import JobQueue
+from workers.tasks import process_video_task
+from config import Config
+async def list_tasks(request, db, limit):
+    ...
+async def create_task(request, db):
+    ...
+async def get_task(task_id, db):
+    ...
+async def get_task_clips(task_id, db):
+    ...
+async def get_task_progress_sse(task_id, db):
+    ...
+async def update_task(task_id, request, db):
+    ...
+async def delete_task(task_id, request, db):
+    ...
+async def delete_clip(task_id, clip_id, request, db):
+    ...
+
+# FILE: src/config.py
+from dotenv import load_dotenv
+import os
+from openai import AsyncOpenAI
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
+class Config:
+    def __init__(self) -> None:
+        ...
+    def get_llm_model(self) -> OpenAIModel | str:
+        ...
+    def _create_local_llm_model(self) -> OpenAIModel:
+        ...
+    def _has_cloud_api_key(self) -> bool:
+        ...
+    def get_log_level(self) -> str:
+        ...
+
+# FILE: src/database.py
+import os
+import logging
+from pathlib import Path
+from dotenv import load_dotenv
+from sqlalchemy import text
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+class Base(DeclarativeBase):
+async def get_db():
+    ...
+async def init_db() -> None:  # CC:13
+    ...
+async def close_db():
+    ...
+
+# FILE: src/dependencies.py
+import logging
+from pathlib import Path
+from typing import Optional
+from fastapi import HTTPException, Request, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from config import Config
+from database import get_db
+from services.font_service import FontService
+async def get_font_service() -> FontService:
+    ...
+def set_font_service(service) -> None:
+    ...
+async def get_current_user(request, db) -> str:
+    ...
+async def get_optional_user(request, db) -> Optional[str]:
+    ...
+
+# FILE: src/lifecycle.py
+from contextlib import asynccontextmanager
+from pathlib import Path
+import logging
+import asyncio
+from typing import AsyncGenerator
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+from database import init_db, close_db, AsyncSessionLocal
+from services.font_service import FontService
+from dependencies import set_font_service
+from workers.local_queue import get_job_queue
+from config import Config
+async def initialize_font_service(db_session, config) -> None:
+    ...
+async def _detect_system_fonts_background(font_service) -> None:
+    ...
+async def lifespan(app) -> AsyncGenerator[None, None]:
+    ...
+
+# FILE: src/logging_config.py
+import logging
+import logging.handlers
+from datetime import datetime, timedelta
+from pathlib import Path
+def get_level_emoji(level) -> str:
+    ...
+class EmojiFormatter(logging.Formatter):
+    def format(self, record) -> str:
+        ...
+def setup_logging(log_level, log_dir, app_name) -> None:
+    ...
+def cleanup_old_logs(log_dir, retention_days) -> None:
+    ...
+
+# FILE: src/main.py
+from config import Config
+from logging_config import setup_logging, cleanup_old_logs
+from pathlib import Path
+import logging
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from database import get_db, AsyncSessionLocal
+from api.routes.tasks import router
+from api.routes.fonts import router
+from dependencies import get_current_user
+from utils.font_options import parse_font_options
+from services.user_preferences_service import UserPreferencesService
+from services.video_service_async import AsyncVideoProcessingService
+from lifecycle import lifespan
+def read_root():
+    ...
+async def health_check():
+    ...
+async def check_database_health(db):
+    ...
+async def start_task(request, user_id):
+    ...
+async def start_task_with_progress(request, user_id, db):
+    ...
+async def get_task_clips(task_id, db):
+    ...
+async def get_task_details(task_id, db):
+    ...
+async def get_available_transitions():
+    ...
+async def get_default_ai_prompt():
+    ...
+async def upload_video(request):
+    ...
+async def upload_logo(request, user_id):
+    ...
+def run_dev():
+    ...
+
+# FILE: src/models.py
+from datetime import datetime
+from typing import List, Optional
+from sqlalchemy import String, DateTime, ForeignKey, CheckConstraint, Boolean, Float, Integer, Text, text, JSON
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy.sql import func
+import uuid
+from database import Base
+def generate_uuid_string():
+    ...
+class User(Base):
+class Task(Base):
+class Source(Base):
+    def decide_source_type(self, source_url) -> str:
+        ...
+class GeneratedClip(Base):
+class SystemFont(Base):
+
+# FILE: src/repositories/__init__.py
+
+
+# FILE: src/repositories/clip_repository.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from typing import List, Dict, Any
+from datetime import datetime
+import logging
+import uuid
+def parse_sqlite_datetime(dt_value) -> datetime | None:
+    ...
+class ClipRepository:
+    async def create_clip(db, task_id, filename, file_path, start_time, end_time, duration, clip_text, relevance_score, reasoning, clip_order) -> str:
+        ...
+    async def get_clips_by_task(db, task_id, backend_url) -> List[Dict[str, Any]]:
+        ...
+    async def get_clips_count(db, task_id) -> int:
+        ...
+    async def delete_clips_by_task(db, task_id) -> int:
+        ...
+    async def delete_clip(db, clip_id) -> None:
+        ...
+
+# FILE: src/repositories/source_repository.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, Dict, Any
+import logging
+class SourceRepository:
+    async def create_source(db, source_type, title, url, metadata) -> str:
+        ...
+    async def get_source_by_id(db, source_id) -> Optional[Dict[str, Any]]:
+        ...
+    async def update_source_title(db, source_id, title) -> None:
+        ...
+
+# FILE: src/repositories/task_repository.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+import logging
+import uuid
+def parse_sqlite_datetime(dt_value) -> datetime | None:
+    ...
+class TaskRepository:
+    async def create_task(db, user_id, source_id, status, font_family, font_size, font_color) -> str:
+        ...
+    async def get_task_by_id(db, task_id) -> Optional[Dict[str, Any]]:
+        ...
+    async def update_task_status(db, task_id, status, progress, progress_message) -> None:
+        ...
+    async def update_task_clips(db, task_id, clip_ids) -> None:
+        ...
+    async def get_user_tasks(db, user_id, limit) -> List[Dict[str, Any]]:
+        ...
+    async def user_exists(db, user_id) -> bool:
+        ...
+    async def delete_task(db, task_id) -> None:
+        ...
+
+# FILE: src/scripts/utility_complexity_heatmap.py
+import argparse
+import json
+import operator
+import os
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from radon.complexity import cc_rank, cc_visit
+from radon.metrics import mi_visit
+class FunctionComplexity:
+class FileMetrics:
+def analyze_file(file_path) -> FileMetrics | None:
+    ...
+def scan_codebase(path, threshold) -> dict[str, Any]:
+    ...
+def main() -> None:  # CC:22
+    ...
+
+# FILE: src/scripts/utility_dependency_graph.py
+import argparse
+import ast
+import os
+from collections import defaultdict
+from collections.abc import Iterator
+from datetime import datetime
+from pathlib import Path
+def extract_imports(file_path) -> Iterator[str]:
+    ...
+def build_dependency_graph(path) -> dict[str, set[str]]:
+    ...
+def find_cycles(graph) -> list[list[str]]:
+    ...
+def calculate_coupling(graph) -> dict[str, dict[str, int]]:
+    ...
+def main() -> None:  # CC:18
+    ...
+
+# FILE: src/scripts/utility_grimp_analysis.py
+import argparse
+import sys
+from contextlib import suppress
+from datetime import datetime
+from pathlib import Path
+import grimp
+def find_circular_dependencies(graph) -> list[list[str]]:
+    ...
+def calculate_coupling_metrics(graph) -> dict[str, dict[str, int]]:
+    ...
+def analyze_package(package_path) -> tuple[str, int]:  # CC:14
+    ...
+def main() -> int:
+    ...
+
+# FILE: src/scripts/utility_xray.py
+import argparse
+import ast
+import json
+import os
+from collections.abc import Iterator
+from datetime import datetime
+from pathlib import Path
+from radon.complexity import cc_visit
+def get_complexity_map(source_code) -> dict[int, int]:
+    ...
+def generate_skeleton(file_path) -> str:
+    ...
+def scan_directory(path, exclude_dirs) -> Iterator[tuple[Path, str]]:
+    ...
+def main() -> None:
+    ...
+
+# FILE: src/services/__init__.py
+
+
+# FILE: src/services/font_service.py
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+import hashlib
+import uuid
+import matplotlib.font_manager
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.ttFont import TTLibError
+from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
+class FontMetadata:
+class FontNameExtractor:
+    def extract_from_name_table(name_table, name_id) -> Optional[str]:
+        ...
+    def extract_all_names(name_table) -> dict[str, Optional[str]]:
+        ...
+class FontWeightExtractor:
+    def extract_weight(font) -> Optional[int]:
+        ...
+class FontService:
+    def __init__(self, db_session, temp_dir):
+        ...
+    async def get_bundled_fonts(self) -> List[FontMetadata]:
+        ...
+    async def detect_system_fonts(self) -> List[FontMetadata]:
+        ...
+    async def extract_font_metadata(self, font_path) -> Optional[FontMetadata]:
+        ...
+    async def validate_font(self, font_path) -> bool:
+        ...
+    async def compute_file_hash(self, file_path) -> str:
+        ...
+    async def cache_fonts(self, fonts) -> None:
+        ...
+    async def get_all_fonts(self, search_query, source_filter) -> List[FontMetadata]:
+        ...
+    async def get_font_by_name(self, font_name) -> Optional[FontMetadata]:
+        ...
+    async def refresh_system_fonts(self) -> int:
+        ...
+
+# FILE: src/services/task_service.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any, Optional, Callable
+import logging
+from repositories.task_repository import TaskRepository
+from repositories.source_repository import SourceRepository
+from repositories.clip_repository import ClipRepository
+from video_service import VideoService
+from config import Config
+class TaskService:
+    def __init__(self, db, config):
+        ...
+    async def create_task_with_source(self, user_id, url, title, font_family, font_size, font_color) -> str:
+        ...
+    async def process_task(self, task_id, url, source_type, font_family, font_size, font_color, min_length, max_length, logo_path, logo_corner_position, progress_callback) -> Dict[str, Any]:
+        ...
+    async def get_task_with_clips(self, task_id) -> Optional[Dict[str, Any]]:
+        ...
+    async def get_user_tasks(self, user_id, limit) -> list[Dict[str, Any]]:
+        ...
+    async def delete_task(self, task_id) -> None:
+        ...
+
+# FILE: src/services/user_preferences_service.py
+import logging
+from pathlib import Path
+from typing import Any, Optional
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+class UserPreferencesService:
+    def __init__(self, db):
+        ...
+    def _merge_with_defaults(self, user_prefs_row) -> dict[str, Any]:
+        ...
+    async def get_user_preferences(self, user_id) -> dict[str, Any]:
+        ...
+    async def merge_with_request_options(self, user_id, request_options) -> dict[str, Any]:
+        ...
+    def get_logo_path(self, preferences) -> Optional[Path]:
+        ...
+
+# FILE: src/services/video_service.py
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Callable
+import logging
+from utils.async_helpers import run_in_thread
+from youtube_utils import download_youtube_video, get_youtube_video_title, get_youtube_video_id
+from video_utils import get_video_transcript, create_clips_with_transitions, parse_timestamp_to_seconds
+from ai import get_most_relevant_parts_by_transcript
+from config import Config
+class VideoDownloadError(Exception):
+class VideoNotFoundError(Exception):
+class VideoProcessingResponse:
+    def build_response(segments_json, clips_info, relevant_parts) -> Dict[str, Any]:
+        ...
+    def segments_to_json(segments) -> List[Dict[str, Any]]:
+        ...
+class VideoService:
+    async def _get_video_path(url, source_type) -> Path:
+        ...
+    async def download_video(url) -> Optional[Path]:
+        ...
+    async def get_video_title(url) -> str:
+        ...
+    async def generate_transcript(video_path) -> str:
+        ...
+    async def analyze_transcript(transcript, min_length, max_length) -> Any:
+        ...
+    async def create_video_clips(video_path, segments, font_family, font_size, font_color, output_resolution, logo_path, logo_corner_position) -> List[Dict[str, Any]]:
+        ...
+    def determine_source_type(url) -> str:
+        ...
+    async def process_video_complete(url, source_type, font_family, font_size, font_color, min_length, max_length, output_resolution, logo_path, logo_corner_position, progress_callback) -> Dict[str, Any]:  # CC:13
+        ...
+
+# FILE: src/services/video_service_async.py
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from ai import get_most_relevant_parts_by_transcript
+from config import Config
+from database import AsyncSessionLocal
+from models import GeneratedClip, Source, Task
+from video_utils import create_clips_with_transitions, get_video_transcript
+from youtube_utils import download_youtube_video, get_youtube_video_title
+class AsyncVideoProcessingService:
+    def __init__(self, db, config):
+        ...
+    async def create_task(self, raw_source, user_id, font_family, font_size, font_color) -> str:
+        ...
+    async def process_video_async(self, task_id, raw_source, user_id, font_family, font_size, font_color, clip_min_length, clip_target_length, clip_max_length, custom_ai_prompt, logo_path, logo_corner_position, output_resolution) -> None:
+        ...
+    async def _update_task_status(self, task_id, status, error_message) -> None:
+        ...
+
+# FILE: src/transcription_mlx.py
+import logging
+import os
+import asyncio
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+import json
+from parakeet_mlx.utils import from_pretrained
+from mlx.core import bfloat16
+from groq import AsyncGroq
+from config import Config
+def transcribe_video_mlx(video_path, model_id) -> Dict[str, Any]:  # CC:12
+    ...
+def _extract_text_from_result(result) -> str:
+    ...
+def _extract_segments_from_result(result) -> List[Dict[str, Any]]:
+    ...
+def _extract_words_from_result(result) -> List[Dict[str, Any]]:
+    ...
+def _get_token_start_time(token) -> int:
+    ...
+def _get_token_end_time(token) -> int:
+    ...
+async def _reconstruct_words_with_llm(broken_words) -> List[Dict[str, Any]]:
+    ...
+def _rebuild_segments_from_words(words) -> List[Dict[str, Any]]:
+    ...
+def _align_reconstructed_words(broken_words, reconstructed_text) -> List[Dict[str, Any]]:
+    ...
+def get_video_transcript_mlx(video_path) -> str:
+    ...
+def load_cached_transcript_mlx(video_path) -> Optional[Dict[str, Any]]:
+    ...
+
+# FILE: src/utils/__init__.py
+
+
+# FILE: src/utils/async_helpers.py
+import asyncio
+from functools import wraps
+from typing import Callable, TypeVar, Any
+import logging
+async def run_in_thread(func) -> T:
+    ...
+def async_wrap(func) -> Callable[..., Any]:
+    ...
+
+# FILE: src/utils/font_options.py
+from typing import Any
+def parse_font_options(data) -> dict[str, Any]:
+    ...
+def merge_with_defaults(request_options, defaults) -> dict[str, Any]:
+    ...
+
+# FILE: src/video_utils.py
+from pathlib import Path
+from typing import List, Dict, Any, Tuple, Optional
+import logging
+import numpy
+import json
+import cv2
+from moviepy import VideoFileClip, CompositeVideoClip, TextClip
+from moviepy.video.fx import Margin
+from config import Config
+from transcription_mlx import transcribe_video_mlx
+def resolve_font_path(font_family) -> str:
+    ...
+class VideoProcessor:
+    def __init__(self, font_family, font_size, font_color):
+        ...
+    def get_optimal_encoding_settings(self, target_quality) -> Dict[str, Any]:
+        ...
+def get_video_transcript(video_path) -> str:
+    ...
+def cache_transcript_data(video_path, transcript) -> None:
+    ...
+def load_cached_transcript_data(video_path) -> Optional[Dict]:
+    ...
+def extract_text_from_cache(video_path, start_time_seconds, end_time_seconds) -> Optional[str]:
+    ...
+def format_ms_to_timestamp(ms) -> str:
+    ...
+def format_ms_to_timestamp_precise(ms) -> str:
+    ...
+class TargetDimensionCalculator:
+    def calculate(original_width, original_height, target_ratio) -> Tuple[int, int]:
+        ...
+class FaceCenteredCropCalculator:
+    def calculate(face_centers, new_width, new_height, original_width, original_height) -> Tuple[int, int]:
+        ...
+class CenterCropCalculator:
+    def calculate(new_width, new_height, original_width, original_height) -> Tuple[int, int]:
+        ...
+class TranscriptLineBreaker:
+    def should_break_line(word_text, word_count) -> bool:
+        ...
+class TranscriptLineFormatter:
+    def __init__(self):
+        ...
+    def add_word(self, word_data) -> None:
+        ...
+    def finalize_current_line(self) -> None:
+        ...
+    def get_formatted_output(self) -> str:
+        ...
+def format_transcript_for_ai(transcript_data) -> str:
+    ...
+def round_to_even(value) -> int:
+    ...
+def detect_optimal_crop_region(video_clip, start_time, end_time, target_ratio) -> Tuple[int, int, int, int]:
+    ...
+class FaceDetector:
+    def detect(self, frame) -> List[Tuple[int, int, int, int, float]]:
+        ...
+class MediaPipeFaceDetector(FaceDetector):
+    def __init__(self):
+        ...
+    def detect(self, frame) -> List[Tuple[int, int, int, int, float]]:
+        ...
+    def close(self):
+        ...
+class OpenCVDNNFaceDetector(FaceDetector):
+    def __init__(self):
+        ...
+    def detect(self, frame) -> List[Tuple[int, int, int, int, float]]:
+        ...
+class HaarCascadeFaceDetector(FaceDetector):
+    def __init__(self):
+        ...
+    def detect(self, frame) -> List[Tuple[int, int, int, int, float]]:
+        ...
+class VideoFrameSampler:
+    def generate_sample_times(start_time, end_time) -> List[float]:
+        ...
+class FaceDetectionService:
+    def __init__(self):
+        ...
+    def detect_in_frame(self, frame) -> List[Tuple[int, int, int, float]]:
+        ...
+    def close(self):
+        ...
+def detect_faces_in_clip(video_clip, start_time, end_time) -> List[Tuple[int, int, int, float]]:
+    ...
+def filter_face_outliers(face_centers) -> List[Tuple[int, int, int, float]]:
+    ...
+def parse_timestamp_to_seconds(timestamp_str) -> float:
+    ...
+class SubtitleWordFilter:
+    def get_relevant_words(transcript_data, clip_start_ms, clip_end_ms) -> List[Dict[str, Any]]:
+        ...
+class SubtitleTextClipCreator:
+    def create_text_clip(text, font_path, font_size, font_color, video_width) -> Optional[TextClip]:  # CC:18
+        ...
+class SubtitlePositioner:
+    def calculate_position(video_height, text_height) -> Tuple[str, int]:
+        ...
+class SubtitleClipBuilder:
+    def build_clips(relevant_words, font_path, font_size, font_color, video_width, video_height, words_per_subtitle) -> List[TextClip]:
+        ...
+def create_assemblyai_subtitles(video_path, clip_start, clip_end, video_width, video_height, font_family, font_size, font_color) -> List[TextClip]:
+    ...
+def create_optimized_clip(video_path, start_time, end_time, output_path, add_subtitles, font_family, font_size, font_color, logo_path, logo_position, output_resolution) -> bool:  # CC:13
+    ...
+def create_clips_from_segments(video_path, segments, output_dir, font_family, font_size, font_color, logo_path, logo_position, output_resolution) -> List[Dict[str, Any]]:
+    ...
+def get_available_transitions() -> List[str]:
+    ...
+def apply_transition_effect(clip1_path, clip2_path, transition_path, output_path) -> bool:
+    ...
+def create_clips_with_transitions(video_path, segments, output_dir, font_family, font_size, font_color, logo_path, logo_position, output_resolution) -> List[Dict[str, Any]]:
+    ...
+def get_video_transcript_with_assemblyai(path) -> str:
+    ...
+def create_9_16_clip(video_path, start_time, end_time, output_path, subtitle_text) -> bool:
+    ...
+
+# FILE: src/workers/__init__.py
+
+
+# FILE: src/workers/job_queue.py
+import logging
+from typing import Optional, Callable, Any
+from local_queue import get_job_queue, LocalJobQueue
+class JobQueue:
+    async def get_pool(cls) -> LocalJobQueue:
+        ...
+    async def close_pool(cls) -> None:
+        ...
+    async def enqueue_job(cls, function_name) -> str:
+        ...
+    async def get_job_status(cls, job_id) -> Optional[str]:
+        ...
+    async def get_job_result(cls, job_id) -> Any:
+        ...
+
+# FILE: src/workers/local_progress.py
+import asyncio
+import logging
+from typing import Dict, Optional, AsyncGenerator
+from dataclasses import dataclass, field
+from datetime import datetime
+class Progress:
+    def to_dict(self) -> Dict:
+        ...
+class LocalProgressTracker:
+    def __init__(self) -> None:
+        ...
+    async def update(self, task_id, progress, message, status) -> None:
+        ...
+    def get(self, task_id) -> Optional[Progress]:
+        ...
+    async def complete(self, task_id, message) -> None:
+        ...
+    async def error(self, task_id, message) -> None:
+        ...
+    async def subscribe(self, task_id) -> AsyncGenerator[Progress, None]:
+        ...
+def get_progress_tracker() -> LocalProgressTracker:
+    ...
+
+# FILE: src/workers/local_queue.py
+import asyncio
+import logging
+from typing import Callable, Dict, Any, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+import uuid
+class Job:
+class LocalJobQueue:
+    def __init__(self, max_workers) -> None:
+        ...
+    async def start_workers(self) -> None:
+        ...
+    async def stop_workers(self) -> None:
+        ...
+    async def _worker(self, name) -> None:
+        ...
+    async def enqueue_job(self, function) -> str:
+        ...
+    def get_job(self, job_id) -> Optional[Job]:
+        ...
+    def get_job_status(self, job_id) -> Optional[str]:
+        ...
+    def get_job_result(self, job_id) -> Any:
+        ...
+def get_job_queue() -> LocalJobQueue:
+    ...
+
+# FILE: src/workers/tasks.py
+import logging
+from typing import Dict, Any, Optional
+from database import AsyncSessionLocal
+from services.task_service import TaskService
+from workers.local_progress import get_progress_tracker
+from config import Config
+async def process_video_task(task_id, url, source_type, user_id, font_family, font_size, font_color, min_length, max_length, logo_path, logo_corner_position) -> Dict[str, Any]:
+    ...
+
+# FILE: src/youtube_utils.py
+import re
+from urllib.parse import urlparse, parse_qs
+import yt_dlp
+from typing import Optional, Dict, Any
+from pathlib import Path
+import logging
+import time
+from config import Config
+class DownloadedFileLocator:
+    def find_video_file(temp_dir, video_id) -> Optional[Path]:
+        ...
+class DownloadRetryHandler:
+    def should_retry(attempt, max_retries) -> bool:
+        ...
+    def wait_before_retry(attempt) -> None:
+        ...
+class YouTubeDownloader:
+    def __init__(self):
+        ...
+    def get_optimal_download_options(self, video_id) -> Dict[str, Any]:
+        ...
+def get_youtube_video_id(url) -> Optional[str]:
+    ...
+def validate_youtube_url(url) -> bool:
+    ...
+def get_youtube_video_info(url) -> Optional[Dict[str, Any]]:
+    ...
+def get_youtube_video_title(url) -> Optional[str]:
+    ...
+def _perform_download_attempt(url, video_id, downloader, attempt) -> Optional[Path]:
+    ...
+def download_youtube_video(url, max_retries) -> Optional[Path]:
+    ...
+def get_video_duration(url) -> Optional[int]:
+    ...
+def is_video_suitable_for_processing(url, min_duration, max_duration) -> bool:
+    ...
+def cleanup_downloaded_files(video_id):
+    ...
+def extract_video_id(url) -> Optional[str]:
+    ...

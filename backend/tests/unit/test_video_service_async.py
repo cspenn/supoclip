@@ -6,7 +6,6 @@ endpoint with SSE progress tracking and unlimited processing time.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Config

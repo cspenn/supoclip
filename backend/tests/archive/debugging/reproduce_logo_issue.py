@@ -1,7 +1,6 @@
 import asyncio
 from pathlib import Path
 import sys
-import os
 
 # Add backend directory to python path
 sys.path.append(str(Path(__file__).parent.parent))

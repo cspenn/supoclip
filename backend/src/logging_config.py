@@ -71,8 +71,7 @@ def setup_logging(log_level: str, log_dir: str, app_name: str = "supoclip") -> N
     level_str = log_level.upper()
     if level_str not in valid_levels:
         raise ValueError(
-            f"Invalid log level: {level_str}. "
-            f"Must be one of: {', '.join(valid_levels)}"
+            f"Invalid log level: {level_str}. Must be one of: {', '.join(valid_levels)}"
         )
 
     level = getattr(logging, level_str)

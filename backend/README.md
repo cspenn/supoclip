@@ -23,3 +23,20 @@ You must also have `uv` package manager installed.
 uv venv .venv
 source .venv/bin/activate
 ```
+
+2. Install dependencies
+
+```bash
+uv sync
+```
+
+3. Run the backend
+
+```bash
+# RECOMMENDED: Auto-selects free port (starts at 8000)
+python -m src.main
+# OR
+uv run run-dev
+
+# NOTE: uvicorn CLI (uvicorn src.main:app) will NOT auto-select ports.
+```

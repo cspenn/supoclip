@@ -125,6 +125,8 @@ class AsyncVideoProcessingService:
         logo_path: Optional[str] = None,
         logo_corner_position: str = "top-right",
         output_resolution: str = "720p",
+        subtitle_style: Optional[dict[str, Any]] = None,
+        subtitle_position: Optional[dict[str, Any]] = None,
     ) -> None:
         """Process video asynchronously in background.
 
@@ -233,6 +235,8 @@ class AsyncVideoProcessingService:
                     logo_path,
                     logo_corner_position,
                     output_resolution,
+                    subtitle_style,
+                    subtitle_position,
                 )
                 logger.info(
                     f"[SERVICE=ASYNC] Generated {len(clips_info)} video clips with transitions"
