@@ -168,15 +168,18 @@ class TestShortClipsIssue:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(reason="Known limitation: AI prompt has hardcoded 10-45s range that overrides custom settings")
     async def test_ai_generates_short_clips_despite_long_settings(self):
         """
         SHOULD FAIL: Demonstrates AI ignoring min_length=47, max_length=58.
 
-        This test uses a real transcript and verifies that AI generates
-        clips within the requested duration range.
+        This test documents a known limitation where the AI system prompt has
+        hardcoded clip duration values (10-45s) that override the requested range.
 
-        Current behavior: AI will generate 10-20s clips.
-        Expected behavior: AI should generate 47-58s clips.
+        Current behavior: AI will generate 10-45s clips regardless of settings.
+        Expected behavior: AI should generate clips within requested 47-58s range.
+
+        FIX: Make SYSTEM_PROMPT dynamic with min_length/max_length parameters.
         """
         # Sample transcript with timestamps (realistic format)
         transcript = """

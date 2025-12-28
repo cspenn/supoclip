@@ -9,7 +9,6 @@ Tests:
 - OpenAI-compatible model creation
 """
 
-import os
 import pytest
 import sys
 from pathlib import Path
@@ -17,7 +16,7 @@ from pathlib import Path
 # Setup imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.config import Config
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIModel
 
 
 class TestLocalLLMConfiguration:
@@ -122,11 +121,11 @@ class TestLLMModelSelection:
     def test_get_llm_model_returns_openai_chat_model_when_local_enabled(
         self, monkeypatch
     ):
-        """get_llm_model() should return OpenAIChatModel when local LLM enabled."""
+        """get_llm_model() should return OpenAIModel when local LLM enabled."""
         monkeypatch.setenv("LOCAL_LLM_ENABLED", "true")
         config = Config()
         model = config.get_llm_model()
-        assert isinstance(model, OpenAIChatModel)
+        assert isinstance(model, OpenAIModel)
 
     def test_get_llm_model_returns_string_when_cloud(self, monkeypatch):
         """get_llm_model() should return string when cloud LLM enabled."""
@@ -162,7 +161,7 @@ class TestLLMModelSelection:
 
         model = config.get_llm_model()
         # Should return local model, not cloud string
-        assert isinstance(model, OpenAIChatModel)
+        assert isinstance(model, OpenAIModel)
 
 
 class TestCloudAPIKeyDetection:
@@ -173,6 +172,7 @@ class TestCloudAPIKeyDetection:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
         config = Config()
         assert config._has_cloud_api_key() is False
 
@@ -199,13 +199,13 @@ class TestLocalLLMModelCreation:
     """Test _create_local_llm_model() method."""
 
     def test_create_local_llm_model_returns_openai_chat_model(self, monkeypatch):
-        """_create_local_llm_model() should return OpenAIChatModel instance."""
+        """_create_local_llm_model() should return OpenAIModel instance."""
         monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://localhost:6969/v1")
         monkeypatch.setenv("LOCAL_LLM_MODEL", "mistral-7b")
         config = Config()
 
         model = config._create_local_llm_model()
-        assert isinstance(model, OpenAIChatModel)
+        assert isinstance(model, OpenAIModel)
 
     def test_create_local_llm_model_uses_custom_base_url(self, monkeypatch):
         """_create_local_llm_model() should use custom base URL from config."""
@@ -215,8 +215,8 @@ class TestLocalLLMModelCreation:
         config = Config()
 
         model = config._create_local_llm_model()
-        # Verify it's an OpenAIChatModel with correct configuration
-        assert isinstance(model, OpenAIChatModel)
+        # Verify it's an OpenAIModel with correct configuration
+        assert isinstance(model, OpenAIModel)
         # The base_url is stored in the provider's client
         assert config.local_llm_base_url == custom_url
 
@@ -226,7 +226,7 @@ class TestLocalLLMModelCreation:
         config = Config()
 
         model = config._create_local_llm_model()
-        assert isinstance(model, OpenAIChatModel)
+        assert isinstance(model, OpenAIModel)
         assert config.local_llm_model == "custom-model-name"
 
 
@@ -272,7 +272,7 @@ class TestConfigurationBackwardCompatibility:
         monkeypatch.setenv("LOCAL_LLM_ENABLED", "true")
         config = Config()
         local_model = config.get_llm_model()
-        assert isinstance(local_model, OpenAIChatModel)
+        assert isinstance(local_model, OpenAIModel)
 
         # Switch to cloud by changing env vars
         monkeypatch.setenv("LOCAL_LLM_ENABLED", "false")

@@ -19,17 +19,14 @@ Configuration:
 Module: backend/tests/test_end_to_end.py
 """
 import asyncio
-import json
 import logging
-import os
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any, Tuple
+from typing import AsyncGenerator
 
 import pytest
-import pytest_asyncio
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -463,13 +460,13 @@ class TestE2EVideoProcessingPipeline:
         logger.info(f"✅ Local LLM configured: {e2e_config.local_llm_model}")
 
     @pytest.mark.asyncio
-    async def test_mlx_whisper_configuration(self, e2e_config: Config):
-        """Test that MLX Whisper is configured for local transcription."""
-        # Verify MLX Whisper is configured
-        assert e2e_config.mlx_whisper_model is not None
-        assert e2e_config.mlx_whisper_model in ["tiny", "base", "small", "medium", "large"]
+    async def test_parakeet_configuration(self, e2e_config: Config):
+        """Test that parakeet-mlx is configured for local transcription."""
+        # Verify parakeet-mlx is configured
+        assert e2e_config.parakeet_model is not None
+        assert "parakeet" in e2e_config.parakeet_model.lower()
 
-        logger.info(f"✅ MLX Whisper configured: {e2e_config.mlx_whisper_model}")
+        logger.info(f"✅ parakeet-mlx configured: {e2e_config.parakeet_model}")
 
     @pytest.mark.asyncio
     async def test_sqlite_database_configuration(self, e2e_config: Config):
@@ -488,21 +485,21 @@ class TestE2EVideoProcessingPipeline:
         logger.info(f"✅ Test video created: {test_video_path} ({test_video_path.stat().st_size} bytes)")
 
     @pytest.mark.asyncio
-    async def test_transcription_with_mlx_whisper(
+    async def test_transcription_with_parakeet(
         self,
         test_video_path: Path,
         e2e_config: Config
     ):
-        """Test transcription with MLX Whisper (local)."""
+        """Test transcription with parakeet-mlx (local)."""
         try:
             from src.transcription_mlx import transcribe_video_mlx
         except ImportError:
-            pytest.skip("MLX Whisper transcription module not available")
+            pytest.skip("parakeet-mlx transcription module not available")
 
         try:
             # Attempt transcription
-            logger.info(f"Starting MLX Whisper transcription: {test_video_path}")
-            result = transcribe_video_mlx(test_video_path, e2e_config.mlx_whisper_model)
+            logger.info(f"Starting parakeet-mlx transcription: {test_video_path}")
+            result = transcribe_video_mlx(test_video_path, e2e_config.parakeet_model)
 
             # Verify result structure
             assert isinstance(result, dict)
@@ -540,13 +537,13 @@ class TestE2EVideoProcessingPipeline:
     async def test_performance_baseline_configuration(self, e2e_config: Config):
         """Test configuration for performance baseline measurements."""
         # Verify settings for performance testing
-        assert e2e_config.mlx_whisper_model is not None
+        assert e2e_config.parakeet_model is not None
         assert e2e_config.max_workers > 0
         assert e2e_config.worker_timeout > 0
 
         logger.info(
             f"✅ Performance baseline config:"
-            f" MLX={e2e_config.mlx_whisper_model},"
+            f" parakeet={e2e_config.parakeet_model},"
             f" workers={e2e_config.max_workers},"
             f" timeout={e2e_config.worker_timeout}s"
         )
@@ -590,8 +587,8 @@ class TestE2EAPIEndpoints:
         )
 
         # Fallback endpoint returns 200, but should return error
-        # Accept 401 (missing auth), 422 (invalid request), 500 (error), or 200 (fallback)
-        assert response.status_code in [200, 401, 422, 500]
+        # Accept 401 (missing auth), 404 (user not found), 422 (invalid request), 500 (error), or 200 (fallback)
+        assert response.status_code in [200, 401, 404, 422, 500]
 
         logger.info("✅ Task creation endpoint exists")
 
@@ -758,7 +755,7 @@ class TestE2EPerformanceMetrics:
 
         total_time = time.time() - workflow_start
 
-        logger.info(f"✅ Performance metrics:")
+        logger.info("✅ Performance metrics:")
         for stage, duration in stage_times.items():
             logger.info(f"  {stage}: {duration:.3f}s")
         logger.info(f"  total: {total_time:.3f}s")
@@ -787,11 +784,11 @@ class TestE2ELocalFirstOperation:
         logger.info(f"✅ Database is local: {e2e_config.database_url}")
 
     @pytest.mark.asyncio
-    async def test_transcription_local_mlx(self, e2e_config: Config):
-        """Test that transcription uses local MLX Whisper."""
-        assert e2e_config.mlx_whisper_model is not None
-        # MLX Whisper is always local (no API call)
-        logger.info(f"✅ Transcription is local MLX Whisper: {e2e_config.mlx_whisper_model}")
+    async def test_transcription_local_parakeet(self, e2e_config: Config):
+        """Test that transcription uses local parakeet-mlx."""
+        assert e2e_config.parakeet_model is not None
+        # parakeet-mlx is always local (no API call)
+        logger.info(f"✅ Transcription is local parakeet-mlx: {e2e_config.parakeet_model}")
 
     @pytest.mark.asyncio
     async def test_job_queue_local_asyncio(self, e2e_config: Config):

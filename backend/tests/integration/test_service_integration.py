@@ -6,11 +6,9 @@ in the broader application context.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Config
-from src.services.video_service_legacy import LegacySyncVideoService
 from src.services.video_service_async import AsyncVideoProcessingService
 from src.services.user_preferences_service import UserPreferencesService
 from src.dependencies import get_current_user
@@ -39,7 +37,7 @@ class TestVideoServiceWithPreferences:
     async def test_video_service_uses_user_preferences(self, mock_db, mock_config):
         """Test that video service respects user preferences."""
         # Setup services
-        legacy_service = LegacySyncVideoService(db=mock_db, config=mock_config)
+        async_service = AsyncVideoProcessingService(db=mock_db, config=mock_config)
         preferences_service = UserPreferencesService(db=mock_db)
 
         # Mock user preferences
@@ -253,16 +251,20 @@ class TestServiceDependencyChain:
 class TestLogoPathHandling:
     """Test logo path integration across services."""
 
-    def test_logo_path_extraction_from_preferences(self):
+    def test_logo_path_extraction_from_preferences(self, tmp_path):
         """Test extracting logo path from user preferences."""
         preferences_service = UserPreferencesService(db=AsyncMock())
 
-        # Test with logo configured
-        preferences = {"logo_file_path": "/path/to/logo.png"}
+        # Create an actual test logo file (get_logo_path validates file existence)
+        test_logo = tmp_path / "test_logo.png"
+        test_logo.write_bytes(b"\x89PNG\r\n\x1a\n")  # Minimal PNG header
+
+        # Test with logo configured (must use real existing file)
+        preferences = {"logo_file_path": str(test_logo)}
         logo_path = preferences_service.get_logo_path(preferences)
 
         assert logo_path is not None
-        assert str(logo_path) == "/path/to/logo.png"
+        assert str(logo_path) == str(test_logo)
 
         # Test without logo
         preferences = {"logo_file_path": None}
@@ -270,20 +272,27 @@ class TestLogoPathHandling:
 
         assert logo_path is None
 
+        # Test with non-existent path (should return None - file validation)
+        preferences = {"logo_file_path": "/nonexistent/path/logo.png"}
+        logo_path = preferences_service.get_logo_path(preferences)
+
+        assert logo_path is None
+
     @pytest.mark.asyncio
     async def test_logo_passed_to_video_service(self, mock_db, mock_config):
         """Test that logo path is properly passed through services."""
-        legacy_service = LegacySyncVideoService(db=mock_db, config=mock_config)
+        async_service = AsyncVideoProcessingService(db=mock_db, config=mock_config)
 
         raw_source = {"url": "/path/to/video.mp4"}
-        logo_path = Path("/path/to/logo.png")
+        logo_path = "/path/to/logo.png"
 
         mock_db.flush = AsyncMock()
         mock_db.commit = AsyncMock()
 
         # Service should accept logo_path parameter
         try:
-            await legacy_service.process_video(
+            await async_service.process_video_async(
+                "task_123",
                 raw_source,
                 "user_123",
                 logo_path=logo_path,

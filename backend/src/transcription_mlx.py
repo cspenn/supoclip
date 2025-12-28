@@ -4,6 +4,7 @@ Replaces AssemblyAI cloud API for local, privacy-preserving transcription.
 
 Module: backend/src/transcription_mlx.py
 """
+
 import logging
 import os
 import asyncio
@@ -30,7 +31,8 @@ logger = logging.getLogger(__name__)
 # Cache version for transcript cache files
 # Increment this when cache format changes or when new processing is added (e.g., word reconstruction)
 # This ensures old caches are invalidated and re-transcription occurs with new features
-TRANSCRIPT_CACHE_VERSION = 2  # v2: Added word reconstruction via Groq LLM (2025-11-17)
+# v3: Added segment rebuilding to fix ghost words (2025-11-22)
+TRANSCRIPT_CACHE_VERSION = 3
 
 
 def transcribe_video_mlx(
@@ -70,32 +72,16 @@ def transcribe_video_mlx(
     if not Path(video_path).exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
-    # Check cache first - avoid re-transcribing
+    # Check cache first
+    cached_data = load_cached_transcript_mlx(video_path)
+    if cached_data:
+        logger.info(f"Loading cached transcript: {video_path}")
+        return cached_data
+
+    # Define cache path for saving transcript after processing
     cache_path = (
         Path(video_path).parent / f"{Path(video_path).stem}.transcript_cache.json"
     )
-    if cache_path.exists():
-        logger.info(f"Loading cached transcript: {cache_path}")
-        try:
-            with open(cache_path, "r") as f:
-                cached_data = json.load(f)
-
-            # Check cache version for forward compatibility
-            # Default to v1 for old caches
-            cached_version = cached_data.get("_cache_version", 1)
-            if cached_version != TRANSCRIPT_CACHE_VERSION:
-                logger.info(
-                    f"Cache version mismatch (cached: v{cached_version}, current: v{TRANSCRIPT_CACHE_VERSION}). "
-                    f"Re-transcribing to ensure word reconstruction is applied..."
-                )
-                # Delete old cache to force re-transcription
-                cache_path.unlink()
-            else:
-                # Cache version matches, use it
-                return cached_data
-        except Exception as e:
-            logger.warning(f"Failed to load cached transcript: {e}")
-            # Continue with fresh transcription
 
     try:
         # Load parakeet-mlx model
@@ -111,7 +97,6 @@ def transcribe_video_mlx(
             overlap_duration=15.0,
         )
 
-        # Format result to match AssemblyAI structure for backward compatibility
         formatted_result: Dict[str, Any] = {
             "text": _extract_text_from_result(result),
             "segments": _extract_segments_from_result(result),
@@ -119,32 +104,9 @@ def transcribe_video_mlx(
             "language": "en",
         }
 
-        # Reconstruct broken words from parakeet-mlx tokenization (if enabled)
-        # parakeet-mlx uses BPE tokenization which returns sub-word tokens
-        # Use Groq LLM to reconstruct complete words while preserving timing
-        config = Config()
-        words_list: List[Dict[str, Any]] = (
-            list(formatted_result.get("words", []))  # type: ignore
-        )
-        if words_list and config.reconstruct_words_with_llm:
-            logger.info("Reconstructing broken sub-word tokens with Groq LLM...")
-            try:
-                reconstructed_words = asyncio.run(
-                    _reconstruct_words_with_llm(words_list)
-                )
-                formatted_result["words"] = reconstructed_words
-                # Update text with reconstructed words
-                formatted_result["text"] = " ".join(
-                    w["text"] for w in reconstructed_words
-                )
-                logger.info(
-                    f"Word reconstruction complete: {len(formatted_result['words'])} words"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Word reconstruction failed, using original tokens: {e}"
-                )
-                # Continue with broken tokens if reconstruction fails
+        # Post-process with LLM reconstruction if enabled
+        formatted_result = _process_word_reconstruction(formatted_result)
+        # Continue with broken tokens if reconstruction fails
 
         # Cache for future use - avoid re-transcribing same video
         # Include cache version to invalidate old caches when format changes
@@ -354,11 +316,12 @@ async def _reconstruct_words_with_llm(
 The input has been tokenized at sub-word level (character fragments, BPE tokens).
 Reconstruct it into proper complete words with correct spacing and punctuation.
 
-Rules:
-1. Only reconstruct - do NOT add explanations or extra text
-2. Preserve all punctuation
-3. Return ONLY the corrected text, nothing else
-4. Keep original meaning - fix only the broken word boundaries
+CRITICAL RULES:
+1. You must ONLY merge sub-word tokens.
+2. You must NOT add, remove, or reorder any words.
+3. You must NOT correct grammar or spelling.
+4. The output word count must match the implied word count of the tokens.
+5. Return ONLY the corrected text, nothing else.
 
 Input: {broken_text}
 Output:"""
@@ -399,6 +362,64 @@ Output:"""
         logger.error(f"Word reconstruction failed: {e}")
         logger.warning("Falling back to broken tokens")
         return broken_words
+
+
+def _rebuild_segments_from_words(words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Rebuild segments from words based on punctuation splitting.
+
+    Ensures that the 'segments' list (used for UI display) matches the
+    'words' list (used for subtitles) after LLM reconstruction.
+    """
+    segments: List[Dict[str, Any]] = []
+    current_words = []
+    current_start = words[0]["start"] if words else 0
+
+    for i, word in enumerate(words):
+        current_words.append(word)
+        text = word["text"]
+
+        # Split on sentence-ending punctuation
+        if text.strip() and text.strip()[-1] in ".!?":
+            # End of segment
+            segment_text = " ".join(w["text"] for w in current_words)
+            segments.append(
+                {
+                    "id": len(segments),
+                    "seek": 0,
+                    "start": current_start,
+                    "end": word["end"],
+                    "text": segment_text,
+                    "tokens": [],
+                    "temperature": 0.0,
+                    "avg_logprob": 0.0,
+                    "compression_ratio": 0.0,
+                    "no_speech_prob": 0.0,
+                }
+            )
+            current_words = []
+            if i + 1 < len(words):
+                current_start = words[i + 1]["start"]
+
+    # Add remaining
+    if current_words:
+        segment_text = " ".join(w["text"] for w in current_words)
+        segments.append(
+            {
+                "id": len(segments),
+                "seek": 0,
+                "start": current_start,
+                "end": current_words[-1]["end"],
+                "text": segment_text,
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0,
+            }
+        )
+
+    return segments
 
 
 def _align_reconstructed_words(
@@ -513,11 +534,52 @@ def load_cached_transcript_mlx(video_path: Path) -> Optional[Dict[str, Any]]:
     if cache_path.exists():
         try:
             with open(cache_path, "r") as f:
-                return json.load(f)
+                cached_data = json.load(f)
+
+            # Check version
+            cached_version = cached_data.get("_cache_version", 1)
+            if cached_version != TRANSCRIPT_CACHE_VERSION:
+                # Invalidate
+                return None
+
+            return cached_data
         except Exception as e:
             logger.warning(f"Failed to load cached transcript: {e}")
 
     return None
+
+
+def _process_word_reconstruction(formatted_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Reconstruct broken words from parakeet-mlx tokenization utilizing LLM."""
+    config = Config()
+
+    words_list = list(formatted_result.get("words", []))
+    if not words_list or not config.reconstruct_words_with_llm:
+        return formatted_result
+
+    logger.info("Reconstructing broken sub-word tokens with Groq LLM...")
+    try:
+        reconstructed_words = asyncio.run(_reconstruct_words_with_llm(words_list))
+        formatted_result["words"] = reconstructed_words
+        # Update text with reconstructed words
+        formatted_result["text"] = " ".join(w["text"] for w in reconstructed_words)
+        logger.info(
+            f"Word reconstruction complete: {len(formatted_result['words'])} words"
+        )
+
+        # Update segments to match reconstructed words
+        formatted_result["segments"] = _rebuild_segments_from_words(
+            formatted_result["words"]
+        )
+        logger.info(
+            f"Rebuilt {len(formatted_result['segments'])} segments from reconstructed words"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Word reconstruction failed, falling back to original tokens: {e}"
+        )
+
+    return formatted_result
 
 
 # end backend/src/transcription_mlx.py

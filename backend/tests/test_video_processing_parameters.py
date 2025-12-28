@@ -14,6 +14,7 @@ from src.services.video_service import VideoService
 import asyncio
 import sys
 import logging
+import pytest
 from pathlib import Path
 
 # Add backend to path
@@ -28,6 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(reason="Integration test - downloads real video, run manually")
 async def test_video_processing_with_parameters():
     """
     Process a video with specific font and clip length parameters.
@@ -36,6 +38,9 @@ async def test_video_processing_with_parameters():
     1. Font "Barlow Condensed Semi Bold" should be resolved (bundled or system)
     2. Clips should be between 50-60 seconds long
     3. Logs should show all parameters being passed through
+
+    This is an integration test that downloads a real YouTube video.
+    Run manually with: pytest tests/test_video_processing_parameters.py -k test_video_processing_with_parameters --runxfail
     """
     config = Config()
 
@@ -85,9 +90,12 @@ async def test_video_processing_with_parameters():
             for i, segment in enumerate(segments, 1):
                 start = segment["start_time"]
                 end = segment["end_time"]
-                duration = end - start
+                from src.video_utils import parse_timestamp_to_seconds
+                start_sec = parse_timestamp_to_seconds(start) if isinstance(start, str) else start
+                end_sec = parse_timestamp_to_seconds(end) if isinstance(end, str) else end
+                duration = end_sec - start_sec
                 logger.info(
-                    f"  Segment {i}: {duration:.1f}s ({start:.1f}s - {end:.1f}s)"
+                    f"  Segment {i}: {duration:.1f}s ({start_sec:.1f}s - {end_sec:.1f}s)"
                 )
 
                 # Check if duration is within requested range
@@ -128,13 +136,13 @@ async def test_video_processing_with_parameters():
 
         # Check if any segments are within our requested range
         if segments:
-            in_range = sum(
-                1
-                for s in segments
-                if test_min_length
-                <= (s["end_time"] - s["start_time"])
-                <= test_max_length
-            )
+            from src.video_utils import parse_timestamp_to_seconds
+            in_range = 0
+            for s in segments:
+                s_start = parse_timestamp_to_seconds(s["start_time"]) if isinstance(s["start_time"], str) else s["start_time"]
+                s_end = parse_timestamp_to_seconds(s["end_time"]) if isinstance(s["end_time"], str) else s["end_time"]
+                if test_min_length <= (s_end - s_start) <= test_max_length:
+                    in_range += 1
             total = len(segments)
             logger.info(
                 f"✓ {in_range}/{total} segments within {test_min_length}s-{test_max_length}s range"
