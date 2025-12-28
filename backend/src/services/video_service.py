@@ -334,8 +334,16 @@ class VideoService:
                         f"({snap_reason})"
                     )
                     segment["start_time"] = new_start_ts
+                    # Preserve original AI timestamp for debugging sync issues
+                    segment["original_ai_start_time"] = original_start_ts
                     # Note: We don't adjust end_time, so the duration changes slightly.
                     # Usually expanding backwards, so duration increases.
+                else:
+                    # No snapping occurred - timestamps match
+                    logger.debug(
+                        f"[SYNC CHECK] No snap needed for {original_start_ts} "
+                        f"({snap_reason})"
+                    )
 
                 # Now extract text using the potentially adjusted start time
                 verbatim_text = extract_text_from_cache(
@@ -346,12 +354,18 @@ class VideoService:
                 if verbatim_text:
                     original_ai_text = segment["text"]
                     segment["text"] = verbatim_text
+                    # SYNC CHECK: Log final timestamps for debugging
+                    logger.debug(
+                        f"[SYNC CHECK] Segment {segment['start_time']}-{segment['end_time']}: "
+                        f"extracted {len(verbatim_text.split())} words"
+                    )
                     logger.info(
                         f"Replaced text for segment {segment['start_time']}: '{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
                     )
                 else:
                     logger.warning(
-                        f"Could not extract verbatim text for segment {segment['start_time']}"
+                        f"Could not extract verbatim text for segment {segment['start_time']} - "
+                        f"check transcript cache alignment"
                     )
 
             clips_info = await VideoService.create_video_clips(

@@ -263,8 +263,10 @@ def extract_text_from_cache(
         word_end = word.get("end", 0)
         word_text = word.get("text", "")
 
-        # Include word if it overlaps with the time range
-        if word_end > start_ms and word_start < end_ms:
+        # Include word ONLY if it STARTS at or after clip start time
+        # This prevents "ghost words" where the transcript shows words
+        # that the viewer doesn't hear (because they start before the clip)
+        if word_start >= start_ms and word_start < end_ms:
             words_in_range.append(word_text)
 
     if words_in_range:
@@ -1088,7 +1090,7 @@ class SubtitleTextClipCreator:
 
 
 def snap_segment_to_sentence_start(
-    video_path: Path, start_time_seconds: float, search_window_seconds: float = 5.0
+    video_path: Path, start_time_seconds: float, search_window_seconds: float = 2.0
 ) -> Tuple[float, str, str]:
     """
     Find the nearest valid sentence start to the given timestamp.
