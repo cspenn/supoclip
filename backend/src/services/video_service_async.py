@@ -27,6 +27,7 @@ from ..video_utils import (
     parse_timestamp_to_seconds,
     snap_segment_to_sentence_start,
 )
+from ..utils.async_helpers import run_in_thread
 from ..youtube_utils import download_youtube_video, get_youtube_video_title
 
 logger = logging.getLogger(__name__)
@@ -301,7 +302,10 @@ class AsyncVideoProcessingService:
                 logger.info(
                     f"[SERVICE=ASYNC] Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
                 )
-                clips_info = create_clips_with_transitions(
+                # Run sync video processing in thread pool to avoid blocking asyncio loop
+                # (required because BrowserSubtitleRenderer uses sync Playwright API)
+                clips_info = await run_in_thread(
+                    create_clips_with_transitions,
                     video_path,
                     relevant_segments_json,
                     clips_output_dir,

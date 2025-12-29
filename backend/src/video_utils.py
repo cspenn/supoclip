@@ -15,7 +15,7 @@ from moviepy import (
     CompositeVideoClip,
     ImageClip,
 )
-from moviepy.video.fx import Margin
+from moviepy.video.fx import FadeIn, FadeOut, Margin
 
 
 from .config import Config
@@ -1744,10 +1744,10 @@ def apply_transition_effect(
         fade_duration = 0.5  # Half second fade
 
         # Fade out clip1
-        clip1_faded = clip1.with_effects(["fadeout", fade_duration])
+        clip1_faded = clip1.with_effects([FadeOut(duration=fade_duration)])
 
         # Fade in clip2
-        clip2_faded = clip2.with_effects(["fadein", fade_duration])
+        clip2_faded = clip2.with_effects([FadeIn(duration=fade_duration)])
 
         # Combine: clip1 -> transition -> clip2
         final_clip = concatenate_videoclips(
