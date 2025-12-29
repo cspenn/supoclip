@@ -181,8 +181,7 @@ class Source(Base):
         """Decide which type of source this is."""
         if "youtube" in source_url:
             return "youtube"
-        else:
-            return "video_url"
+        return "video_url"
 
 
 class GeneratedClip(Base):

@@ -8,6 +8,7 @@ with Llama 4 Scout, and instead uses Groq's native Structured Outputs feature.
 import logging
 import json
 import os
+from contextlib import suppress
 from typing import List
 from groq import AsyncGroq
 
@@ -115,10 +116,12 @@ def build_user_prompt(
     if custom_prompt:
         user_prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
 
-    user_prompt_parts.append(
-        "\nFind segments that would be compelling as standalone clips for social media."
+    user_prompt_parts.extend(
+        (
+            "\nFind segments that would be compelling as standalone clips for social media.",
+            f"\nTranscript:\n{transcript}",
+        )
     )
-    user_prompt_parts.append(f"\nTranscript:\n{transcript}")
 
     return "\n".join(user_prompt_parts)
 
@@ -136,12 +139,10 @@ def _analyze_response_durations(segments: List[TranscriptSegment]) -> List[float
     """Analyze and log statistics about response durations."""
     durations = []
     for segment in segments:
-        try:
+        with suppress(ValueError, IndexError):
             duration = _get_duration(segment)
             if duration > 0:
                 durations.append(duration)
-        except (ValueError, IndexError):
-            pass
 
     if durations:
         avg_duration = sum(durations) / len(durations)
@@ -167,7 +168,7 @@ def _validate_transcript_input(transcript: str) -> None:
     Raises:
         ValueError: If transcript is empty or too short
     """
-    if not transcript or len(transcript.strip()) == 0:
+    if not transcript or not transcript.strip():
         logger.error("Cannot analyze empty transcript")
         raise ValueError(
             "Cannot analyze empty transcript - transcription may have failed"

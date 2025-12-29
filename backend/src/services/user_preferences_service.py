@@ -103,9 +103,7 @@ class UserPreferencesService:
             ),
             {"user_id": user_id},
         )
-        user_prefs = result.fetchone()
-
-        if not user_prefs:
+        if not (user_prefs := result.fetchone()):
             logger.error(f"User {user_id} not found in database")
             raise ValueError(f"User not found: {user_id}")
 
@@ -133,15 +131,12 @@ class UserPreferencesService:
         Raises:
             ValueError: If user not found in database
         """
-        # Load user preferences (already merged with system defaults)
-        user_prefs = await self.get_user_preferences(user_id)
-
-        # Merge with request options (request options take precedence)
-        merged = user_prefs.copy()
+        # Load user preferences (already merged with system defaults) and copy for merging
+        merged = (await self.get_user_preferences(user_id)).copy()
 
         # Override with request options if they differ from system defaults
         # This ensures explicit request values override user prefs
-        for key in ["font_family", "font_size", "font_color"]:
+        for key in ("font_family", "font_size", "font_color"):
             if key in request_options:
                 request_value = request_options[key]
                 default_value = self.DEFAULT_PREFERENCES[key]
@@ -150,12 +145,12 @@ class UserPreferencesService:
                     merged[key] = request_value
 
         # Override clip settings if provided
-        for key in [
+        for key in (
             "clip_min_length",
             "clip_target_length",
             "clip_max_length",
             "custom_ai_prompt",
-        ]:
+        ):
             if key in request_options and request_options[key] is not None:
                 merged[key] = request_options[key]
 

@@ -24,14 +24,13 @@ def get_level_emoji(level: int | str) -> str:
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
 
-    emoji_map = {
+    return {
         logging.DEBUG: "🔍",
         logging.INFO: "🟢",
         logging.WARNING: "🟡",
         logging.ERROR: "🛑",
         logging.CRITICAL: "💥",
-    }
-    return emoji_map.get(level, "📝")
+    }.get(level, "📝")
 
 
 class EmojiFormatter(logging.Formatter):
@@ -89,7 +88,7 @@ def setup_logging(log_level: str, log_dir: str, app_name: str = "supoclip") -> N
     root_logger.setLevel(level)
 
     # Remove existing handlers to avoid duplicates
-    for handler in root_logger.handlers[:]:
+    for handler in root_logger.handlers.copy():
         root_logger.removeHandler(handler)
 
     # Console handler with emoji formatter

@@ -108,8 +108,7 @@ async def _apply_migration_file(conn, migration_path: Path, description: str) ->
     if not migration_path.exists():
         return
 
-    with open(migration_path) as f:
-        sql = f.read()
+    sql = migration_path.read_text()
 
     statements = _parse_sql_statements(sql)
     for statement in statements:

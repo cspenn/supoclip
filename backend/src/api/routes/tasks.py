@@ -27,8 +27,7 @@ async def list_tasks(
     """
     Get all tasks for the authenticated user.
     """
-    headers = request.headers
-    user_id = headers.get("user_id")
+    user_id = request.headers.get("user_id")
 
     # Use default user_id if auth is disabled
     if not user_id:
@@ -45,7 +44,7 @@ async def list_tasks(
 
     except Exception as e:
         logger.error(f"Error retrieving user tasks: {e}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving tasks: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving tasks: {e}")
 
 
 @router.post("/")
@@ -147,7 +146,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating task: {e}")
-        raise HTTPException(status_code=500, detail=f"Error creating task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating task: {e}")
 
 
 @router.get("/{task_id}")
@@ -166,7 +165,7 @@ async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error retrieving task: {e}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving task: {e}")
 
 
 @router.get("/{task_id}/clips")
@@ -189,7 +188,7 @@ async def get_task_clips(task_id: str, db: AsyncSession = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error retrieving clips: {e}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving clips: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving clips: {e}")
 
 
 @router.get("/{task_id}/progress")
@@ -224,7 +223,7 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
         }
 
         # If task is already completed or error, close connection
-        if task.get("status") in ["completed", "error"]:
+        if task.get("status") in ("completed", "error"):
             yield {"event": "close", "data": json.dumps({"status": task.get("status")})}
             return
 
@@ -248,7 +247,7 @@ async def get_task_progress_sse(task_id: str, db: AsyncSession = Depends(get_db)
                 }
 
                 # Close connection if task is done
-                if progress.status in ["completed", "error"]:
+                if progress.status in ("completed", "error"):
                     yield {
                         "event": "close",
                         "data": json.dumps({"status": progress.status}),
@@ -290,7 +289,7 @@ async def update_task(
         raise
     except Exception as e:
         logger.error(f"Error updating task: {e}")
-        raise HTTPException(status_code=500, detail=f"Error updating task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating task: {e}")
 
 
 @router.delete("/{task_id}")
@@ -332,7 +331,7 @@ async def delete_task(
         raise
     except Exception as e:
         logger.error(f"Error deleting task: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting task: {e}")
 
 
 @router.delete("/{task_id}/clips/{clip_id}")
@@ -374,4 +373,4 @@ async def delete_clip(
         raise
     except Exception as e:
         logger.error(f"Error deleting clip: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting clip: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting clip: {e}")

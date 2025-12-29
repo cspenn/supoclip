@@ -88,9 +88,7 @@ class TaskRepository:
             ),
             {"task_id": task_id},
         )
-        row = result.fetchone()
-
-        if not row:
+        if not (row := result.fetchone()):
             return None
 
         return {
@@ -183,21 +181,20 @@ class TaskRepository:
             {"user_id": user_id, "limit": limit},
         )
 
-        tasks = []
-        for row in result.fetchall():
-            tasks.append(
-                {
-                    "id": row.id,
-                    "user_id": row.user_id,
-                    "source_id": row.source_id,
-                    "source_title": row.source_title,
-                    "source_type": row.source_type,
-                    "status": row.status,
-                    "clips_count": row.clips_count,
-                    "created_at": parse_sqlite_datetime(row.created_at),
-                    "updated_at": parse_sqlite_datetime(row.updated_at),
-                }
-            )
+        tasks = [
+            {
+                "id": row.id,
+                "user_id": row.user_id,
+                "source_id": row.source_id,
+                "source_title": row.source_title,
+                "source_type": row.source_type,
+                "status": row.status,
+                "clips_count": row.clips_count,
+                "created_at": parse_sqlite_datetime(row.created_at),
+                "updated_at": parse_sqlite_datetime(row.updated_at),
+            }
+            for row in result.fetchall()
+        ]
 
         return tasks
 

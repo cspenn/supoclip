@@ -61,7 +61,7 @@ def merge_with_defaults(
         {'font_family': 'Arial', 'font_size': 24}
     """
     # Start with defaults
-    merged = dict(defaults)
+    merged = defaults.copy()
 
     # Override with non-None values from request
     for key, value in request_options.items():

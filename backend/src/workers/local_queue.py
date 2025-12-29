@@ -97,7 +97,7 @@ class LocalJobQueue:
                     logger.info(f"Job {job.job_id} completed successfully")
 
                 except Exception as e:
-                    job.error = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    job.error = f"{e}\n\nTraceback:\n{traceback.format_exc()}"
                     job.status = "error"
                     logger.error(f"Job {job.job_id} failed: {e}", exc_info=True)
 

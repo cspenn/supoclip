@@ -7,6 +7,7 @@ Module: backend/src/workers/local_progress.py
 
 import asyncio
 import logging
+from contextlib import suppress
 from typing import Dict, Optional, AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -138,7 +139,7 @@ class LocalProgressTracker:
                     yield progress
 
                     # Stop if completed or errored
-                    if progress.status in ["completed", "error"]:
+                    if progress.status in ("completed", "error"):
                         break
 
                 except asyncio.TimeoutError:
@@ -150,10 +151,8 @@ class LocalProgressTracker:
         finally:
             # Remove subscriber
             if task_id in self.subscribers:
-                try:
+                with suppress(ValueError):
                     self.subscribers[task_id].remove(queue)
-                except ValueError:
-                    pass
 
 
 # Global tracker instance

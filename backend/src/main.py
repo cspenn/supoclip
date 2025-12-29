@@ -77,7 +77,7 @@ async def check_database_health(db: AsyncSession = Depends(get_db)):
         await db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        return {"status": "unhealthy", "database": "disconnected", "error": f"{e}"}
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
 
 
 @app.post("/start", status_code=410)
@@ -125,8 +125,7 @@ async def start_task_with_progress(
         pref_service = UserPreferencesService(db)
 
         # Merge preferences: request > user prefs > defaults
-        request_opts = {
-            **parsed_font_opts,
+        request_opts = parsed_font_opts | {
             "clip_min_length": data.get("clip_min_length"),
             "clip_target_length": data.get("clip_target_length"),
             "clip_max_length": data.get("clip_max_length"),

@@ -47,9 +47,7 @@ class SourceRepository:
             text("SELECT * FROM sources WHERE id = :source_id"),
             {"source_id": source_id},
         )
-        row = result.fetchone()
-
-        if not row:
+        if not (row := result.fetchone()):
             return None
 
         return {

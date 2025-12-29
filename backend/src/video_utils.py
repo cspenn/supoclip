@@ -211,7 +211,7 @@ def cache_transcript_data(video_path: Path, transcript) -> None:
 
     cache_data = {"words": words_data, "text": transcript.text}
 
-    with open(cache_path, "w") as f:
+    with cache_path.open("w") as f:
         json.dump(cache_data, f)
 
     logger.info(f"Cached {len(words_data)} words to {cache_path}")
@@ -225,7 +225,7 @@ def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
         return None
 
     try:
-        with open(cache_path, "r") as f:
+        with cache_path.open("r") as f:
             return json.load(f)
     except Exception as e:
         logger.warning(f"Failed to load transcript cache: {e}")
@@ -633,8 +633,6 @@ class OpenCVDNNFaceDetector(FaceDetector):
         """Initialize OpenCV DNN detector."""
         self.net = None
         try:
-            import os
-
             prototxt = cv2.data.haarcascades.replace(
                 "haarcascades", "opencv_face_detector.pbtxt"
             )
@@ -642,7 +640,7 @@ class OpenCVDNNFaceDetector(FaceDetector):
                 "haarcascades", "opencv_face_detector_uint8.pb"
             )
 
-            if os.path.exists(prototxt) and os.path.exists(model):
+            if Path(prototxt).exists() and Path(model).exists():
                 self.net = cv2.dnn.readNetFromTensorflow(model, prototxt)
                 logger.info("OpenCV DNN detector loaded")
         except Exception as e:
@@ -879,9 +877,7 @@ def filter_face_outliers(
         logger.info(
             f"Filtered {len(face_centers)} -> {len(filtered_faces)} faces (removed outliers)"
         )
-        return (
-            filtered_faces if filtered_faces else face_centers
-        )  # Return original if all filtered
+        return filtered_faces or face_centers  # Return original if all filtered
 
     except Exception as e:
         logger.warning(f"Error filtering face outliers: {e}")
@@ -1086,7 +1082,10 @@ class SubtitleTextClipCreator:
                 # but if we are already at min, we might just have to accept it or break.
                 # Logic below: loop wraps around. If we are at attempt 2 and hit min size, loop finishes.
                 if attempt == max_attempts - 1:
-                    break  # Return what we have
+                    return text_clip  # Return what we have at min font size
+
+        # If loop exits without returning (shouldn't happen, but satisfies type checker)
+        return None
 
 
 def _find_closest_word_index(words: list[dict], target_ms: int) -> int:
@@ -1134,7 +1133,7 @@ def _is_sentence_start_word(words: list[dict], index: int) -> bool:
         return False
 
     prev_text = words[index - 1].get("text", "").strip()
-    return bool(prev_text and prev_text[-1] in [".", "!", "?"])
+    return bool(prev_text and prev_text[-1] in (".", "!", "?"))
 
 
 def _find_sentence_start_backwards(
@@ -1255,14 +1254,14 @@ class SubtitlePositioner:
             return ("center", vertical_position)
 
         # If explicit X provided
-        horizontal_position = "center"  # Default
+        horizontal_position: str | int = "center"  # Default
         if position_options and "x" in position_options:
-            horizontal_position = int(video_width * x_rel)
-            # If centered alignment, offset by width/2?
             # For MoviePy, 'center' is magic string. If we use int, it's absolute.
-            # Let's support 'center' string if x is 0.5 and alignment is center
+            # Support 'center' string if x is 0.5 and alignment is center
             if x_rel == 0.5 and alignment == "center":
                 horizontal_position = "center"
+            else:
+                horizontal_position = int(video_width * x_rel)
 
         return (horizontal_position, vertical_position)
 
@@ -1715,9 +1714,7 @@ def get_available_transitions() -> List[str]:
         logger.warning("Transitions directory not found")
         return []
 
-    transition_files = []
-    for file_path in transitions_dir.glob("*.mp4"):
-        transition_files.append(str(file_path))
+    transition_files = [str(file_path) for file_path in transitions_dir.glob("*.mp4")]
 
     logger.info(f"Found {len(transition_files)} transition files")
     return transition_files

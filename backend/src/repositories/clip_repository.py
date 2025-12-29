@@ -107,24 +107,23 @@ class ClipRepository:
             {"task_id": task_id},
         )
 
-        clips = []
-        for row in result.fetchall():
-            clips.append(
-                {
-                    "id": row.id,
-                    "filename": row.filename,
-                    "file_path": row.file_path,
-                    "start_time": row.start_time,
-                    "end_time": row.end_time,
-                    "duration": row.duration,
-                    "text": row.text,
-                    "relevance_score": row.relevance_score,
-                    "reasoning": row.reasoning,
-                    "clip_order": row.clip_order,
-                    "created_at": parse_sqlite_datetime(row.created_at),
-                    "video_url": f"{backend_url}/clips/{row.filename}",
-                }
-            )
+        clips = [
+            {
+                "id": row.id,
+                "filename": row.filename,
+                "file_path": row.file_path,
+                "start_time": row.start_time,
+                "end_time": row.end_time,
+                "duration": row.duration,
+                "text": row.text,
+                "relevance_score": row.relevance_score,
+                "reasoning": row.reasoning,
+                "clip_order": row.clip_order,
+                "created_at": parse_sqlite_datetime(row.created_at),
+                "video_url": f"{backend_url}/clips/{row.filename}",
+            }
+            for row in result.fetchall()
+        ]
 
         return clips
 
@@ -137,8 +136,7 @@ class ClipRepository:
             ),
             {"task_id": task_id},
         )
-        count = result.scalar()
-        return int(count) if count is not None else 0
+        return int(count) if (count := result.scalar()) is not None else 0
 
     @staticmethod
     async def delete_clips_by_task(db: AsyncSession, task_id: str) -> int:

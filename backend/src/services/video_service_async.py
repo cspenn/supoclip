@@ -82,7 +82,7 @@ class AsyncVideoProcessingService:
         if source.type == "youtube":
             try:
                 title = get_youtube_video_title(raw_source["url"])
-                source.title = title if title else "YouTube Video"
+                source.title = title or "YouTube Video"
                 if not title:
                     logger.warning(
                         "[SERVICE=ASYNC] Could not get YouTube title, using default"
@@ -90,7 +90,7 @@ class AsyncVideoProcessingService:
                 logger.info(f"[SERVICE=ASYNC] YouTube video title: {source.title}")
             except Exception as e:
                 logger.warning(
-                    f"[SERVICE=ASYNC] Could not get YouTube title, using default: {str(e)}"
+                    f"[SERVICE=ASYNC] Could not get YouTube title, using default: {e}"
                 )
                 source.title = "YouTube Video"
         else:
@@ -354,10 +354,10 @@ class AsyncVideoProcessingService:
             logger.info(f"[SERVICE=ASYNC] Task {task_id} completed successfully!")
 
         except Exception as e:
-            logger.error(f"[SERVICE=ASYNC] Error processing task {task_id}: {str(e)}")
+            logger.error(f"[SERVICE=ASYNC] Error processing task {task_id}: {e}")
             # Store error message for user visibility (Fix 3: Better error reporting)
             await self._update_task_status(task_id, "error", error_message=str(e))
-            logger.error(f"[SERVICE=ASYNC] Task {task_id} marked as error: {str(e)}")
+            logger.error(f"[SERVICE=ASYNC] Task {task_id} marked as error: {e}")
 
     async def _update_task_status(
         self, task_id: str, status: str, error_message: Optional[str] = None

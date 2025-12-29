@@ -409,7 +409,7 @@ def _validate_transcript(transcript: str) -> None:
     Raises:
         ValueError: If transcript is empty or too short
     """
-    if not transcript or len(transcript.strip()) == 0:
+    if not transcript or not transcript.strip():
         logger.error("Cannot analyze empty transcript")
         raise ValueError(
             "Cannot analyze empty transcript - transcription may have failed"
@@ -446,10 +446,12 @@ def _build_analysis_prompt(
     if custom_prompt:
         prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
 
-    prompt_parts.append(
-        "\nFind segments that would be compelling as standalone clips for social media."
+    prompt_parts.extend(
+        (
+            "\nFind segments that would be compelling as standalone clips for social media.",
+            f"\nTranscript:\n{transcript}",
+        )
     )
-    prompt_parts.append(f"\nTranscript:\n{transcript}")
 
     return "\n".join(prompt_parts)
 

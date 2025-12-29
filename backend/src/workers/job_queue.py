@@ -108,8 +108,7 @@ class JobQueue:
             Job status string ("queued", "processing", "completed", "error")
             or None if job not found
         """
-        queue = await cls.get_pool()
-        return queue.get_job_status(job_id)
+        return (await cls.get_pool()).get_job_status(job_id)
 
     @classmethod
     async def get_job_result(cls, job_id: str) -> Any:
@@ -122,8 +121,7 @@ class JobQueue:
         Returns:
             Job result if completed, None otherwise
         """
-        queue = await cls.get_pool()
-        return queue.get_job_result(job_id)
+        return (await cls.get_pool()).get_job_result(job_id)
 
 
 # end backend/src/workers/job_queue.py

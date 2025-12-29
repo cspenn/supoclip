@@ -112,7 +112,7 @@ def transcribe_video_mlx(
         # Include cache version to invalidate old caches when format changes
         formatted_result["_cache_version"] = TRANSCRIPT_CACHE_VERSION
         try:
-            with open(cache_path, "w") as f:
+            with cache_path.open("w") as f:
                 json.dump(formatted_result, f, indent=2)
             logger.info(
                 f"Cached transcript (v{TRANSCRIPT_CACHE_VERSION}): {cache_path}"
@@ -513,8 +513,7 @@ def get_video_transcript_mlx(video_path: Path) -> str:
     Returns:
         Full transcript text
     """
-    result = transcribe_video_mlx(video_path)
-    return result.get("text", "")
+    return transcribe_video_mlx(video_path).get("text", "")
 
 
 def load_cached_transcript_mlx(video_path: Path) -> Optional[Dict[str, Any]]:
@@ -533,7 +532,7 @@ def load_cached_transcript_mlx(video_path: Path) -> Optional[Dict[str, Any]]:
 
     if cache_path.exists():
         try:
-            with open(cache_path, "r") as f:
+            with cache_path.open("r") as f:
                 cached_data = json.load(f)
 
             # Check version
