@@ -210,6 +210,100 @@ class VideoService:
         return "youtube" if video_id else "upload"
 
     @staticmethod
+    def _validate_clip_duration_params(
+        min_length: int, max_length: int
+    ) -> tuple[int, int]:
+        """Validate and normalize clip duration parameters.
+
+        Args:
+            min_length: Minimum clip length in seconds
+            max_length: Maximum clip length in seconds
+
+        Returns:
+            Tuple of (validated_min_length, validated_max_length)
+        """
+        if min_length < 10:
+            logger.warning(f"min_length {min_length}s too short. Setting to 10s.")
+            min_length = 10
+
+        if min_length > 60:
+            logger.warning(
+                f"min_length {min_length}s exceeds recommended maximum. Capping at 60s."
+            )
+            min_length = 60
+
+        if max_length > 120:
+            logger.warning(
+                f"max_length {max_length}s exceeds recommended maximum. Capping at 120s."
+            )
+            max_length = 120
+
+        if max_length < min_length:
+            logger.warning(f"max_length < min_length. Adjusting to {min_length + 10}s.")
+            max_length = min_length + 10
+
+        return min_length, max_length
+
+    @staticmethod
+    def _apply_verbatim_text_to_segment(
+        segment: Dict[str, Any], video_path: Path
+    ) -> None:
+        """Apply verbatim transcript text to a segment, snapping to sentence start.
+
+        Modifies segment in-place with corrected start_time and verbatim text.
+
+        Args:
+            segment: Segment dictionary to update
+            video_path: Path to video file for transcript cache lookup
+        """
+        from ..video_utils import extract_text_from_cache
+
+        # Snap segment start to nearest valid sentence start
+        original_start_ts = segment["start_time"]
+        start_sec = parse_timestamp_to_seconds(original_start_ts)
+
+        new_start_sec, snapped_word, snap_reason = snap_segment_to_sentence_start(
+            video_path, start_sec
+        )
+
+        if abs(new_start_sec - start_sec) > 0.01:
+            new_start_ts = format_ms_to_timestamp_precise(int(new_start_sec * 1000))
+            logger.info(
+                f"Snapped segment start: {original_start_ts} -> {new_start_ts} "
+                f"({snap_reason})"
+            )
+            segment["start_time"] = new_start_ts
+            segment["original_ai_start_time"] = original_start_ts
+        else:
+            logger.debug(
+                f"[SYNC CHECK] No snap needed for {original_start_ts} ({snap_reason})"
+            )
+
+        # Extract verbatim text using the potentially adjusted start time
+        verbatim_text = extract_text_from_cache(
+            video_path,
+            parse_timestamp_to_seconds(segment["start_time"]),
+            parse_timestamp_to_seconds(segment["end_time"]),
+        )
+
+        if verbatim_text:
+            original_ai_text = segment["text"]
+            segment["text"] = verbatim_text
+            logger.debug(
+                f"[SYNC CHECK] Segment {segment['start_time']}-{segment['end_time']}: "
+                f"extracted {len(verbatim_text.split())} words"
+            )
+            logger.info(
+                f"Replaced text for segment {segment['start_time']}: "
+                f"'{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
+            )
+        else:
+            logger.warning(
+                f"Could not extract verbatim text for segment {segment['start_time']} - "
+                f"check transcript cache alignment"
+            )
+
+    @staticmethod
     async def process_video_complete(
         url: str,
         source_type: str,
@@ -269,28 +363,10 @@ class VideoService:
             if progress_callback:
                 await progress_callback(50, "Analyzing content with AI...")
 
-            # Validate and cap clip duration parameters to realistic ranges
-            if min_length < 10:
-                logger.warning(f"min_length {min_length}s too short. Setting to 10s.")
-                min_length = 10
-
-            if min_length > 60:
-                logger.warning(
-                    f"min_length {min_length}s exceeds recommended maximum. Capping at 60s."
-                )
-                min_length = 60
-
-            if max_length > 120:
-                logger.warning(
-                    f"max_length {max_length}s exceeds recommended maximum. Capping at 120s."
-                )
-                max_length = 120
-
-            if max_length < min_length:
-                logger.warning(
-                    f"max_length < min_length. Adjusting to {min_length + 10}s."
-                )
-                max_length = min_length + 10
+            # Validate clip duration parameters
+            min_length, max_length = VideoService._validate_clip_duration_params(
+                min_length, max_length
+            )
 
             relevant_parts = await VideoService.analyze_transcript(
                 transcript, min_length=min_length, max_length=max_length
@@ -307,66 +383,11 @@ class VideoService:
                 relevant_parts.most_relevant_segments
             )
 
-            # CRITICAL FIX: Overwrite AI-generated text with verbatim transcript text
-            # This ensures the "Transcript" UI matches the video subtitles exactly,
-            # preventing "Ghost Words" where the AI summarizes/paraphrases but the video shows original audio.
-            from ..video_utils import extract_text_from_cache
-
+            # Apply verbatim text from transcript cache to each segment
+            # This prevents "Ghost Words" where AI summarizes/paraphrases but video shows original
             logger.info("Overwriting AI segment text with verbatim transcript text...")
             for segment in segments_json:
-                # NEW: Snap segment start to nearest valid sentence start
-                # This fixes "mid-sentence hook" issues by using the word-level timestamp data
-                # to find the true beginning of the sentence.
-                # We do this BEFORE extracting text so we get the full correct text.
-                original_start_ts = segment["start_time"]
-                start_sec = parse_timestamp_to_seconds(original_start_ts)
-
-                new_start_sec, snapped_word, snap_reason = (
-                    snap_segment_to_sentence_start(video_path, start_sec)
-                )
-
-                if abs(new_start_sec - start_sec) > 0.01:
-                    new_start_ts = format_ms_to_timestamp_precise(
-                        int(new_start_sec * 1000)
-                    )
-                    logger.info(
-                        f"Snapped segment start: {original_start_ts} -> {new_start_ts} "
-                        f"({snap_reason})"
-                    )
-                    segment["start_time"] = new_start_ts
-                    # Preserve original AI timestamp for debugging sync issues
-                    segment["original_ai_start_time"] = original_start_ts
-                    # Note: We don't adjust end_time, so the duration changes slightly.
-                    # Usually expanding backwards, so duration increases.
-                else:
-                    # No snapping occurred - timestamps match
-                    logger.debug(
-                        f"[SYNC CHECK] No snap needed for {original_start_ts} "
-                        f"({snap_reason})"
-                    )
-
-                # Now extract text using the potentially adjusted start time
-                verbatim_text = extract_text_from_cache(
-                    video_path,
-                    parse_timestamp_to_seconds(segment["start_time"]),
-                    parse_timestamp_to_seconds(segment["end_time"]),
-                )
-                if verbatim_text:
-                    original_ai_text = segment["text"]
-                    segment["text"] = verbatim_text
-                    # SYNC CHECK: Log final timestamps for debugging
-                    logger.debug(
-                        f"[SYNC CHECK] Segment {segment['start_time']}-{segment['end_time']}: "
-                        f"extracted {len(verbatim_text.split())} words"
-                    )
-                    logger.info(
-                        f"Replaced text for segment {segment['start_time']}: '{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
-                    )
-                else:
-                    logger.warning(
-                        f"Could not extract verbatim text for segment {segment['start_time']} - "
-                        f"check transcript cache alignment"
-                    )
+                VideoService._apply_verbatim_text_to_segment(segment, video_path)
 
             clips_info = await VideoService.create_video_clips(
                 video_path,

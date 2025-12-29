@@ -1,0 +1,26 @@
+F841 Local variable `word_end` is assigned to but never used
+   --> src/video_utils.py:263:9
+    |
+261 |     for word in transcript_data["words"]:
+262 |         word_start = word.get("start", 0)
+263 |         word_end = word.get("end", 0)
+    |         ^^^^^^^^
+264 |         word_text = word.get("text", "")
+    |
+help: Remove assignment to unused variable `word_end`
+
+F841 Local variable `initial_word_start` is assigned to but never used
+    --> src/video_utils.py:1132:5
+     |
+1130 |     # 2. Search backwards for sentence start
+1131 |     # We look from closest_idx down to 0, but stop if we go beyond the window
+1132 |     initial_word_start = words[closest_idx].get("start", 0)
+     |     ^^^^^^^^^^^^^^^^^^
+1133 |
+1134 |     best_start_idx = -1
+     |
+help: Remove assignment to unused variable `initial_word_start`
+
+Found 2 errors.
+No fixes available (2 hidden fixes can be enabled with the `--unsafe-fixes` option).
+45 files left unchanged

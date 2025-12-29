@@ -87,9 +87,106 @@ def calculate_coupling_metrics(
     return metrics
 
 
+def _format_header_section(package_path: str, module_count: int) -> list[str]:
+    """Format the header section of the report."""
+    return [
+        "=" * 70,
+        "GRIMP IMPORT ANALYSIS",
+        "=" * 70,
+        f"Package: {package_path}",
+        f"Modules analyzed: {module_count}",
+        "",
+    ]
+
+
+def _format_cycles_section(cycles: list[list[str]]) -> list[str]:
+    """Format the circular dependencies section."""
+    if not cycles:
+        return ["No circular dependencies found.", ""]
+
+    lines = [
+        "=" * 70,
+        f"CIRCULAR DEPENDENCIES FOUND: {len(cycles)}",
+        "=" * 70,
+    ]
+    for cycle in cycles:
+        lines.append(f"  {' -> '.join(cycle)}")
+    lines.append("")
+    return lines
+
+
+def _format_coupling_section(
+    metrics: dict[str, dict[str, int]],
+) -> tuple[list[str], dict[str, dict[str, int]]]:
+    """Format the highly coupled modules section."""
+    high_coupling = {
+        k: v for k, v in metrics.items() if v["fan_in"] + v["fan_out"] > 10
+    }
+
+    lines = [
+        "=" * 70,
+        "HIGHLY COUPLED MODULES (>10 total connections)",
+        "=" * 70,
+    ]
+
+    if high_coupling:
+        sorted_coupling = sorted(
+            high_coupling.items(),
+            key=lambda x: x[1]["fan_in"] + x[1]["fan_out"],
+            reverse=True,
+        )
+        for module, stats in sorted_coupling:
+            total = stats["fan_in"] + stats["fan_out"]
+            lines.append(
+                f"  {module}: fan_in={stats['fan_in']}, "
+                f"fan_out={stats['fan_out']} (total={total})"
+            )
+    else:
+        lines.append("  No highly coupled modules found.")
+
+    lines.append("")
+    return lines, high_coupling
+
+
+def _format_leaves_section(
+    metrics: dict[str, dict[str, int]],
+) -> tuple[list[str], list[str]]:
+    """Format the leaf modules section."""
+    leaves = [m for m, v in metrics.items() if v["fan_out"] == 0]
+    if not leaves:
+        return [], leaves
+
+    lines = [
+        "=" * 70,
+        f"LEAF MODULES (no internal imports): {len(leaves)}",
+        "=" * 70,
+    ]
+    for leaf in sorted(leaves)[:20]:
+        lines.append(f"  - {leaf}")
+    if len(leaves) > 20:
+        lines.append(f"  ... and {len(leaves) - 20} more")
+
+    return lines, leaves
+
+
+def _format_summary_section(
+    module_count: int, cycle_count: int, high_coupling_count: int, leaf_count: int
+) -> list[str]:
+    """Format the summary section."""
+    return [
+        "",
+        "=" * 70,
+        "SUMMARY",
+        "=" * 70,
+        f"  Total modules: {module_count}",
+        f"  Circular dependencies: {cycle_count}",
+        f"  Highly coupled modules: {high_coupling_count}",
+        f"  Leaf modules: {leaf_count}",
+    ]
+
+
 def analyze_package(package_path: str) -> tuple[str, int]:
-    """
-    Analyze the package and return formatted output and exit code.
+    """Analyze the package and return formatted output and exit code.
 
     Returns:
         Tuple of (output_text, exit_code)
@@ -102,96 +199,31 @@ def analyze_package(package_path: str) -> tuple[str, int]:
     exit_code = 0
 
     try:
-        # Build the import graph
-        # VUW-CIRCDEP-001: Exclude TYPE_CHECKING imports to avoid false positive cycles
-        # TYPE_CHECKING imports are not executed at runtime, so they don't cause real cycles
+        # Build the import graph (exclude TYPE_CHECKING imports to avoid false positives)
         graph = grimp.build_graph(package_path, exclude_type_checking_imports=True)
         modules = list(graph.modules)
 
-        output_lines.extend(
-            (
-                "=" * 70,
-                "GRIMP IMPORT ANALYSIS",
-                "=" * 70,
-                f"Package: {package_path}",
-                f"Modules analyzed: {len(modules)}",
-                "",
-            )
-        )
+        output_lines.extend(_format_header_section(package_path, len(modules)))
 
-        # Find circular dependencies
+        # Analyze and format circular dependencies
         cycles = find_circular_dependencies(graph)
+        output_lines.extend(_format_cycles_section(cycles))
         if cycles:
-            output_lines.extend(
-                (
-                    "=" * 70,
-                    f"CIRCULAR DEPENDENCIES FOUND: {len(cycles)}",
-                    "=" * 70,
-                )
-            )
-            for cycle in cycles:
-                output_lines.append(f"  {' -> '.join(cycle)}")
-            output_lines.append("")
             exit_code = 1
-        else:
-            output_lines.extend(("No circular dependencies found.", ""))
 
-        # Calculate coupling metrics
+        # Calculate and format coupling metrics
         metrics = calculate_coupling_metrics(graph)
+        coupling_lines, high_coupling = _format_coupling_section(metrics)
+        output_lines.extend(coupling_lines)
 
-        # Find highly coupled modules (fan_in + fan_out > 10)
-        high_coupling = {
-            k: v for k, v in metrics.items() if v["fan_in"] + v["fan_out"] > 10
-        }
+        # Format leaf modules
+        leaves_lines, leaves = _format_leaves_section(metrics)
+        output_lines.extend(leaves_lines)
 
+        # Add summary
         output_lines.extend(
-            (
-                "=" * 70,
-                "HIGHLY COUPLED MODULES (>10 total connections)",
-                "=" * 70,
-            )
-        )
-        if high_coupling:
-            sorted_coupling = sorted(
-                high_coupling.items(),
-                key=lambda x: x[1]["fan_in"] + x[1]["fan_out"],
-                reverse=True,
-            )
-            for module, stats in sorted_coupling:
-                total = stats["fan_in"] + stats["fan_out"]
-                output_lines.append(
-                    f"  {module}: fan_in={stats['fan_in']}, "
-                    f"fan_out={stats['fan_out']} (total={total})"
-                )
-        else:
-            output_lines.append("  No highly coupled modules found.")
-        output_lines.append("")
-
-        # Show leaf modules (no outbound imports within package)
-        leaves = [m for m, v in metrics.items() if v["fan_out"] == 0]
-        if leaves:
-            output_lines.extend(
-                (
-                    "=" * 70,
-                    f"LEAF MODULES (no internal imports): {len(leaves)}",
-                    "=" * 70,
-                )
-            )
-            for leaf in sorted(leaves)[:20]:
-                output_lines.append(f"  - {leaf}")
-            if len(leaves) > 20:
-                output_lines.append(f"  ... and {len(leaves) - 20} more")
-        output_lines.extend(
-            (
-                "",
-                # Summary
-                "=" * 70,
-                "SUMMARY",
-                "=" * 70,
-                f"  Total modules: {len(modules)}",
-                f"  Circular dependencies: {len(cycles)}",
-                f"  Highly coupled modules: {len(high_coupling)}",
-                f"  Leaf modules: {len(leaves)}",
+            _format_summary_section(
+                len(modules), len(cycles), len(high_coupling), len(leaves)
             )
         )
 

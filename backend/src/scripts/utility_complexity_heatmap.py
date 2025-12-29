@@ -137,7 +137,8 @@ def scan_codebase(path: Path, threshold: int = 10) -> dict[str, Any]:
     return results
 
 
-def main() -> None:
+def _parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Generate complexity heatmap")
     parser.add_argument("--path", default="src", help="Path to analyze")
     parser.add_argument(
@@ -165,110 +166,141 @@ def main() -> None:
         default=0,
         help="Limit results per section (0 = no limit, show all)",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def _format_summary_section(summary: dict[str, Any]) -> list[str]:
+    """Format the summary section of the report."""
+    return [
+        "=" * 70,
+        "COMPLEXITY HEATMAP",
+        "=" * 70,
+        "\nSummary:",
+        f"  Files analyzed: {summary['total_files']}",
+        f"  Average maintainability index: {summary['avg_mi']}",
+        f"  High-complexity functions (CC >= {summary['threshold']}): "
+        f"{summary['high_complexity_count']}",
+    ]
+
+
+def _format_hotspots_section(hotspots: list[dict[str, Any]], limit: int) -> list[str]:
+    """Format the hotspots section of the report."""
+    if not hotspots:
+        return ["\nNo high-complexity functions found."]
+
+    lines = [
+        f"\n{'=' * 70}",
+        "HOTSPOTS (Functions needing refactoring)",
+        "=" * 70,
+    ]
+
+    hotspots_to_show = hotspots[:limit] if limit > 0 else hotspots
+    for h in hotspots_to_show:
+        lines.append(
+            f"  [{h['rank']}] CC={h['complexity']:2d}  "
+            f"{h['file']}:{h['line']} {h['function']}"
+        )
+
+    if limit > 0 and len(hotspots) > limit:
+        remaining = len(hotspots) - limit
+        lines.append(f"  ... and {remaining} more hotspots")
+
+    return lines
+
+
+def _format_low_mi_section(files: list[dict[str, Any]], limit: int) -> list[str]:
+    """Format the low maintainability files section."""
+    low_mi = [f for f in files if f["mi"] < 50]
+    if not low_mi:
+        return []
+
+    lines = [
+        f"\n{'=' * 70}",
+        "LOW MAINTAINABILITY FILES (MI < 50)",
+        "=" * 70,
+    ]
+
+    sorted_low_mi = sorted(low_mi, key=operator.itemgetter("mi"))
+    files_to_show = sorted_low_mi[:limit] if limit > 0 else sorted_low_mi
+
+    for f in files_to_show:
+        lines.append(f"  MI={f['mi']:5.1f}  {f['path']}")
+
+    if limit > 0 and len(low_mi) > limit:
+        lines.append(f"  ... and {len(low_mi) - limit} more files")
+
+    return lines
+
+
+def _format_distribution_section(files: list[dict[str, Any]]) -> list[str]:
+    """Format the maintainability distribution section."""
+    high_mi_count = len([f for f in files if f["mi"] >= 80])
+    good_mi_count = len([f for f in files if 50 <= f["mi"] < 80])
+    low_mi_count = len([f for f in files if f["mi"] < 50])
+
+    return [
+        f"\n{'=' * 70}",
+        "MAINTAINABILITY DISTRIBUTION",
+        "=" * 70,
+        f"  Files with MI >= 80 (Excellent): {high_mi_count}",
+        f"  Files with MI 50-79 (Good): {good_mi_count}",
+        f"  Files with MI < 50 (Needs work): {low_mi_count}",
+    ]
+
+
+def _format_text_output(results: dict[str, Any], limit: int) -> str:
+    """Format results as human-readable text."""
+    lines: list[str] = []
+    lines.extend(_format_summary_section(results["summary"]))
+    lines.extend(_format_hotspots_section(results["hotspots"], limit))
+    lines.extend(_format_low_mi_section(results["files"], limit))
+    lines.extend(_format_distribution_section(results["files"]))
+    return "\n".join(lines)
+
+
+def _format_output(results: dict[str, Any], output_format: str, limit: int) -> str:
+    """Format results based on output format."""
+    if output_format == "json":
+        return json.dumps(results, indent=2)
+    return _format_text_output(results, limit)
+
+
+def _determine_output_path(args: argparse.Namespace) -> Path:
+    """Determine the output file path based on arguments."""
+    if args.output != "auto":
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        return output_path
+
+    reports_dir = Path("docs/reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    ext = "json" if args.format == "json" else "txt"
+    return reports_dir / f"complexity-heatmap-{timestamp}.{ext}"
+
+
+def _write_output(content: str, args: argparse.Namespace) -> None:
+    """Write output to file or stdout."""
+    if args.stdout:
+        print(content)
+        return
+
+    output_path = _determine_output_path(args)
+    output_path.write_text(content, encoding="utf-8")
+    print(f"Report written to: {output_path}")
+
+
+def main() -> None:
+    """Main entry point for complexity heatmap generation."""
+    args = _parse_arguments()
 
     if not HAS_RADON:
         print("ERROR: radon not installed. Run: pip install radon")
         return
 
     results = scan_codebase(Path(args.path), args.threshold)
-
-    # Generate output
-    output_lines: list[str] = []
-
-    if args.format == "json":
-        output_lines.append(json.dumps(results, indent=2))
-    else:
-        s = results["summary"]
-        output_lines.extend(
-            (
-                "=" * 70,
-                "COMPLEXITY HEATMAP",
-                "=" * 70,
-                "\nSummary:",
-                f"  Files analyzed: {s['total_files']}",
-                f"  Average maintainability index: {s['avg_mi']}",
-                f"  High-complexity functions (CC >= {s['threshold']}): "
-                f"{s['high_complexity_count']}",
-            )
-        )
-
-        if results["hotspots"]:
-            output_lines.extend(
-                (
-                    f"\n{'=' * 70}",
-                    "HOTSPOTS (Functions needing refactoring)",
-                    "=" * 70,
-                )
-            )
-            hotspots_to_show = (
-                results["hotspots"][: args.limit]
-                if args.limit > 0
-                else results["hotspots"]
-            )
-            for h in hotspots_to_show:
-                output_lines.append(
-                    f"  [{h['rank']}] CC={h['complexity']:2d}  "
-                    f"{h['file']}:{h['line']} {h['function']}"
-                )
-            if args.limit > 0 and len(results["hotspots"]) > args.limit:
-                remaining = len(results["hotspots"]) - args.limit
-                output_lines.append(f"  ... and {remaining} more hotspots")
-        else:
-            output_lines.append("\nNo high-complexity functions found.")
-
-        # Low maintainability files
-        low_mi = [f for f in results["files"] if f["mi"] < 50]
-        if low_mi:
-            output_lines.extend(
-                (
-                    f"\n{'=' * 70}",
-                    "LOW MAINTAINABILITY FILES (MI < 50)",
-                    "=" * 70,
-                )
-            )
-            sorted_low_mi = sorted(low_mi, key=operator.itemgetter("mi"))
-            files_to_show = (
-                sorted_low_mi[: args.limit] if args.limit > 0 else sorted_low_mi
-            )
-            for f in files_to_show:
-                output_lines.append(f"  MI={f['mi']:5.1f}  {f['path']}")
-            if args.limit > 0 and len(low_mi) > args.limit:
-                output_lines.append(f"  ... and {len(low_mi) - args.limit} more files")
-
-        # High maintainability summary
-        high_mi = [f for f in results["files"] if f["mi"] >= 80]
-        good_mi_count = len([f for f in results["files"] if 50 <= f["mi"] < 80])
-        output_lines.extend(
-            (
-                f"\n{'=' * 70}",
-                "MAINTAINABILITY DISTRIBUTION",
-                "=" * 70,
-                f"  Files with MI >= 80 (Excellent): {len(high_mi)}",
-                f"  Files with MI 50-79 (Good): {good_mi_count}",
-                f"  Files with MI < 50 (Needs work): {len(low_mi)}",
-            )
-        )
-
-    output_content = "\n".join(output_lines)
-
-    # Write to file or stdout
-    if args.stdout:
-        print(output_content)
-    else:
-        # Determine output path
-        if args.output == "auto":
-            reports_dir = Path("docs/reports")
-            reports_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-            ext = "json" if args.format == "json" else "txt"
-            output_path = reports_dir / f"complexity-heatmap-{timestamp}.{ext}"
-        else:
-            output_path = Path(args.output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        output_path.write_text(output_content, encoding="utf-8")
-        print(f"Report written to: {output_path}")
+    output_content = _format_output(results, args.format, args.limit)
+    _write_output(output_content, args)
 
 
 if __name__ == "__main__":

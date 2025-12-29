@@ -8,7 +8,7 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
     "pydantic-ai>=0.4.9",
-    "setuptools-rust>=1.11.1",
+    "pydantic>=2.0.0",
     "sqlalchemy>=2.0.25",
     "aiosqlite>=0.19.0",
     "greenlet>=0.4.17",
@@ -16,8 +16,6 @@ dependencies = [
     "yt-dlp>=2025.7.21",
     "moviepy>=2.2.1",
     "opencv-python>=4.8.0",
-    "srt-equalizer>=0.1.10",
-    "srt>=3.5.3",
     "mediapipe>=0.10.0",
     "numpy>=1.24.0",
     "matplotlib>=3.8.0",
@@ -26,6 +24,9 @@ dependencies = [
     "sse-starlette>=1.6.5",
     "parakeet-mlx>=0.1.0",
     "playwright>=1.57.0",
+    "groq>=0.4.0",
+    "openai>=1.0.0",
+    "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
@@ -35,9 +36,19 @@ test = [
     "pytest-cov>=4.1.0",
     "httpx>=0.24.0",
 ]
+dev = [
+    "radon>=6.0.0",
+    "grimp>=3.0.0",
+]
 
 [tool.uv]
 package = true
+
+[tool.deptry]
+# Ignore driver dependencies used by SQLAlchemy internally
+# DEP002: aiosqlite/greenlet are SQLAlchemy driver deps, test deps are in optional-dependencies
+# DEP003: mlx is transitive from parakeet-mlx
+per_rule_ignores = {"DEP002" = ["aiosqlite", "greenlet", "pytest", "pytest-asyncio", "pytest-cov", "httpx"], "DEP003" = ["mlx"]}
 
 [project.scripts]
 run-dev = "src.main:run_dev"

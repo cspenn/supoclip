@@ -1089,11 +1089,89 @@ class SubtitleTextClipCreator:
                     break  # Return what we have
 
 
+def _find_closest_word_index(words: list[dict], target_ms: int) -> int:
+    """Find the index of the word closest to the target timestamp.
+
+    Args:
+        words: List of word dictionaries with 'start' timestamps
+        target_ms: Target timestamp in milliseconds
+
+    Returns:
+        Index of closest word, or -1 if no words found
+    """
+    closest_idx = -1
+    min_diff = float("inf")
+
+    for i, word in enumerate(words):
+        word_start = word.get("start", 0)
+        diff = abs(word_start - target_ms)
+        if diff < min_diff:
+            min_diff = diff
+            closest_idx = i
+
+    return closest_idx
+
+
+def _is_sentence_start_word(words: list[dict], index: int) -> bool:
+    """Check if the word at the given index is a valid sentence start.
+
+    A word is a sentence start if:
+    1. It's the first word (index 0), OR
+    2. It starts with an uppercase letter AND the previous word ends with [.!?]
+
+    Args:
+        words: List of word dictionaries
+        index: Index of the word to check
+
+    Returns:
+        True if the word is a valid sentence start
+    """
+    if index == 0:
+        return True
+
+    word_text = words[index].get("text", "").strip()
+    if not word_text or not word_text[0].isupper():
+        return False
+
+    prev_text = words[index - 1].get("text", "").strip()
+    return bool(prev_text and prev_text[-1] in [".", "!", "?"])
+
+
+def _find_sentence_start_backwards(
+    words: list[dict], start_idx: int, target_ms: int, window_ms: int
+) -> int:
+    """Search backwards from start_idx to find a sentence start within the window.
+
+    Args:
+        words: List of word dictionaries
+        start_idx: Index to start searching from
+        target_ms: Original target timestamp in milliseconds
+        window_ms: Maximum window to search backwards in milliseconds
+
+    Returns:
+        Index of the sentence start word, or -1 if none found
+    """
+    for i in range(start_idx, -1, -1):
+        curr_start = words[i].get("start", 0)
+
+        # Stop if we've gone too far back from the target start time
+        if (target_ms - curr_start) > window_ms:
+            break
+
+        # Skip if we've gone forward significantly (edge case)
+        if (curr_start - target_ms) > 2000:
+            continue
+
+        if _is_sentence_start_word(words, i):
+            return i
+
+    return -1
+
+
 def snap_segment_to_sentence_start(
     video_path: Path, start_time_seconds: float, search_window_seconds: float = 2.0
 ) -> Tuple[float, str, str]:
-    """
-    Find the nearest valid sentence start to the given timestamp.
+    """Find the nearest valid sentence start to the given timestamp.
 
     Strategies:
     1. Find the word corresponding to the start time.
@@ -1113,63 +1191,20 @@ def snap_segment_to_sentence_start(
     start_ms = int(start_time_seconds * 1000)
     window_ms = int(search_window_seconds * 1000)
 
-    # 1. Find the word index closest to start_time
-    closest_idx = -1
-    min_diff = float("inf")
-
-    for i, word in enumerate(words):
-        word_start = word.get("start", 0)
-        diff = abs(word_start - start_ms)
-        if diff < min_diff:
-            min_diff = diff
-            closest_idx = i
-
+    # Find the word index closest to start_time
+    closest_idx = _find_closest_word_index(words, start_ms)
     if closest_idx == -1:
         return start_time_seconds, "", "No words found"
 
-    # 2. Search backwards for sentence start
-    # We look from closest_idx down to 0, but stop if we go beyond the window
-    initial_word_start = words[closest_idx].get("start", 0)
-
-    best_start_idx = -1
-
-    # Check current and previous words
-    for i in range(closest_idx, -1, -1):
-        word = words[i]
-        curr_start = word.get("start", 0)
-        text = word.get("text", "").strip()
-
-        # Stop if we've gone too far back from the TARGET start time
-        if (start_ms - curr_start) > window_ms:
-            break
-
-        # Stop if we've gone forward significantly (shouldn't happen much)
-        if (curr_start - start_ms) > 2000:
-            continue
-
-        # Check for sentence start characteristics
-        is_candidate = False
-
-        if i == 0:
-            is_candidate = True
-        else:
-            prev_word = words[i - 1]
-            prev_text = prev_word.get("text", "").strip()
-
-            # Condition: Starts with Capital AND Previous ends with punctuation
-            if text and text[0].isupper():
-                if prev_text and prev_text[-1] in [".", "!", "?"]:
-                    is_candidate = True
-
-        if is_candidate:
-            best_start_idx = i
-            break
+    # Search backwards for sentence start within the window
+    best_start_idx = _find_sentence_start_backwards(
+        words, closest_idx, start_ms, window_ms
+    )
 
     if best_start_idx != -1:
         new_word = words[best_start_idx]
         new_start_ms = new_word.get("start", 0)
         new_start_seconds = new_start_ms / 1000.0
-
         return (
             new_start_seconds,
             new_word.get("text", ""),
@@ -1369,6 +1404,83 @@ def create_assemblyai_subtitles(
     return subtitle_clips
 
 
+def _add_logo_overlay(
+    final_clips: list,
+    logo_path: Optional[str],
+    logo_position: str,
+    video_width: int,
+    video_height: int,
+    clip_duration: float,
+) -> None:
+    """Add logo overlay to clip if provided.
+
+    Modifies final_clips list in-place by appending logo clip if successful.
+
+    Args:
+        final_clips: List of clips to composite (modified in-place)
+        logo_path: Path to logo image file
+        logo_position: Corner position ("top-left", "top-right", etc.)
+        video_width: Width of the video for positioning
+        video_height: Height of the video for positioning
+        clip_duration: Duration of the clip
+    """
+    if not logo_path:
+        return
+
+    logger.info(f"VIDEO_UTILS: Processing logo_path='{logo_path}'")
+
+    # Convert string to Path if needed
+    logo_path_obj = Path(logo_path) if isinstance(logo_path, str) else logo_path
+    logger.info(f"VIDEO_UTILS: Exists on disk? {logo_path_obj.exists()}")
+
+    # Ensure absolute path
+    if not logo_path_obj.is_absolute():
+        logo_path_obj = logo_path_obj.resolve()
+        logger.info(f"Converted to absolute path: {logo_path_obj}")
+
+    if not logo_path_obj.exists():
+        logger.warning(f"Logo file NOT found at: {logo_path_obj}")
+        return
+
+    logger.info(f"Logo file found, adding overlay from: {logo_path_obj}")
+    try:
+        from moviepy import ImageClip
+
+        logo_clip = ImageClip(str(logo_path_obj))
+
+        # Calculate logo position based on corner
+        logo_width, logo_height = logo_clip.size
+        padding = 20  # pixels from edge
+
+        position_map = {
+            "top-left": (padding, padding),
+            "top-right": (video_width - logo_width - padding, padding),
+            "bottom-left": (padding, video_height - logo_height - padding),
+            "bottom-right": (
+                video_width - logo_width - padding,
+                video_height - logo_height - padding,
+            ),
+        }
+
+        logo_position_coords = position_map.get(
+            logo_position, position_map["top-right"]
+        )
+        logo_clip = logo_clip.with_duration(clip_duration).with_position(
+            logo_position_coords
+        )
+        final_clips.append(logo_clip)
+
+        logger.info(
+            f"Added logo overlay at {logo_position} with coords: {logo_position_coords}"
+        )
+        logger.info(
+            f"Logo size: {logo_width}x{logo_height}, Video size: {video_width}x{video_height}"
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to add logo overlay: {e}")
+
+
 def create_optimized_clip(
     video_path: Path,
     start_time: float,
@@ -1462,61 +1574,14 @@ def create_optimized_clip(
             final_clips.extend(subtitle_clips)
 
         # Add logo overlay if provided
-        if logo_path:
-            logger.info(f"VIDEO_UTILS: Processing logo_path='{logo_path}'")
-            if isinstance(logo_path, str):
-                logger.info(f"VIDEO_UTILS: Exists on disk? {Path(logo_path).exists()}")
-            logger.info(f"Logo path provided: {logo_path}")
-            # Convert string to Path if needed
-            logo_path_obj = Path(logo_path) if isinstance(logo_path, str) else logo_path
-
-            # Ensure absolute path
-            if not logo_path_obj.is_absolute():
-                logo_path_obj = logo_path_obj.resolve()
-                logger.info(f"Converted to absolute path: {logo_path_obj}")
-
-            if logo_path_obj.exists():
-                logger.info(f"Logo file found, adding overlay from: {logo_path_obj}")
-                try:
-                    from moviepy import ImageClip
-
-                    logo_clip = ImageClip(str(logo_path_obj))
-
-                    # Calculate logo position based on corner
-                    logo_width, logo_height = logo_clip.size
-                    padding = 20  # pixels from edge
-
-                    position_map = {
-                        "top-left": (padding, padding),
-                        "top-right": (new_width - logo_width - padding, padding),
-                        "bottom-left": (padding, new_height - logo_height - padding),
-                        "bottom-right": (
-                            new_width - logo_width - padding,
-                            new_height - logo_height - padding,
-                        ),
-                    }
-
-                    logo_position_coords = position_map.get(
-                        logo_position, position_map["top-right"]
-                    )
-
-                    logo_clip = logo_clip.with_duration(
-                        cropped_clip.duration
-                    ).with_position(logo_position_coords)
-
-                    final_clips.append(logo_clip)
-
-                    logger.info(
-                        f"Added logo overlay at {logo_position} with coords: {logo_position_coords}"
-                    )
-                    logger.info(
-                        f"Logo size: {logo_width}x{logo_height}, Video size: {new_width}x{new_height}"
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Failed to add logo overlay: {e}")
-            else:
-                logger.warning(f"Logo file NOT found at: {logo_path_obj}")
+        _add_logo_overlay(
+            final_clips,
+            logo_path,
+            logo_position,
+            new_width,
+            new_height,
+            cropped_clip.duration,
+        )
 
         # Compose and encode
         final_clip = (

@@ -57,6 +57,68 @@ async def get_db():
 # Initialize database
 
 
+def _parse_sql_statements(sql: str) -> list[str]:
+    """Parse SQL file into individual statements, respecting BEGIN...END blocks.
+
+    SQLite requires executing statements one by one. This parser uses a simple
+    state machine to avoid splitting inside BEGIN...END blocks (common in triggers).
+
+    Args:
+        sql: Raw SQL file content
+
+    Returns:
+        List of individual SQL statements
+    """
+    statements = []
+    current_stmt: list[str] = []
+    depth = 0
+
+    for line in sql.splitlines():
+        clean_line = line.strip()
+        if not clean_line or clean_line.startswith("--"):
+            continue
+
+        current_stmt.append(line)
+
+        # Simple token-based depth tracking for BEGIN...END blocks
+        upper_line = clean_line.upper()
+        if "BEGIN" in upper_line:
+            depth += 1
+        if "END" in upper_line:
+            depth -= 1
+
+        if clean_line.endswith(";") and depth <= 0:
+            statements.append("\n".join(current_stmt))
+            current_stmt = []
+
+    if current_stmt:
+        statements.append("\n".join(current_stmt))
+
+    return statements
+
+
+async def _apply_migration_file(conn, migration_path: Path, description: str) -> None:
+    """Apply a single migration file.
+
+    Args:
+        conn: Database connection
+        migration_path: Path to the SQL migration file
+        description: Description for logging
+    """
+    if not migration_path.exists():
+        return
+
+    with open(migration_path) as f:
+        sql = f.read()
+
+    statements = _parse_sql_statements(sql)
+    for statement in statements:
+        if statement.strip():
+            await conn.execute(text(statement))
+
+    logger.info(f"✅ Applied {description} migration")
+
+
 async def init_db() -> None:
     """Initialize database and apply migrations."""
     async with engine.begin() as conn:
@@ -68,41 +130,7 @@ async def init_db() -> None:
             migration_path = (
                 Path(__file__).parent.parent / "migrations" / "002_add_system_fonts.sql"
             )
-            if migration_path.exists():
-                with open(migration_path) as f:
-                    sql = f.read()
-
-                # For SQLite, we need to execute statements one by one.
-                # We use a state machine to avoid splitting inside BEGIN...END blocks (common in triggers).
-
-                statements = []
-                current_stmt = []
-                depth = 0
-                for line in sql.splitlines():
-                    clean_line = line.strip()
-                    if not clean_line or clean_line.startswith("--"):
-                        continue
-
-                    current_stmt.append(line)
-                    # Simple token-based depth tracking
-                    upper_line = clean_line.upper()
-                    if "BEGIN" in upper_line:
-                        depth += 1
-                    if "END" in upper_line:
-                        depth -= 1
-
-                    if clean_line.endswith(";") and depth <= 0:
-                        statements.append("\n".join(current_stmt))
-                        current_stmt = []
-
-                if current_stmt:
-                    statements.append("\n".join(current_stmt))
-
-                for statement in statements:
-                    if statement.strip():
-                        await conn.execute(text(statement))
-
-                logger.info("✅ Applied system_fonts migration")
+            await _apply_migration_file(conn, migration_path, "system_fonts")
         except Exception as e:
             logger.warning(f"⚠️ Migration already applied or failed: {e}")
 

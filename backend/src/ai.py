@@ -400,6 +400,70 @@ async def _analyze_with_standard_model(
     return final_analysis
 
 
+def _validate_transcript(transcript: str) -> None:
+    """Validate transcript input.
+
+    Args:
+        transcript: The transcript to validate
+
+    Raises:
+        ValueError: If transcript is empty or too short
+    """
+    if not transcript or len(transcript.strip()) == 0:
+        logger.error("Cannot analyze empty transcript")
+        raise ValueError(
+            "Cannot analyze empty transcript - transcription may have failed"
+        )
+
+    if len(transcript.strip()) < 50:
+        logger.error(
+            f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure"
+        )
+        raise ValueError(
+            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
+        )
+
+
+def _build_analysis_prompt(
+    transcript: str, min_length: int, max_length: int, custom_prompt: str | None
+) -> str:
+    """Build the analysis prompt for the AI.
+
+    Args:
+        transcript: The transcript to analyze
+        min_length: Minimum clip length
+        max_length: Maximum clip length
+        custom_prompt: Optional custom instructions
+
+    Returns:
+        Formatted analysis prompt
+    """
+    prompt_parts = [
+        "Analyze this video transcript and identify the most engaging segments for short-form content.",
+        f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
+    ]
+
+    if custom_prompt:
+        prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
+
+    prompt_parts.append(
+        "\nFind segments that would be compelling as standalone clips for social media."
+    )
+    prompt_parts.append(f"\nTranscript:\n{transcript}")
+
+    return "\n".join(prompt_parts)
+
+
+def _should_use_structured_model() -> bool:
+    """Check if we should use Groq Structured Outputs API.
+
+    Returns:
+        True if using Llama 4 Scout/Maverick models
+    """
+    model_str = config.llm if not config.local_llm_enabled else ""
+    return "llama-4-scout" in model_str or "llama-4-maverick" in model_str
+
+
 async def get_most_relevant_parts_by_transcript(
     transcript: str,
     min_length: int = 10,
@@ -412,47 +476,20 @@ async def get_most_relevant_parts_by_transcript(
     if custom_prompt:
         logger.info(f"Using custom AI prompt: {custom_prompt[:100]}...")
 
-    # Guard against empty transcripts to prevent AI hallucination
-    if not transcript or len(transcript.strip()) == 0:
-        logger.error("Cannot analyze empty transcript")
-        raise ValueError(
-            "Cannot analyze empty transcript - transcription may have failed"
-        )
-
-    # Additional safety check: transcript should have reasonable length
-    if len(transcript.strip()) < 50:
-        logger.error(
-            f"Transcript too short ({len(transcript)} chars) - may indicate transcription failure"
-        )
-        raise ValueError(
-            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
-        )
+    # Validate transcript input
+    _validate_transcript(transcript)
 
     try:
-        # Build the dynamic prompt
-        prompt_parts = [
-            "Analyze this video transcript and identify the most engaging segments for short-form content.",
-            f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
-        ]
-
-        if custom_prompt:
-            prompt_parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}")
-
-        prompt_parts.append(
-            "\nFind segments that would be compelling as standalone clips for social media."
-        )
-        prompt_parts.append(f"\nTranscript:\n{transcript}")
-
-        analysis_prompt = "\n".join(prompt_parts)
-
-        # Check if using Llama 4 Scout - use Groq Structured Outputs instead of tool calling
-        model_str = config.llm if not config.local_llm_enabled else ""
-        if "llama-4-scout" in model_str or "llama-4-maverick" in model_str:
+        # Route to appropriate model
+        if _should_use_structured_model():
             return await _analyze_with_structured_model(
                 transcript, min_length, max_length, custom_prompt
             )
 
         # For all other models, use Pydantic AI (tool calling)
+        analysis_prompt = _build_analysis_prompt(
+            transcript, min_length, max_length, custom_prompt
+        )
         return await _analyze_with_standard_model(analysis_prompt)
 
     except ValueError as e:

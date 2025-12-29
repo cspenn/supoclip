@@ -158,6 +158,83 @@ def _analyze_response_durations(segments: List[TranscriptSegment]) -> List[float
     return durations
 
 
+def _validate_transcript_input(transcript: str) -> None:
+    """Validate transcript input before analysis.
+
+    Args:
+        transcript: The transcript to validate
+
+    Raises:
+        ValueError: If transcript is empty or too short
+    """
+    if not transcript or len(transcript.strip()) == 0:
+        logger.error("Cannot analyze empty transcript")
+        raise ValueError(
+            "Cannot analyze empty transcript - transcription may have failed"
+        )
+
+    if len(transcript.strip()) < 50:
+        logger.error(f"Transcript too short ({len(transcript)} chars)")
+        raise ValueError(
+            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
+        )
+
+
+def _build_final_analysis(
+    analysis: TranscriptAnalysis,
+    validated_segments: List[TranscriptSegment],
+    durations: List[float],
+    min_length: int,
+    max_length: int,
+) -> TranscriptAnalysis:
+    """Build the final analysis result from validated segments.
+
+    Args:
+        analysis: Original analysis from API
+        validated_segments: Validated segment list
+        durations: List of segment durations for error reporting
+        min_length: Minimum clip length
+        max_length: Maximum clip length
+
+    Returns:
+        Final TranscriptAnalysis
+
+    Raises:
+        ValueError: If no valid segments found
+    """
+    # Sort by relevance
+    validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
+
+    if not validated_segments:
+        avg_duration_str = (
+            f"{sum(durations) / len(durations):.1f}s" if durations else "N/A"
+        )
+        logger.error(
+            "ERROR: All AI-identified segments were rejected during validation"
+        )
+        logger.error(
+            f"Original segments from AI: {len(analysis.most_relevant_segments)}"
+        )
+        raise ValueError(
+            f"No valid segments found. All {len(analysis.most_relevant_segments)} segments rejected "
+            f"(too short or AI model fragments). Requested: {min_length}-{max_length}s. "
+            f"AI returned average: {avg_duration_str}. "
+            f"Recommendation: Try shorter clip durations (10-45 seconds work best for viral content)."
+        )
+
+    final_analysis = TranscriptAnalysis(
+        most_relevant_segments=validated_segments,
+        summary=analysis.summary,
+        key_topics=analysis.key_topics,
+    )
+
+    logger.info(f"Selected {len(validated_segments)} segments for processing")
+    if validated_segments:
+        logger.info(f"Top segment score: {validated_segments[0].relevance_score:.2f}")
+
+    return final_analysis
+
+
 def _validate_and_adjust_segments(
     segments: List[TranscriptSegment], min_length: int, max_length: int
 ) -> List[TranscriptSegment]:
@@ -275,18 +352,8 @@ async def analyze_transcript_structured(
         ValueError: If transcript is empty or too short
         Exception: If API call fails
     """
-    # Guard against empty transcripts
-    if not transcript or len(transcript.strip()) == 0:
-        logger.error("Cannot analyze empty transcript")
-        raise ValueError(
-            "Cannot analyze empty transcript - transcription may have failed"
-        )
-
-    if len(transcript.strip()) < 50:
-        logger.error(f"Transcript too short ({len(transcript)} chars)")
-        raise ValueError(
-            f"Transcript too short ({len(transcript)} chars) - minimum 50 characters required"
-        )
+    # Validate input
+    _validate_transcript_input(transcript)
 
     # Initialize Groq client
     api_key = os.getenv("GROQ_API_KEY")
@@ -348,40 +415,10 @@ async def analyze_transcript_structured(
             analysis.most_relevant_segments, min_length, max_length
         )
 
-        # Sort by relevance
-        validated_segments.sort(key=lambda x: x.relevance_score, reverse=True)
-
-        if not validated_segments:
-            avg_duration_str = (
-                f"{sum(durations) / len(durations):.1f}s" if durations else "N/A"
-            )
-
-            logger.error(
-                "ERROR: All AI-identified segments were rejected during validation"
-            )
-            logger.error(
-                f"Original segments from AI: {len(analysis.most_relevant_segments)}"
-            )
-
-            raise ValueError(
-                f"No valid segments found. All {len(analysis.most_relevant_segments)} segments rejected (too short or AI model fragments). "
-                f"Requested: {min_length}-{max_length}s. AI returned average: {avg_duration_str}. "
-                f"Recommendation: Try shorter clip durations (10-45 seconds work best for viral content)."
-            )
-
-        final_analysis = TranscriptAnalysis(
-            most_relevant_segments=validated_segments,
-            summary=analysis.summary,
-            key_topics=analysis.key_topics,
+        # Build and return final analysis
+        return _build_final_analysis(
+            analysis, validated_segments, durations, min_length, max_length
         )
-
-        logger.info(f"Selected {len(validated_segments)} segments for processing")
-        if validated_segments:
-            logger.info(
-                f"Top segment score: {validated_segments[0].relevance_score:.2f}"
-            )
-
-        return final_analysis
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON response: {e}")

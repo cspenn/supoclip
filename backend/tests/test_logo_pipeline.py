@@ -303,12 +303,13 @@ def test_logo_overlay_code_exists():
     content = video_utils_path.read_text()
 
     # Check for key parts of logo overlay code
+    # Note: Refactored code uses guard clauses (early returns) instead of if blocks
     checks = [
-        ("if logo_path:", "Logo path check"),
-        ("if logo_path_obj.exists():", "Logo file exists check"),
+        ("if not logo_path:", "Logo path check (guard clause)"),
+        ("if not logo_path_obj.exists():", "Logo file exists check (guard clause)"),
         ("ImageClip(str(logo_path_obj))", "Logo ImageClip creation"),
-        ("logo_position_coords = position_map.get(", "Logo position calculation"),
-        ('Added logo overlay at', "Logo overlay success log"),
+        ("position_map.get(", "Logo position calculation"),
+        ('Logo file found, adding overlay', "Logo overlay success log"),
         ('Failed to add logo overlay', "Logo overlay error log"),
     ]
 

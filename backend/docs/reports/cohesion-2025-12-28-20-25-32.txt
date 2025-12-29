@@ -1,0 +1,3 @@
+usage: cohesion [-h] [-v | -x] (-f FILES [FILES ...] | -d DIRECTORY)
+                [-b BELOW | -a ABOVE]
+cohesion: error: one of the arguments -f/--files -d/--directory is required

@@ -19,7 +19,14 @@ from ..ai import get_most_relevant_parts_by_transcript
 from ..config import Config
 from ..database import AsyncSessionLocal
 from ..models import GeneratedClip, Source, Task
-from ..video_utils import create_clips_with_transitions, get_video_transcript
+from ..video_utils import (
+    create_clips_with_transitions,
+    extract_text_from_cache,
+    format_ms_to_timestamp_precise,
+    get_video_transcript,
+    parse_timestamp_to_seconds,
+    snap_segment_to_sentence_start,
+)
 from ..youtube_utils import download_youtube_video, get_youtube_video_title
 
 logger = logging.getLogger(__name__)
@@ -110,6 +117,80 @@ class AsyncVideoProcessingService:
         logger.info(f"[SERVICE=ASYNC] Task created with ID: {task.id}")
         return task.id
 
+    @staticmethod
+    def _resolve_video_path(source_type: str, raw_source: dict[str, Any]) -> Path:
+        """Resolve video path based on source type.
+
+        Args:
+            source_type: Type of source ("youtube" or "upload")
+            raw_source: Source information with URL
+
+        Returns:
+            Path to the video file
+
+        Raises:
+            Exception: If video cannot be resolved
+        """
+        if source_type == "youtube":
+            logger.info("[SERVICE=ASYNC] Downloading YouTube video...")
+            video_path = download_youtube_video(raw_source["url"])
+            if not video_path:
+                raise Exception("Failed to download video")
+            logger.info(f"[SERVICE=ASYNC] Video downloaded to: {video_path}")
+            return video_path
+
+        video_path = raw_source["url"]
+        if isinstance(video_path, str) and not Path(video_path).exists():
+            raise Exception("Uploaded video file not found")
+        return Path(video_path) if isinstance(video_path, str) else video_path
+
+    @staticmethod
+    def _apply_verbatim_text_to_segment(
+        segment: dict[str, Any], video_path: Path
+    ) -> None:
+        """Apply verbatim transcript text to a segment, snapping to sentence start.
+
+        Modifies segment in-place.
+
+        Args:
+            segment: Segment dictionary to update
+            video_path: Path to video file
+        """
+        original_start_ts = segment["start_time"]
+        start_sec = parse_timestamp_to_seconds(original_start_ts)
+
+        # Snap to sentence start (within 2 second window)
+        new_start_sec, snap_word, snap_reason = snap_segment_to_sentence_start(
+            video_path, start_sec, search_window_seconds=2.0
+        )
+
+        # Update start time if snapped
+        if abs(new_start_sec - start_sec) > 0.01:
+            new_start_ts = format_ms_to_timestamp_precise(int(new_start_sec * 1000))
+            logger.info(
+                f"[SYNC] Snapped segment start: {original_start_ts} -> {new_start_ts} ({snap_reason})"
+            )
+            segment["start_time"] = new_start_ts
+            segment["original_ai_start_time"] = original_start_ts
+
+        # Extract verbatim text from transcript cache
+        verbatim_text = extract_text_from_cache(
+            video_path,
+            parse_timestamp_to_seconds(segment["start_time"]),
+            parse_timestamp_to_seconds(segment["end_time"]),
+        )
+
+        if verbatim_text:
+            original_ai_text = segment["text"]
+            segment["text"] = verbatim_text
+            logger.info(
+                f"[SYNC] Replaced text: '{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
+            )
+        else:
+            logger.warning(
+                f"[SYNC] Could not extract verbatim text for segment {segment['start_time']} - keeping AI text"
+            )
+
     async def process_video_async(
         self,
         task_id: str,
@@ -168,20 +249,8 @@ class AsyncVideoProcessingService:
 
             logger.info(f"[SERVICE=ASYNC] Task {task_id}: Analyzing video source...")
 
-            # Determine video path based on source type
-            video_path = None
-            if source_data.type == "youtube":
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Downloading YouTube video..."
-                )
-                video_path = download_youtube_video(raw_source["url"])
-                if not video_path:
-                    raise Exception("Failed to download video")
-                logger.info(f"[SERVICE=ASYNC] Video downloaded to: {video_path}")
-            else:
-                video_path = raw_source["url"]
-                if isinstance(video_path, str) and not Path(video_path).exists():
-                    raise Exception("Uploaded video file not found")
+            # Resolve video path based on source type
+            video_path = self._resolve_video_path(source_data.type, raw_source)
 
             # Process video
             if video_path:
@@ -217,6 +286,13 @@ class AsyncVideoProcessingService:
                     }
                     for segment in relevant_parts.most_relevant_segments
                 ]
+
+                # Apply verbatim transcript text to each segment
+                logger.info(
+                    f"[SERVICE=ASYNC] Task {task_id}: Applying verbatim text extraction..."
+                )
+                for segment in relevant_segments_json:
+                    self._apply_verbatim_text_to_segment(segment, video_path)
 
                 logger.info(
                     f"[SERVICE=ASYNC] Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions..."
