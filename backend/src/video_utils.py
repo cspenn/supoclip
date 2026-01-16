@@ -1652,18 +1652,7 @@ def create_clips_from_segments(
             start_seconds = parse_timestamp_to_seconds(segment["start_time"])
             end_seconds = parse_timestamp_to_seconds(segment["end_time"])
 
-            # Snap to nearest sentence start for better audio alignment
-            snapped_start, _, reason = snap_segment_to_sentence_start(
-                video_path, start_seconds
-            )
-            if snapped_start != start_seconds:
-                logger.info(
-                    f"Clip {i + 1}: Snapped start time {start_seconds:.2f}s -> {snapped_start:.2f}s ({reason})"
-                )
-                # Adjust duration if start time moved significantly to preserve end boundary intent
-                # or just let end_seconds stay fixed?
-                # If we move start back, duration increases. This is usually safe and desired (capture the full sentence).
-                start_seconds = snapped_start
+            # Note: Snapping done upstream in video_service_async._apply_verbatim_text_to_segment()
 
             duration = end_seconds - start_seconds
             logger.info(
