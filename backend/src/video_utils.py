@@ -950,6 +950,9 @@ class SubtitleWordFilter:
                             "confidence": word_data.get("confidence", 1.0),
                         }
                     )
+        if relevant_words:
+            first_words = [(w["text"], round(w["start"], 2)) for w in relevant_words[:3]]
+            logger.info(f"[SYNC_DIAG] First 3 words: {first_words}")
         return relevant_words
 
 
@@ -1371,6 +1374,9 @@ def create_assemblyai_subtitles(
     Uses cached transcript data from parakeet-mlx transcription.
     """
     transcript_data = load_cached_transcript_data(video_path)
+    if transcript_data:
+        words = transcript_data.get("words", [])
+        logger.info(f"[SYNC_DIAG] Cache: {len(words)} words, clip_range={clip_start:.2f}-{clip_end:.2f}s")
 
     if not transcript_data or not transcript_data.get("words"):
         logger.warning("No cached transcript data available for subtitles")
@@ -1518,6 +1524,7 @@ def create_optimized_clip(
 
         # Load and process video
         video = VideoFileClip(str(video_path))
+        logger.info(f"[SYNC_DIAG] Video: duration={video.duration:.2f}s, fps={video.fps}")
 
         if start_time >= video.duration:
             logger.error(
