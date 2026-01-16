@@ -933,8 +933,9 @@ class SubtitleWordFilter:
             word_start = word_data["start"]
             word_end = word_data["end"]
 
-            if word_start < clip_end_ms and word_end > clip_start_ms:
-                relative_start = max(0, (word_start - clip_start_ms) / 1000.0)
+            # STRICT rule: word must START within clip (matches extract_text_from_cache)
+            if word_start >= clip_start_ms and word_start < clip_end_ms:
+                relative_start = (word_start - clip_start_ms) / 1000.0
                 relative_end = min(
                     (clip_end_ms - clip_start_ms) / 1000.0,
                     (word_end - clip_start_ms) / 1000.0,
