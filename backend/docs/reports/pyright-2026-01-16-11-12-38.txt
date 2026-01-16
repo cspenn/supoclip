@@ -1,0 +1,212 @@
+/Users/cspenn/Documents/github/supoclip/backend/src/ai.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/ai.py:368:23 - error: Cannot access attribute "data" for class "AgentRunResult[TranscriptAnalysis]"
+    Attribute "data" is unknown (reportAttributeAccessIssue)
+/Users/cspenn/Documents/github/supoclip/backend/src/logging_config.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/logging_config.py:27:12 - error: No overloads for "get" match the provided arguments (reportCallIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/logging_config.py:33:11 - error: Argument of type "int | str" cannot be assigned to parameter "key" of type "int" in function "get"
+    Type "int | str" is not assignable to type "int"
+      "str" is not assignable to "int" (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/src/main.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/main.py:360:27 - error: Cannot access attribute "filename" for class "str"
+    Attribute "filename" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/main.py:364:42 - error: Cannot access attribute "filename" for class "str"
+    Attribute "filename" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/main.py:400:26 - error: Cannot access attribute "filename" for class "str"
+    Attribute "filename" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/main.py:405:41 - error: Cannot access attribute "filename" for class "str"
+    Attribute "filename" is unknown (reportAttributeAccessIssue)
+/Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_complexity_heatmap.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_complexity_heatmap.py:59:18 - error: "cc_visit" is possibly unbound (reportPossiblyUnboundVariable)
+  /Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_complexity_heatmap.py:60:14 - error: "mi_visit" is possibly unbound (reportPossiblyUnboundVariable)
+  /Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_complexity_heatmap.py:70:18 - error: "cc_rank" is possibly unbound (reportPossiblyUnboundVariable)
+/Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_grimp_analysis.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_grimp_analysis.py:203:17 - error: "grimp" is possibly unbound (reportPossiblyUnboundVariable)
+/Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_xray.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/scripts/utility_xray.py:42:18 - error: "cc_visit" is possibly unbound (reportPossiblyUnboundVariable)
+/Users/cspenn/Documents/github/supoclip/backend/src/services/font_service.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/services/font_service.py:92:33 - error: Cannot access attribute "usWeightClass" for class "GlyphOrder"
+    Attribute "usWeightClass" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/services/font_service.py:92:33 - error: Cannot access attribute "usWeightClass" for class "DefaultTable"
+    Attribute "usWeightClass" is unknown (reportAttributeAccessIssue)
+/Users/cspenn/Documents/github/supoclip/backend/src/subtitle_renderer.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/subtitle_renderer.py:116:24 - error: "set_content" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/src/subtitle_renderer.py:119:34 - error: "query_selector" is not a known attribute of "None" (reportOptionalMemberAccess)
+/Users/cspenn/Documents/github/supoclip/backend/src/transcription_mlx.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/transcription_mlx.py:89:49 - error: Argument of type "Dtype | None" cannot be assigned to parameter "dtype" of type "Dtype" in function "from_pretrained"
+    Type "Dtype | None" is not assignable to type "Dtype"
+      "None" is not assignable to "Dtype" (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:636:28 - error: "data" is not a known attribute of module "cv2" (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:639:25 - error: "data" is not a known attribute of module "cv2" (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:687:17 - error: "data" is not a known attribute of module "cv2" (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:830:51 - error: Argument of type "Unknown | None" cannot be assigned to parameter "frame" of type "ndarray[Unknown, Unknown]" in function "detect_in_frame"
+    Type "Unknown | None" is not assignable to type "ndarray[Unknown, Unknown]"
+      "None" is not assignable to "ndarray[Unknown, Unknown]" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:1073:24 - error: Type "ImageClip | Clip" is not assignable to return type "ImageClip | None"
+    Type "ImageClip | Clip" is not assignable to type "ImageClip | None"
+      Type "Clip" is not assignable to type "ImageClip | None"
+        "Clip" is not assignable to "ImageClip"
+        "Clip" is not assignable to "None" (reportReturnType)
+  /Users/cspenn/Documents/github/supoclip/backend/src/video_utils.py:1085:28 - error: Type "ImageClip | Clip" is not assignable to return type "ImageClip | None"
+    Type "ImageClip | Clip" is not assignable to type "ImageClip | None"
+      Type "Clip" is not assignable to type "ImageClip | None"
+        "Clip" is not assignable to "ImageClip"
+        "Clip" is not assignable to "None" (reportReturnType)
+/Users/cspenn/Documents/github/supoclip/backend/src/youtube_utils.py
+  /Users/cspenn/Documents/github/supoclip/backend/src/youtube_utils.py:196:31 - error: Argument of type "dict[str, Unknown]" cannot be assigned to parameter "params" of type "_Params | None" in function "__init__"
+    Type "dict[str, Unknown]" is not assignable to type "_Params | None"
+      "dict[str, Unknown]" is not assignable to "_Params"
+      "dict[str, Unknown]" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/src/youtube_utils.py:236:27 - error: Argument of type "Dict[str, Any]" cannot be assigned to parameter "params" of type "_Params | None" in function "__init__"
+    Type "Dict[str, Any]" is not assignable to type "_Params | None"
+      "Dict[str, Any]" is not assignable to "_Params"
+      "Dict[str, Any]" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/src/youtube_utils.py:282:23 - error: "utils" is not a known attribute of module "yt_dlp" (reportAttributeAccessIssue)
+/Users/cspenn/Documents/github/supoclip/backend/tests/repositories/test_task_repository_schema.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/repositories/test_task_repository_schema.py:30:21 - error: No overloads for "__init__" match the provided arguments (reportCallIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/repositories/test_task_repository_schema.py:31:9 - error: Argument of type "AsyncEngine" cannot be assigned to parameter "bind" of type "_SessionBind | None" in function "__init__"
+    Type "AsyncEngine" is not assignable to type "_SessionBind | None"
+      "AsyncEngine" is not assignable to "Engine"
+      "AsyncEngine" is not assignable to "Connection"
+      "AsyncEngine" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/repositories/test_task_repository_schema.py:34:16 - error: Object of type "Session" cannot be used with "async with" because it does not correctly implement __aenter__
+    Attribute "__aenter__" is unknown (reportGeneralTypeIssues)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/repositories/test_task_repository_schema.py:34:16 - error: Object of type "Session" cannot be used with "with" because it does not correctly implement __aexit__
+    Attribute "__aexit__" is unknown (reportGeneralTypeIssues)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:83:52 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:89:14 - error: "dtype" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:90:18 - error: Operator "*" not supported for "None" (reportOptionalOperand)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:93:18 - error: "shape" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:95:17 - error: No overloads for "stack" match the provided arguments (reportCallIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:95:26 - error: Argument of type "list[Unknown | None]" cannot be assigned to parameter "arrays" of type "Sequence[ArrayLike]" in function "stack"
+    Type "Unknown | None" is not assignable to type "ArrayLike"
+      Type "None" is not assignable to type "ArrayLike"
+        "None" is incompatible with protocol "_SupportsArray[dtype[Any]]"
+          "__array__" is not present
+        "None" is incompatible with protocol "_NestedSequence[_SupportsArray[dtype[Any]]]"
+          "__len__" is not present
+          "__getitem__" is not present
+          "__contains__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:96:16 - error: "shape" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:98:17 - error: Object of type "None" is not subscriptable (reportOptionalSubscript)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:100:27 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping.py:147:12 - error: Type "tuple[TextClip | Clip, Path]" is not assignable to return type "Tuple[TextClip, Path]"
+    Type "TextClip | Clip" is not assignable to type "TextClip"
+      "Clip" is not assignable to "TextClip" (reportReturnType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py:69:45 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py:107:35 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py:111:35 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py:217:45 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_clipping_1080p.py:252:31 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_compositing.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_compositing.py:100:45 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_compositing.py:131:31 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_fix_verification.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_fix_verification.py:76:49 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_fix_verification.py:111:39 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_caption_fix_verification.py:115:39 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py:119:45 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py:150:31 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py:251:45 - error: Cannot access attribute "size" for class "Clip"
+    Attribute "size" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py:276:35 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_descender_clipping.py:278:35 - error: Argument of type "Unknown | None" cannot be assigned to parameter "obj" of type "SupportsArrayInterface" in function "fromarray"
+    Type "Unknown | None" is not assignable to type "SupportsArrayInterface"
+      "None" is incompatible with protocol "SupportsArrayInterface"
+        "__array_interface__" is not present (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py:144:27 - error: Cannot access attribute "set_fps" for class "VideoClip"
+    Attribute "set_fps" is unknown (reportAttributeAccessIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py:254:23 - error: Return type of generator function must be compatible with "Generator[Any, Any, Any]"
+    "Generator[Any, Any, Any]" is not assignable to "Path" (reportInvalidTypeForm)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py:261:15 - error: Return type of generator function must be compatible with "Generator[Path, Any, Any]"
+    "Generator[Path, Unknown, Unknown]" is not assignable to "Path" (reportReturnType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py:916:31 - error: "status" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py:917:62 - error: "status" is not a known attribute of "None" (reportOptionalMemberAccess)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_font_service.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_font_service.py:40:21 - error: No overloads for "__init__" match the provided arguments (reportCallIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_font_service.py:40:34 - error: Argument of type "AsyncEngine" cannot be assigned to parameter "bind" of type "_SessionBind | None" in function "__init__"
+    Type "AsyncEngine" is not assignable to type "_SessionBind | None"
+      "AsyncEngine" is not assignable to "Engine"
+      "AsyncEngine" is not assignable to "Connection"
+      "AsyncEngine" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_font_service.py:42:16 - error: Object of type "Session" cannot be used with "async with" because it does not correctly implement __aenter__
+    Attribute "__aenter__" is unknown (reportGeneralTypeIssues)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_font_service.py:42:16 - error: Object of type "Session" cannot be used with "with" because it does not correctly implement __aexit__
+    Attribute "__aexit__" is unknown (reportGeneralTypeIssues)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_fonts_api_endpoints.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_fonts_api_endpoints.py:29:21 - error: No overloads for "__init__" match the provided arguments (reportCallIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_fonts_api_endpoints.py:29:34 - error: Argument of type "AsyncEngine" cannot be assigned to parameter "bind" of type "_SessionBind | None" in function "__init__"
+    Type "AsyncEngine" is not assignable to type "_SessionBind | None"
+      "AsyncEngine" is not assignable to "Engine"
+      "AsyncEngine" is not assignable to "Connection"
+      "AsyncEngine" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_fonts_api_endpoints.py:31:16 - error: Object of type "Session" cannot be used with "async with" because it does not correctly implement __aenter__
+    Attribute "__aenter__" is unknown (reportGeneralTypeIssues)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_fonts_api_endpoints.py:31:16 - error: Object of type "Session" cannot be used with "with" because it does not correctly implement __aexit__
+    Attribute "__aexit__" is unknown (reportGeneralTypeIssues)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:156:24 - error: "status" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:157:24 - error: "result" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:288:24 - error: "created_at" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:289:35 - error: "created_at" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:294:24 - error: "status" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:299:24 - error: "started_at" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:300:24 - error: "completed_at" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:329:24 - error: "status" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:330:20 - error: Operator "in" not supported for types "Literal['Test error']" and "str | None"
+    Operator "in" not supported for types "Literal['Test error']" and "None" (reportOperatorIssue)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_local_queue.py:330:40 - error: "error" is not a known attribute of "None" (reportOptionalMemberAccess)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_pipeline.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_pipeline.py:151:27 - error: Argument of type "Path" cannot be assigned to parameter "logo_path" of type "str | None" in function "process_video_complete"
+    Type "Path" is not assignable to type "str | None"
+      "Path" is not assignable to "str"
+      "Path" is not assignable to "None" (reportArgumentType)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_pipeline.py:253:35 - error: Argument of type "Path" cannot be assigned to parameter "logo_path" of type "str | None" in function "create_clips_with_transitions"
+    Type "Path" is not assignable to type "str | None"
+      "Path" is not assignable to "str"
+      "Path" is not assignable to "None" (reportArgumentType)
+/Users/cspenn/Documents/github/supoclip/backend/tests/test_srt_format_transcript.py
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_srt_format_transcript.py:64:28 - error: Operator "//" not supported for "None" (reportOptionalOperand)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_srt_format_transcript.py:64:59 - error: Operator "%" not supported for "None" (reportOptionalOperand)
+  /Users/cspenn/Documents/github/supoclip/backend/tests/test_srt_format_transcript.py:64:90 - error: Operator "%" not supported for "None" (reportOptionalOperand)
+83 errors, 0 warnings, 0 informations
+WARNING: there is a new pyright version available (v1.1.407 -> v1.1.408).
+Please install the new version or set PYRIGHT_PYTHON_FORCE_VERSION to `latest`
+

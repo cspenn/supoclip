@@ -192,6 +192,13 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
     Converts parakeet output format to AssemblyAI-compatible format
     for seamless integration with existing clip generation code.
 
+    IMPORTANT: parakeet-mlx provides two levels of token access:
+    - result.tokens: Flattened BPE sub-word tokens (e.g., ["Y", "es", ","])
+    - result.sentences[].tokens: Word-level tokens (e.g., ["Yes,", "I", "think"])
+
+    We extract from sentences[].tokens for proper word-level timestamps.
+    Falls back to result.tokens only if sentences not available.
+
     Args:
         result: AlignedResult from parakeet_mlx
 
@@ -204,31 +211,61 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
     """
     words: List[Dict[str, Any]] = []
 
-    # AlignedResult has .tokens attribute - a flattened list of all AlignedToken objects
-    if hasattr(result, "tokens"):
+    # PRIMARY: Extract from sentences[].tokens (word-level, not BPE sub-word)
+    # This is the correct way to get word-level timestamps from parakeet-mlx
+    if hasattr(result, "sentences") and result.sentences:
+        for sentence in result.sentences:
+            if hasattr(sentence, "tokens") and sentence.tokens:
+                for token in sentence.tokens:
+                    word_dict = _extract_single_token(token)
+                    if word_dict:
+                        words.append(word_dict)
+        if words:
+            logger.debug(f"📝 Extracted {len(words)} words from sentences")
+            return words
+
+    # FALLBACK: Extract from flattened tokens if no sentences available
+    # This maintains backward compatibility but may return BPE sub-word tokens
+    if hasattr(result, "tokens") and result.tokens:
+        logger.warning(
+            "⚠️ No sentences found, falling back to flattened tokens (may be BPE sub-words)"
+        )
         for token in result.tokens:
-            # AlignedToken has .text, .start, .end, .confidence attributes
-            if hasattr(token, "text") and token.text.strip():
-                # .start and .end are in seconds (float), convert to milliseconds
-                start_ms = int(token.start * 1000) if hasattr(token, "start") else 0
-                end_ms = int(token.end * 1000) if hasattr(token, "end") else 0
-
-                # Skip if timing is invalid
-                if start_ms >= end_ms:
-                    continue
-
-                words.append(
-                    {
-                        "text": token.text.strip(),
-                        "start": start_ms,
-                        "end": end_ms,
-                        "confidence": token.confidence
-                        if hasattr(token, "confidence")
-                        else 1.0,
-                    }
-                )
+            word_dict = _extract_single_token(token)
+            if word_dict:
+                words.append(word_dict)
 
     return words
+
+
+def _extract_single_token(token: Any) -> Optional[Dict[str, Any]]:
+    """
+    Extract word dict from a single AlignedToken.
+
+    Args:
+        token: AlignedToken from parakeet_mlx
+
+    Returns:
+        Dict with text, start, end, confidence or None if invalid
+    """
+    # Must have non-empty text
+    if not hasattr(token, "text") or not token.text.strip():
+        return None
+
+    # Convert seconds to milliseconds
+    start_ms = int(token.start * 1000) if hasattr(token, "start") else 0
+    end_ms = int(token.end * 1000) if hasattr(token, "end") else 0
+
+    # Skip if timing is invalid (start >= end)
+    if start_ms >= end_ms:
+        return None
+
+    return {
+        "text": token.text.strip(),
+        "start": start_ms,
+        "end": end_ms,
+        "confidence": token.confidence if hasattr(token, "confidence") else 1.0,
+    }
 
 
 def _get_token_start_time(token: Any) -> int:

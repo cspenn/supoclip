@@ -50,5 +50,10 @@ package = true
 # DEP003: mlx is transitive from parakeet-mlx
 per_rule_ignores = {"DEP002" = ["aiosqlite", "greenlet", "pytest", "pytest-asyncio", "pytest-cov", "httpx"], "DEP003" = ["mlx"]}
 
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+]
+
 [project.scripts]
 run-dev = "src.main:run_dev"
