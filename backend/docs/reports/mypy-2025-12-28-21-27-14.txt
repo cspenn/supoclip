@@ -1,8 +1,0 @@
-src/scripts/utility_xray.py:30: error: Skipping analyzing "radon.complexity": module is installed, but missing library stubs or py.typed marker  [import-untyped]
-src/scripts/utility_complexity_heatmap.py:28: error: Skipping analyzing "radon.complexity": module is installed, but missing library stubs or py.typed marker  [import-untyped]
-src/scripts/utility_complexity_heatmap.py:28: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-src/scripts/utility_complexity_heatmap.py:29: error: Skipping analyzing "radon.metrics": module is installed, but missing library stubs or py.typed marker  [import-untyped]
-src/video_utils.py:13: error: Skipping analyzing "moviepy": module is installed, but missing library stubs or py.typed marker  [import-untyped]
-src/video_utils.py:18: error: Skipping analyzing "moviepy.video.fx": module is installed, but missing library stubs or py.typed marker  [import-untyped]
-src/video_utils.py:18: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-Found 5 errors in 3 files (checked 45 source files)

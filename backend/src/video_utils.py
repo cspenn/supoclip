@@ -35,6 +35,10 @@ RESOLUTION_PRESETS = {
     "1080p": (1080, 1920),  # Full HD quality - best quality, largest file size
 }
 
+# Audio buffer in seconds to prevent cutting off words at clip boundaries
+# Video starts buffer-seconds earlier, so subtitles must be offset by this amount
+AUDIO_BUFFER_SECONDS: float = 0.15
+
 
 def resolve_font_path(font_family: str) -> str:
     """
@@ -1521,10 +1525,13 @@ def create_optimized_clip(
             video.close()
             return False
 
-        # Add audio buffer (0.15s) to prevent cutting off words
-        buffer = 0.15
-        start_time = max(0, start_time - buffer)
-        end_time = min(video.duration, end_time + buffer)
+        # Preserve original times for subtitle alignment
+        original_start_time: float = start_time
+        original_end_time: float = end_time
+
+        # Add audio buffer to prevent cutting off words at clip boundaries
+        start_time = max(0, start_time - AUDIO_BUFFER_SECONDS)
+        end_time = min(video.duration, end_time + AUDIO_BUFFER_SECONDS)
 
         clip = video.subclipped(start_time, end_time)
 
@@ -1560,8 +1567,8 @@ def create_optimized_clip(
         if add_subtitles:
             subtitle_clips = create_assemblyai_subtitles(
                 video_path,
-                start_time,
-                end_time,
+                original_start_time,
+                original_end_time,
                 new_width,
                 new_height,
                 font_family,
@@ -1570,7 +1577,12 @@ def create_optimized_clip(
                 subtitle_style,
                 subtitle_position,
             )
-            final_clips.extend(subtitle_clips)
+            # Offset subtitles by buffer amount (video starts earlier than segment)
+            adjusted_subtitle_clips = [
+                clip.with_start(clip.start + AUDIO_BUFFER_SECONDS)
+                for clip in subtitle_clips
+            ]
+            final_clips.extend(adjusted_subtitle_clips)
 
         # Add logo overlay if provided
         _add_logo_overlay(

@@ -1,3 +1,0 @@
-src/video_utils.py:528:48 [FURB123]: Replace `float(h)` with `h`
-
-Run `refurb --explain ERR` to further explain an error. Use `--quiet` to silence this message
