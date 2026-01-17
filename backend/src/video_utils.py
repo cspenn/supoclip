@@ -951,7 +951,9 @@ class SubtitleWordFilter:
                         }
                     )
         if relevant_words:
-            first_words = [(w["text"], round(w["start"], 2)) for w in relevant_words[:3]]
+            first_words = [
+                (w["text"], round(w["start"], 2)) for w in relevant_words[:3]
+            ]
             logger.info(f"[SYNC_DIAG] First 3 words: {first_words}")
         return relevant_words
 
@@ -1376,7 +1378,9 @@ def create_assemblyai_subtitles(
     transcript_data = load_cached_transcript_data(video_path)
     if transcript_data:
         words = transcript_data.get("words", [])
-        logger.info(f"[SYNC_DIAG] Cache: {len(words)} words, clip_range={clip_start:.2f}-{clip_end:.2f}s")
+        logger.info(
+            f"[SYNC_DIAG] Cache: {len(words)} words, clip_range={clip_start:.2f}-{clip_end:.2f}s"
+        )
 
     if not transcript_data or not transcript_data.get("words"):
         logger.warning("No cached transcript data available for subtitles")
@@ -1530,7 +1534,9 @@ def create_optimized_clip(
 
         # Load and process video
         video = VideoFileClip(str(video_path))
-        logger.info(f"[SYNC_DIAG] Video: duration={video.duration:.2f}s, fps={video.fps}")
+        logger.info(
+            f"[SYNC_DIAG] Video: duration={video.duration:.2f}s, fps={video.fps}"
+        )
 
         if start_time >= video.duration:
             logger.error(
@@ -1631,7 +1637,14 @@ def create_optimized_clip(
         return False
 
     finally:
-        # Always cleanup resources, even on exception
+        # Close subtitle and logo clips from final_clips (skip base cropped_clip at index 0)
+        if "final_clips" in locals() and final_clips:
+            for overlay_clip in final_clips[1:]:  # Skip cropped_clip at index 0
+                if overlay_clip is not None:
+                    with suppress(Exception):
+                        overlay_clip.close()
+
+        # Close main video clips
         for resource in (final_clip, cropped_clip, clip, video):
             if resource is not None:
                 with suppress(Exception):
@@ -1701,7 +1714,9 @@ def create_clips_from_segments(
             )
 
             if success:
-                logger.info(f"[CLIP_DIAG] Clip {i + 1} created successfully: {clip_path}")
+                logger.info(
+                    f"[CLIP_DIAG] Clip {i + 1} created successfully: {clip_path}"
+                )
                 clip_info = {
                     "clip_id": i + 1,
                     "filename": clip_filename,
@@ -1716,7 +1731,9 @@ def create_clips_from_segments(
                 clips_info.append(clip_info)
                 logger.info(f"Created clip {i + 1}: {duration:.1f}s")
             else:
-                logger.error(f"[CLIP_DIAG] Clip {i + 1} FAILED - check resource cleanup")
+                logger.error(
+                    f"[CLIP_DIAG] Clip {i + 1} FAILED - check resource cleanup"
+                )
                 logger.error(f"Failed to create clip {i + 1}")
 
         except Exception as e:
