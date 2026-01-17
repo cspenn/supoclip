@@ -528,7 +528,7 @@ def detect_optimal_crop_region(
         if face_centers:
             # Convert face centers to float tuples for type compatibility
             face_centers_float = [
-                (float(x), float(y), float(w), float(h)) for x, y, w, h in face_centers
+                (float(x), float(y), float(w), h) for x, y, w, h in face_centers
             ]
             x_offset, y_offset = FaceCenteredCropCalculator.calculate(
                 face_centers_float,
