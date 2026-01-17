@@ -1,0 +1,749 @@
+/Users/cspenn/.pyenv/versions/3.11.12/lib/python3.11/site-packages/fs/__init__.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  __import__("pkg_resources").declare_namespace(__name__)  # type: ignore
+/Users/cspenn/.pyenv/versions/3.11.12/lib/python3.11/site-packages/deepeval/__init__.py:54: UserWarning: You are using deepeval version 2.5.5, however version 3.8.0 is available. You should consider upgrading via the "pip install --upgrade deepeval" command.
+  warnings.warn(
+============================= test session starts ==============================
+platform darwin -- Python 3.11.12, pytest-8.4.2, pluggy-1.5.0 -- /Users/cspenn/.pyenv/versions/3.11.12/bin/python3.11
+cachedir: .pytest_cache
+hypothesis profile 'default'
+Fugue tests will be initialized with options:
+PySide6 6.8.3 -- Qt runtime 6.8.3 -- Qt compiled 6.8.3
+rootdir: /Users/cspenn/Documents/github/supoclip/backend
+configfile: pytest.ini
+plugins: mock-3.15.1, repeat-0.9.4, asyncio-1.2.0, anyio-4.9.0, xdist-3.8.0, httpx-0.35.0, timeout-2.4.0, hypothesis-6.148.7, fugue-0.9.1, logfire-4.14.2, Faker-37.3.0, qt-4.5.0, langsmith-0.3.45, typeguard-4.4.4, cov-7.0.0, deepeval-2.5.5
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 574 items
+
+tests/integration/test_service_integration.py::TestVideoServiceWithPreferences::test_video_service_uses_user_preferences PASSED [  0%]
+tests/integration/test_service_integration.py::TestVideoServiceWithPreferences::test_preferences_merge_with_request_options PASSED [  0%]
+tests/integration/test_service_integration.py::TestFontOptionsIntegration::test_parse_then_merge_font_options PASSED [  0%]
+tests/integration/test_service_integration.py::TestFontOptionsIntegration::test_partial_font_options_with_user_preferences PASSED [  0%]
+tests/integration/test_service_integration.py::TestAuthDependencyIntegration::test_auth_with_user_preferences_service PASSED [  0%]
+tests/integration/test_service_integration.py::TestServiceDependencyChain::test_async_service_creates_task_then_processes PASSED [  1%]
+tests/integration/test_service_integration.py::TestLogoPathHandling::test_logo_path_extraction_from_preferences PASSED [  1%]
+tests/integration/test_service_integration.py::TestLogoPathHandling::test_logo_passed_to_video_service PASSED [  1%]
+tests/integration/test_service_integration.py::TestErrorPropagation::test_auth_error_prevents_service_call PASSED [  1%]
+tests/integration/test_service_integration.py::TestErrorPropagation::test_preferences_error_propagates PASSED [  1%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_ai_segments_to_video_parser_flow PASSED [  1%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_3_clips_generation_simulation PASSED [  2%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_millisecond_precision_preserved_through_pipeline PASSED [  2%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_backward_compatibility_with_legacy_timestamps PASSED [  2%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_mixed_timestamp_formats_in_same_batch PASSED [  2%]
+tests/integration/test_timestamp_pipeline_integration.py::TestTimestampPipelineIntegration::test_segment_duration_range_validation PASSED [  2%]
+tests/integration/test_timestamp_pipeline_integration.py::TestEndToEndClipGeneration::test_generate_3_clips_from_groq_timestamps PASSED [  2%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncPipeline::test_verbatim_text_replaces_ai_summary PASSED [  3%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncPipeline::test_snap_segment_prevents_mid_sentence_start PASSED [  3%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncPipeline::test_snap_segment_respects_2_second_window PASSED [  3%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncPipeline::test_full_pipeline_integration_with_simulated_ai PASSED [  3%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncErrorHandling::test_missing_cache_preserves_none_result PASSED [  3%]
+tests/integration/test_transcript_sync_integration.py::TestTranscriptSyncErrorHandling::test_snap_with_no_cache_returns_original_time PASSED [  4%]
+tests/integration/test_transcript_sync_integration.py::TestGhostWordPrevention::test_no_ghost_words_when_clip_starts_mid_conversation PASSED [  4%]
+tests/integration/test_transcript_sync_integration.py::TestGhostWordPrevention::test_extracted_text_matches_only_audible_content PASSED [  4%]
+tests/repositories/test_task_repository_schema.py::test_task_creation_without_progress PASSED [  4%]
+tests/repositories/test_task_repository_schema.py::test_task_status_update_with_progress_succeeds PASSED [  4%]
+tests/repositories/test_task_repository_schema.py::test_task_status_update_with_progress_message_only_succeeds PASSED [  4%]
+tests/repositories/test_task_repository_schema.py::test_task_get_returns_default_progress_values PASSED [  5%]
+tests/repositories/test_task_repository_schema.py::test_multiple_progress_updates_work PASSED [  5%]
+tests/test_api_endpoints.py::TestRootEndpoint::test_root_endpoint_returns_200 PASSED [  5%]
+tests/test_api_endpoints.py::TestRootEndpoint::test_root_endpoint_response_structure PASSED [  5%]
+tests/test_api_endpoints.py::TestRootEndpoint::test_root_endpoint_values PASSED [  5%]
+tests/test_api_endpoints.py::TestHealthCheckEndpoints::test_basic_health_check PASSED [  5%]
+tests/test_api_endpoints.py::TestHealthCheckEndpoints::test_database_health_check PASSED [  6%]
+tests/test_api_endpoints.py::TestAPIDocumentation::test_swagger_docs_available PASSED [  6%]
+tests/test_api_endpoints.py::TestAPIDocumentation::test_openapi_schema_available PASSED [  6%]
+tests/test_api_endpoints.py::TestAPIStructure::test_api_version_in_schema PASSED [  6%]
+tests/test_api_endpoints.py::TestAPIStructure::test_api_title_in_schema PASSED [  6%]
+tests/test_api_endpoints.py::TestAPIStructure::test_api_description_in_schema PASSED [  6%]
+tests/test_api_endpoints.py::TestCORSConfiguration::test_cors_headers_present PASSED [  7%]
+tests/test_api_endpoints.py::TestErrorHandling::test_nonexistent_endpoint_404 PASSED [  7%]
+tests/test_api_endpoints.py::TestErrorHandling::test_method_not_allowed PASSED [  7%]
+tests/test_api_endpoints.py::TestBasicAPIIntegration::test_health_check_chain PASSED [  7%]
+tests/test_api_endpoints.py::TestBasicAPIIntegration::test_api_responsiveness PASSED [  7%]
+tests/test_api_endpoints.py::TestBasicAPIIntegration::test_api_json_responses PASSED [  8%]
+tests/test_api_endpoints.py::TestStaticFileServing::test_clips_directory_mount PASSED [  8%]
+tests/test_api_endpoints.py::TestAPIContentTypes::test_json_content_type_default PASSED [  8%]
+tests/test_api_endpoints.py::TestAPIContentTypes::test_health_json_content_type PASSED [  8%]
+tests/test_api_endpoints.py::TestDatabaseDependencyInjection::test_database_health_uses_session PASSED [  8%]
+tests/test_caption_clipping.py::test_dynamic_margin_calculation PASSED   [  8%]
+tests/test_caption_clipping_1080p.py::test_resolution_clipping PASSED    [  9%]
+tests/test_caption_clipping_1080p.py::test_1080p_with_fixes PASSED       [  9%]
+tests/test_caption_compositing.py::test_composite_clipping PASSED        [  9%]
+tests/test_caption_compositing.py::test_safe_positioning PASSED          [  9%]
+tests/test_caption_fix_verification.py::test_fix_verification PASSED     [  9%]
+tests/test_caption_reconstruction.py::TestWordReconstruction::test_reconstruct_simple_broken_words PASSED [  9%]
+tests/test_caption_reconstruction.py::TestWordReconstruction::test_missing_groq_key_returns_original PASSED [ 10%]
+tests/test_caption_reconstruction.py::TestWordReconstruction::test_align_reconstructed_words_basic PASSED [ 10%]
+tests/test_caption_reconstruction.py::TestWordReconstruction::test_align_with_empty_reconstructed_text PASSED [ 10%]
+tests/test_caption_reconstruction.py::TestWordReconstruction::test_align_preserves_confidence PASSED [ 10%]
+tests/test_caption_reconstruction.py::TestCaptionQuality::test_word_boundaries_preserved PASSED [ 10%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_and_rejected PASSED [ 10%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_but_rejected PASSED [ 11%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_so_rejected PASSED [ 11%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_well_rejected PASSED [ 11%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_because_rejected PASSED [ 11%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_also_rejected PASSED [ 11%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_um_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_uh_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_you_know_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_i_mean_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesValidation::test_segment_starting_with_like_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesCaseSensitivity::test_uppercase_and_rejected PASSED [ 12%]
+tests/test_clean_start_rules.py::TestCleanStartRulesCaseSensitivity::test_mixed_case_but_rejected PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesCaseSensitivity::test_uppercase_so_rejected PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesCaseSensitivity::test_mixed_case_because_rejected PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesAcceptance::test_segments_with_clean_starts_accepted PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesAcceptance::test_sentence_starting_with_and_in_middle_accepted PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesAcceptance::test_word_containing_forbidden_word_accepted PASSED [ 13%]
+tests/test_clean_start_rules.py::TestCleanStartRulesAcceptance::test_android_word_starting_accepted PASSED [ 14%]
+tests/test_clean_start_rules.py::TestCleanStartRulesIntegration::test_validation_logs_warnings_for_skipped_segments PASSED [ 14%]
+tests/test_clean_start_rules.py::TestCleanStartRulesIntegration::test_segments_without_forbidden_words_pass_validation PASSED [ 14%]
+tests/test_clean_start_rules.py::TestCleanStartRulesIntegration::test_multiple_forbidden_words_in_sequence_rejected PASSED [ 14%]
+tests/test_clip_parameter_fix.py::test_parameter_shadowing_fix PASSED    [ 14%]
+tests/test_clip_save_verification.py::test_clip_save PASSED              [ 14%]
+tests/test_configuration.py::TestConfigLoading::test_config_initialization PASSED [ 15%]
+tests/test_configuration.py::TestConfigLoading::test_parakeet_model_default PASSED [ 15%]
+tests/test_configuration.py::TestConfigLoading::test_parakeet_model_from_env PASSED [ 15%]
+tests/test_configuration.py::TestConfigLoading::test_llm_model_default PASSED [ 15%]
+tests/test_configuration.py::TestConfigLoading::test_llm_model_from_env PASSED [ 15%]
+tests/test_configuration.py::TestConfigLoading::test_api_keys_optional PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_max_video_duration_default PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_max_video_duration_from_env PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_output_dir_default PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_output_dir_from_env PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_max_clips_default PASSED [ 16%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_max_clips_from_env PASSED [ 17%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_clip_duration_default PASSED [ 17%]
+tests/test_configuration.py::TestVideoProcessingConfig::test_clip_duration_from_env PASSED [ 17%]
+tests/test_configuration.py::TestDatabaseConfig::test_database_url_default PASSED [ 17%]
+tests/test_configuration.py::TestDatabaseConfig::test_database_url_from_env PASSED [ 17%]
+tests/test_configuration.py::TestDatabaseConfig::test_temp_dir_default PASSED [ 17%]
+tests/test_configuration.py::TestDatabaseConfig::test_temp_dir_from_env PASSED [ 18%]
+tests/test_configuration.py::TestJobQueueConfig::test_max_workers_default PASSED [ 18%]
+tests/test_configuration.py::TestJobQueueConfig::test_max_workers_from_env PASSED [ 18%]
+tests/test_configuration.py::TestJobQueueConfig::test_worker_timeout_default PASSED [ 18%]
+tests/test_configuration.py::TestJobQueueConfig::test_worker_timeout_from_env PASSED [ 18%]
+tests/test_configuration.py::TestConfigTypeConversion::test_integer_type_conversion PASSED [ 18%]
+tests/test_configuration.py::TestConfigTypeConversion::test_string_type_preserved PASSED [ 19%]
+tests/test_configuration.py::TestConfigValidation::test_empty_string_handling PASSED [ 19%]
+tests/test_configuration.py::TestConfigValidation::test_whitespace_handling PASSED [ 19%]
+tests/test_configuration.py::TestConfigValidation::test_special_characters_in_paths PASSED [ 19%]
+tests/test_configuration.py::TestConfigValidation::test_multiple_config_instances_independent PASSED [ 19%]
+tests/test_configuration.py::TestOfflineCapability::test_no_external_api_required_by_default PASSED [ 20%]
+tests/test_configuration.py::TestOfflineCapability::test_parakeet_available_offline PASSED [ 20%]
+tests/test_configuration.py::TestOfflineCapability::test_local_job_queue_configuration PASSED [ 20%]
+tests/test_database.py::TestDatabaseInitialization::test_database_tables_created PASSED [ 20%]
+tests/test_database.py::TestDatabaseInitialization::test_base_metadata_contains_all_models PASSED [ 20%]
+tests/test_database.py::TestDatabaseInitialization::test_user_table_has_required_fields PASSED [ 20%]
+tests/test_database.py::TestDatabaseInitialization::test_task_table_has_required_fields PASSED [ 21%]
+tests/test_database.py::TestUserCRUD::test_create_user PASSED            [ 21%]
+tests/test_database.py::TestUserCRUD::test_create_user_with_defaults PASSED [ 21%]
+tests/test_database.py::TestUserCRUD::test_update_user PASSED            [ 21%]
+tests/test_database.py::TestUserCRUD::test_user_email_unique PASSED      [ 21%]
+tests/test_database.py::TestUserCRUD::test_user_relationships PASSED     [ 21%]
+tests/test_database.py::TestTaskOperations::test_create_task PASSED      [ 22%]
+tests/test_database.py::TestTaskOperations::test_task_status_update PASSED [ 22%]
+tests/test_database.py::TestTaskOperations::test_task_default_font_settings PASSED [ 22%]
+tests/test_database.py::TestTaskOperations::test_task_user_relationship PASSED [ 22%]
+tests/test_database.py::TestTaskOperations::test_task_cascade_delete PASSED [ 22%]
+tests/test_database.py::TestSourceOperations::test_create_source PASSED  [ 22%]
+tests/test_database.py::TestSourceOperations::test_source_type_constraint PASSED [ 23%]
+tests/test_database.py::TestSourceOperations::test_source_task_relationship PASSED [ 23%]
+tests/test_database.py::TestGeneratedClipOperations::test_create_generated_clip PASSED [ 23%]
+tests/test_database.py::TestGeneratedClipOperations::test_clip_task_relationship PASSED [ 23%]
+tests/test_database.py::TestGeneratedClipOperations::test_clip_cascade_delete PASSED [ 23%]
+tests/test_database.py::TestTimestampHandling::test_created_at_auto_set PASSED [ 24%]
+tests/test_database.py::TestTimestampHandling::test_updated_at_auto_set PASSED [ 24%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_get_default_prompt_returns_200 PASSED [ 24%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_get_default_prompt_returns_current_system_prompt PASSED [ 24%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_includes_clean_start_rules PASSED [ 24%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_includes_dynamic_placeholders PASSED [ 24%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_valid_for_ai_analysis PASSED [ 25%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_response_structure PASSED [ 25%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_contains_segment_selection_guidance PASSED [ 25%]
+tests/test_default_prompt_endpoint.py::TestDefaultPromptEndpoint::test_default_prompt_consistency PASSED [ 25%]
+tests/test_descender_clipping.py::test_descender_clipping_with_stroke PASSED [ 25%]
+tests/test_descender_clipping.py::test_actual_user_scenario PASSED       [ 25%]
+tests/test_e2e_pipeline.py::test_complete_pipeline PASSED                [ 26%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_database_initialization PASSED [ 26%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_create_task_in_database PASSED [ 26%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_store_generated_clip_metadata PASSED [ 26%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_api_health_check PASSED [ 26%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_api_root_endpoint PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_api_documentation_available PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_local_llm_configuration PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_parakeet_configuration PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_sqlite_database_configuration PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_test_video_created PASSED [ 27%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_transcription_with_parakeet SKIPPEDversion 8.0.1 Copyright (c) 2000-2025 the
+FFmpeg developers
+  built with Apple clang version 17.0.0
+(clang-1700.6.3.2)
+  configuration:
+--prefix=/opt/homebrew/Cellar/ffmpeg/8.0.1_1 --enable-shared --enable-
+pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags=
+--enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus
+--enable-libx264 --enable-libmp3lame --enable-videotoolbox --enable-
+audiotoolbox --enable-neon
+  libavutil      60.  8.100 / 60.  8.100
+libavcodec     62. 11.100 / 62. 11.100
+  libavformat    62.  3.100 / 62.
+3.100
+  libavdevice    62.  1.100 / 62.  1.100
+  libavfilter    11.
+4.100 / 11.  4.100
+  libswscale      9.  1.100 /  9.  1.100
+libswresample   6.  1.100 /  6.  1.100
+[mov,mp4,m4a,3gp,3g2,mj2 @
+0x87ac18000] moov atom not found
+[in#0 @ 0x87b018000] Error opening
+input: Invalid data found when processing input
+Error opening input file
+/var/folders/b9/b0k16x1d4vd76ln1n8bm43000000gn/T/supoclip_e2e_rj1d4f7j/u
+ploads/test_e2e.mp4.
+Error opening input files: Invalid data found when
+processing input)                                                        [ 28%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_ai_segment_analysis_structure PASSED [ 28%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_clip_generation_no_external_apis PASSED [ 28%]
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_performance_baseline_configuration PASSED [ 28%]
+tests/test_end_to_end.py::TestE2EAPIEndpoints::test_get_fonts_endpoint PASSED [ 28%]
+tests/test_end_to_end.py::TestE2EAPIEndpoints::test_get_transitions_endpoint PASSED [ 28%]
+tests/test_end_to_end.py::TestE2EAPIEndpoints::test_task_creation_endpoint_requires_auth PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EAPIEndpoints::test_database_health_check PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EVideoFilesAndMetadata::test_clip_output_directory_structure PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EVideoFilesAndMetadata::test_store_clip_metadata_with_timestamps PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EVideoFilesAndMetadata::test_mp4_file_format_validity PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EPerformanceMetrics::test_transcription_time_measurement PASSED [ 29%]
+tests/test_end_to_end.py::TestE2EPerformanceMetrics::test_clip_generation_time_measurement PASSED [ 30%]
+tests/test_end_to_end.py::TestE2EPerformanceMetrics::test_end_to_end_workflow_timing PASSED [ 30%]
+tests/test_end_to_end.py::TestE2ELocalFirstOperation::test_no_cloud_api_keys_required PASSED [ 30%]
+tests/test_end_to_end.py::TestE2ELocalFirstOperation::test_database_local_only PASSED [ 30%]
+tests/test_end_to_end.py::TestE2ELocalFirstOperation::test_transcription_local_parakeet PASSED [ 30%]
+tests/test_end_to_end.py::TestE2ELocalFirstOperation::test_job_queue_local_asyncio PASSED [ 31%]
+tests/test_end_to_end.py::TestE2EDatabaseOperations::test_insert_and_retrieve_task PASSED [ 31%]
+tests/test_end_to_end.py::TestE2EDatabaseOperations::test_multiple_clips_per_task PASSED [ 31%]
+tests/test_end_to_end.py::TestE2EDatabaseOperations::test_update_task_status PASSED [ 31%]
+tests/test_font_cutoff_and_short_clips.py::TestFontCutoffIssue::test_caption_method_causes_text_cutoff PASSED [ 31%]
+tests/test_font_cutoff_and_short_clips.py::TestFontCutoffIssue::test_barlow_condensed_bold_cutoff_reproduction SKIPPEDBarlow-Condensed-
+Bold.ttf)                                                                [ 31%]
+tests/test_font_cutoff_and_short_clips.py::TestShortClipsIssue::test_system_prompt_has_hardcoded_durations PASSED [ 32%]
+tests/test_font_cutoff_and_short_clips.py::TestShortClipsIssue::test_ai_generates_short_clips_despite_long_settings XFAILcustom settings) [ 32%]
+tests/test_font_cutoff_and_short_clips.py::TestShortClipsIssue::test_validation_hardcoded_minimum PASSED [ 32%]
+tests/test_font_cutoff_and_short_clips.py::TestActualUserScenario::test_user_scenario_reproduction SKIPPEDoo short or AI model fragments).
+Requested: 47-58s. AI returned average: N/A. Recommendation: Try shorter
+clip durations (10-45 seconds work best for viral content).)             [ 32%]
+tests/test_font_service.py::test_font_metadata_creation PASSED           [ 32%]
+tests/test_font_service.py::test_system_font_database_model PASSED       [ 32%]
+tests/test_font_service.py::test_system_font_unique_constraint PASSED    [ 33%]
+tests/test_font_service.py::test_system_font_source_check_constraint PASSED [ 33%]
+tests/test_font_service.py::test_system_font_filtering_by_source PASSED  [ 33%]
+tests/test_font_service.py::test_system_font_search_by_family PASSED     [ 33%]
+tests/test_fonts_api_endpoints.py::TestFontsListEndpoint::test_list_all_fonts PASSED [ 33%]
+tests/test_fonts_api_endpoints.py::TestFontsListEndpoint::test_list_fonts_with_bundled_filter PASSED [ 33%]
+tests/test_fonts_api_endpoints.py::TestFontsListEndpoint::test_list_fonts_with_system_filter PASSED [ 34%]
+tests/test_fonts_api_endpoints.py::TestFontsListEndpoint::test_list_fonts_response_format PASSED [ 34%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_fonts_by_name PASSED [ 34%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_fonts_by_family PASSED [ 34%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_nonexistent_font PASSED [ 34%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_missing_query_parameter PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_query_too_short PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontSearchEndpoint::test_search_case_insensitive PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontRefreshEndpoint::test_refresh_fonts PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontRefreshEndpoint::test_refresh_fonts_returns_proper_structure PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontFileServingEndpoint::test_serve_nonexistent_font_file PASSED [ 35%]
+tests/test_fonts_api_endpoints.py::TestFontFileServingEndpoint::test_serve_existing_font_file PASSED [ 36%]
+tests/test_fonts_api_endpoints.py::TestFontsEndpointErrorHandling::test_invalid_source_filter PASSED [ 36%]
+tests/test_fonts_api_endpoints.py::TestFontsEndpointErrorHandling::test_special_characters_in_search PASSED [ 36%]
+tests/test_fonts_api_endpoints.py::TestFontsEndpointErrorHandling::test_very_long_search_query PASSED [ 36%]
+tests/test_fonts_api_endpoints.py::TestEdgeCasesAndConcurrency::test_empty_font_list PASSED [ 36%]
+tests/test_groq_fallback.py::test_groq_failure_falls_back_to_pydantic_ai XFAIL intended behavior) [ 36%]
+tests/test_groq_fallback.py::test_groq_success_uses_structured_outputs PASSED [ 37%]
+tests/test_groq_integration.py::test_groq_config PASSED                  [ 37%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_enabled_default PASSED [ 37%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_enabled_from_env PASSED [ 37%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_base_url_default PASSED [ 37%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_base_url_from_env PASSED [ 37%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_model_default PASSED [ 38%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_model_from_env PASSED [ 38%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_api_key_default PASSED [ 38%]
+tests/test_local_llm_config.py::TestLocalLLMConfiguration::test_local_llm_api_key_from_env PASSED [ 38%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_cloud_llm_model_default_empty PASSED [ 38%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_cloud_llm_model_from_env PASSED [ 39%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_cloud_api_keys_default_empty PASSED [ 39%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_openai_api_key_from_env PASSED [ 39%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_google_api_key_from_env PASSED [ 39%]
+tests/test_local_llm_config.py::TestCloudLLMConfiguration::test_anthropic_api_key_from_env PASSED [ 39%]
+tests/test_local_llm_config.py::TestLLMModelSelection::test_get_llm_model_returns_openai_chat_model_when_local_enabled PASSED [ 39%]
+tests/test_local_llm_config.py::TestLLMModelSelection::test_get_llm_model_returns_string_when_cloud PASSED [ 40%]
+tests/test_local_llm_config.py::TestLLMModelSelection::test_get_llm_model_raises_when_no_llm_configured PASSED [ 40%]
+tests/test_local_llm_config.py::TestLLMModelSelection::test_local_llm_takes_priority_over_cloud PASSED [ 40%]
+tests/test_local_llm_config.py::TestCloudAPIKeyDetection::test_has_cloud_api_key_returns_false_when_all_empty PASSED [ 40%]
+tests/test_local_llm_config.py::TestCloudAPIKeyDetection::test_has_cloud_api_key_returns_true_with_openai PASSED [ 40%]
+tests/test_local_llm_config.py::TestCloudAPIKeyDetection::test_has_cloud_api_key_returns_true_with_google PASSED [ 40%]
+tests/test_local_llm_config.py::TestCloudAPIKeyDetection::test_has_cloud_api_key_returns_true_with_anthropic PASSED [ 41%]
+tests/test_local_llm_config.py::TestLocalLLMModelCreation::test_create_local_llm_model_returns_openai_chat_model PASSED [ 41%]
+tests/test_local_llm_config.py::TestLocalLLMModelCreation::test_create_local_llm_model_uses_custom_base_url PASSED [ 41%]
+tests/test_local_llm_config.py::TestLocalLLMModelCreation::test_create_local_llm_model_uses_custom_model_name PASSED [ 41%]
+tests/test_local_llm_config.py::TestConfigurationErrorMessages::test_error_message_suggests_local_and_cloud_options PASSED [ 41%]
+tests/test_local_llm_config.py::TestConfigurationBackwardCompatibility::test_cloud_only_config_still_works PASSED [ 41%]
+tests/test_local_llm_config.py::TestConfigurationBackwardCompatibility::test_local_first_is_transparent_to_cloud_users PASSED [ 42%]
+tests/test_local_queue.py::TestLocalJobQueueInitialization::test_queue_initialization PASSED [ 42%]
+tests/test_local_queue.py::TestLocalJobQueueInitialization::test_custom_worker_count PASSED [ 42%]
+tests/test_local_queue.py::TestLocalJobQueueInitialization::test_queue_internal_state PASSED [ 42%]
+tests/test_local_queue.py::TestJobDataStructure::test_job_creation PASSED [ 42%]
+tests/test_local_queue.py::TestJobDataStructure::test_job_with_arguments PASSED [ 43%]
+tests/test_local_queue.py::TestJobEnqueueing::test_enqueue_job PASSED    [ 43%]
+tests/test_local_queue.py::TestJobEnqueueing::test_enqueue_multiple_jobs PASSED [ 43%]
+tests/test_local_queue.py::TestJobEnqueueing::test_enqueue_job_with_args_kwargs PASSED [ 43%]
+tests/test_local_queue.py::TestJobProcessing::test_worker_processes_job PASSED [ 43%]
+tests/test_local_queue.py::TestJobProcessing::test_worker_processes_job_with_args PASSED [ 43%]
+tests/test_local_queue.py::TestJobProcessing::test_multiple_workers_process_jobs PASSED [ 44%]
+tests/test_local_queue.py::TestJobStatusTracking::test_job_status_queued PASSED [ 44%]
+tests/test_local_queue.py::TestJobStatusTracking::test_get_job_status PASSED [ 44%]
+tests/test_local_queue.py::TestJobStatusTracking::test_get_job_result_pending PASSED [ 44%]
+tests/test_local_queue.py::TestJobStatusTracking::test_get_nonexistent_job PASSED [ 44%]
+tests/test_local_queue.py::TestJobStatusTracking::test_job_timestamps PASSED [ 44%]
+tests/test_local_queue.py::TestErrorHandling::test_job_error_handling PASSED [ 45%]
+tests/test_local_queue.py::TestErrorHandling::test_job_error_with_result_none PASSED [ 45%]
+tests/test_local_queue.py::TestWorkerLifecycle::test_start_workers PASSED [ 45%]
+tests/test_local_queue.py::TestWorkerLifecycle::test_stop_workers PASSED [ 45%]
+tests/test_local_queue.py::TestWorkerLifecycle::test_start_workers_idempotent PASSED [ 45%]
+tests/test_local_queue.py::TestWorkerLifecycle::test_queue_with_context_manager_pattern PASSED [ 45%]
+tests/test_local_queue.py::TestJobQueueIntegration::test_full_job_lifecycle PASSED [ 46%]
+tests/test_local_queue.py::TestJobQueueIntegration::test_sequential_jobs PASSED [ 46%]
+tests/test_logo_pipeline.py::TestLogoParameterPassing::test_logo_params_in_worker_task PASSED [ 46%]
+tests/test_logo_pipeline.py::TestLogoParameterPassing::test_logo_params_in_task_service PASSED [ 46%]
+tests/test_logo_pipeline.py::TestLogoParameterPassing::test_logo_params_in_video_service PASSED [ 46%]
+tests/test_logo_pipeline.py::TestLogoParameterPassing::test_logo_params_passed_to_clip_creation PASSED [ 47%]
+tests/test_logo_pipeline.py::TestLogoParameterPassing::test_logo_overlay_code_executes PASSED [ 47%]
+tests/test_logo_pipeline.py::test_logo_file_exists SKIPPED (Test logo
+file not found at /Users/cspenn/Documents/github/supoclip/backend/tests/
+docs/TI_Primary_2Color_Reverse.png)                                      [ 47%]
+tests/test_logo_pipeline.py::test_logo_overlay_code_exists PASSED        [ 47%]
+tests/test_logo_upload.py::test_logo_upload PASSED                       [ 47%]
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_accepts_png_file SKIPPEDexists in DB) [ 47%]
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_accepts_jpg_file SKIPPEDexists in DB) [ 48%]
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_rejects_non_image_files SKIPPEDexists in DB) [ 48%]
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_missing_file_returns_400 SKIPPEDexists in DB) [ 48%]
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_missing_user_id_returns_401 SKIPPEDexists in DB) [ 48%]
+tests/test_logo_upload_feature.py::TestLogoFileHandling::test_logo_resize_to_60px PASSED [ 48%]
+tests/test_logo_upload_feature.py::TestLogoFileHandling::test_logo_saved_to_correct_directory PASSED [ 48%]
+tests/test_logo_upload_feature.py::TestLogoFileHandling::test_user_database_updated_with_logo_path PASSED [ 49%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_corner_position_top_left_valid PASSED [ 49%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_corner_position_top_right_valid PASSED [ 49%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_corner_position_bottom_left_valid PASSED [ 49%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_corner_position_bottom_right_valid PASSED [ 49%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_invalid_corner_position_rejected PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoCornerPositionValidation::test_corner_position_case_sensitive PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoOverlayOnClips::test_logo_overlay_applied_to_generated_clips PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoOverlayOnClips::test_logo_appears_at_correct_corner_position_top_right PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoOverlayOnClips::test_logo_appears_at_correct_corner_position_bottom_left PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoOverlayOnClips::test_logo_transparency_preserved_in_rgba_conversion PASSED [ 50%]
+tests/test_logo_upload_feature.py::TestLogoConcurrency::test_concurrent_logo_uploads_dont_conflict PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineDatabase::test_sqlite_default_database PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineDatabase::test_no_postgresql_required PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineDatabase::test_database_creates_local_file PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineTranscription::test_parakeet_default PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineTranscription::test_parakeet_not_cloud_service PASSED [ 51%]
+tests/test_offline_capability.py::TestOfflineTranscription::test_no_assembly_ai_required PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineJobQueue::test_local_queue_available PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineJobQueue::test_no_redis_required PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineJobQueue::test_local_queue_no_redis_dependency PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineAPIOperation::test_health_check_works_offline PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineAPIOperation::test_database_health_without_redis PASSED [ 52%]
+tests/test_offline_capability.py::TestOfflineAPIOperation::test_root_endpoint_offline PASSED [ 53%]
+tests/test_offline_capability.py::TestOfflineConfiguration::test_config_without_api_keys PASSED [ 53%]
+tests/test_offline_capability.py::TestOfflineConfiguration::test_default_llm_configured PASSED [ 53%]
+tests/test_offline_capability.py::TestOfflineConfiguration::test_all_required_settings_offline PASSED [ 53%]
+tests/test_offline_capability.py::TestNoExternalAPICallsByDefault::test_no_openai_call_without_key PASSED [ 53%]
+tests/test_offline_capability.py::TestNoExternalAPICallsByDefault::test_no_google_api_call_without_key PASSED [ 54%]
+tests/test_offline_capability.py::TestNoExternalAPICallsByDefault::test_no_anthropic_call_without_key PASSED [ 54%]
+tests/test_offline_capability.py::TestOfflineDirectory::test_temp_directory_local PASSED [ 54%]
+tests/test_offline_capability.py::TestOfflineDirectory::test_output_directory_local PASSED [ 54%]
+tests/test_offline_capability.py::TestOfflineDirectory::test_clips_stored_locally PASSED [ 54%]
+tests/test_offline_capability.py::TestLocalAssetsAvailability::test_fonts_directory_exists PASSED [ 54%]
+tests/test_offline_capability.py::TestLocalAssetsAvailability::test_transitions_directory_exists PASSED [ 55%]
+tests/test_offline_capability.py::TestOfflineScenarios::test_application_starts_offline PASSED [ 55%]
+tests/test_offline_capability.py::TestOfflineScenarios::test_database_operations_offline PASSED [ 55%]
+tests/test_offline_capability.py::TestOfflineScenarios::test_job_queue_offline PASSED [ 55%]
+tests/test_offline_capability.py::TestOfflineScenarios::test_file_storage_offline PASSED [ 55%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_configured_by_default PASSED [ 55%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_no_api_key_required PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_base_url_configurable PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_default_endpoint PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_cloud_fallback_when_local_disabled PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_full_offline_pipeline_configured PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_no_api_calls_with_local_llm_enabled PASSED [ 56%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_model_name_configurable PASSED [ 57%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_local_llm_cost_zero_when_enabled PASSED [ 57%]
+tests/test_offline_capability.py::TestLocalLLMOfflineOperation::test_error_message_helpful_when_misconfigured PASSED [ 57%]
+tests/test_parameter_flow_fixes.py::TestClipLengthParametersPassedThroughPipeline::test_analyze_transcript_receives_clip_length_params PASSED [ 57%]
+tests/test_parameter_flow_fixes.py::TestClipLengthParametersPassedThroughPipeline::test_process_video_complete_passes_clip_length_to_analyze PASSED [ 57%]
+tests/test_parameter_flow_fixes.py::TestVideoServiceLogsParameters::test_font_parameters_logged PASSED [ 58%]
+tests/test_parameter_flow_fixes.py::TestIntegrationParameterFlow::test_full_parameter_flow_from_api_to_video_creation PASSED [ 58%]
+tests/test_parameter_flow_fixes_simple.py::TestClipLengthParametersFlowThroughPipeline::test_analyze_transcript_receives_clip_length_params PASSED [ 58%]
+tests/test_parameter_flow_fixes_simple.py::TestClipLengthParametersFlowThroughPipeline::test_process_video_complete_passes_clip_length_to_analyze PASSED [ 58%]
+tests/test_parameter_flow_fixes_simple.py::TestVideoServiceLogsParameters::test_font_parameters_logged PASSED [ 58%]
+tests/test_parameter_flow_fixes_simple.py::TestVideoServiceLogsParameters::test_clip_length_parameters_logged PASSED [ 58%]
+tests/test_parameter_flow_fixes_simple.py::TestResolveFontPathFunctionality::test_resolve_font_path_exists_and_returns_string PASSED [ 59%]
+tests/test_parameter_flow_fixes_simple.py::TestResolveFontPathFunctionality::test_resolve_font_path_fallback_includes_default_font PASSED [ 59%]
+tests/test_parameter_flow_fixes_simple.py::TestResolveFontPathFunctionality::test_resolve_font_path_with_database_lookup PASSED [ 59%]
+tests/test_parameter_flow_fixes_simple.py::TestFunctionSignatures::test_video_service_process_complete_has_clip_length_params PASSED [ 59%]
+tests/test_parameter_flow_fixes_simple.py::TestFunctionSignatures::test_video_service_analyze_transcript_has_clip_length_params PASSED [ 59%]
+tests/test_parameter_flow_fixes_simple.py::test_all_three_fixes_documented PASSED [ 59%]
+tests/test_parameter_flow_issues.py::TestFontFallbackWhenSystemFontNotAccessible::test_font_fallback_when_bundled_not_found PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestFontFallbackWhenSystemFontNotAccessible::test_font_selection_without_variations_check PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestClipLengthUsesDefaultsNotUserValues::test_clip_length_defaults_hardcoded PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestClipLengthUsesDefaultsNotUserValues::test_process_video_complete_accepts_clip_length_params PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestMissingParameterLogging::test_video_service_logs_parameters PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestSystemFontDatabaseLookup::test_resolve_font_path_queries_system_fonts_table PASSED [ 60%]
+tests/test_parameter_flow_issues.py::TestFontNameVariations::test_font_variations_are_attempted PASSED [ 61%]
+tests/test_parameter_flow_issues.py::test_suite_metadata PASSED          [ 61%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_format_transcript_returns_proper_srt_format PASSED [ 61%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_format_transcript_timestamp_format_mm_ss_mmm PASSED [ 61%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_format_transcript_millisecond_precision_preserved PASSED [ 61%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_format_transcript_word_grouping_six_words_per_line PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_format_transcript_line_breaks_at_punctuation PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_empty_transcript_handled_gracefully PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatBasics::test_transcript_with_no_words_handled PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatAdvanced::test_transcript_formatting_for_ai_analysis PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatAdvanced::test_timestamps_match_word_timing_from_parakeet_mlx PASSED [ 62%]
+tests/test_srt_format_transcript.py::TestSRTFormatAdvanced::test_formatted_transcript_sent_to_ai_model PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_very_short_words PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_very_long_words PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_multiple_punctuation_marks PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_special_characters PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_numbers PASSED [ 63%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_with_single_word PASSED [ 64%]
+tests/test_srt_format_transcript.py::TestSRTFormatEdgeCases::test_transcript_very_long_duration PASSED [ 64%]
+tests/test_srt_format_transcript.py::TestSRTFormatParameterization::test_format_with_custom_words_per_line PASSED [ 64%]
+tests/test_srt_format_transcript.py::TestSRTFormatParameterization::test_format_consistency_same_input_same_output PASSED [ 64%]
+tests/test_video_processing.py::TestVideoModuleImports::test_video_utils_imports PASSED [ 64%]
+tests/test_video_processing.py::TestVideoModuleImports::test_ai_module_imports PASSED [ 64%]
+tests/test_video_processing.py::TestVideoModuleImports::test_transcription_mlx_imports PASSED [ 65%]
+tests/test_video_processing.py::TestVideoFileHandling::test_sample_video_exists PASSED [ 65%]
+tests/test_video_processing.py::TestVideoFileHandling::test_sample_video_has_content PASSED [ 65%]
+tests/test_video_processing.py::TestVideoFileHandling::test_video_in_correct_directory PASSED [ 65%]
+tests/test_video_processing.py::TestVideoFileHandling::test_multiple_videos_supported PASSED [ 65%]
+tests/test_video_processing.py::TestVideoFileHandling::test_video_naming_flexibility PASSED [ 66%]
+tests/test_video_processing.py::TestClipGeneration::test_generated_clip_storage PASSED [ 66%]
+tests/test_video_processing.py::TestClipGeneration::test_multiple_clips_per_task PASSED [ 66%]
+tests/test_video_processing.py::TestClipGeneration::test_clip_duration_validation PASSED [ 66%]
+tests/test_video_processing.py::TestClipGeneration::test_clip_time_format PASSED [ 66%]
+tests/test_video_processing.py::TestSubtitleHandling::test_clip_has_transcript_text PASSED [ 66%]
+tests/test_video_processing.py::TestSubtitleHandling::test_word_level_timestamps_storage PASSED [ 67%]
+tests/test_video_processing.py::TestSubtitleHandling::test_subtitle_positioning_lower_middle PASSED [ 67%]
+tests/test_video_processing.py::TestClipQualityMetrics::test_relevance_score_storage PASSED [ 67%]
+tests/test_video_processing.py::TestClipQualityMetrics::test_reasoning_field_storage PASSED [ 67%]
+tests/test_video_processing.py::TestVideoProcessingConfig::test_max_video_duration_setting PASSED [ 67%]
+tests/test_video_processing.py::TestVideoProcessingConfig::test_clip_duration_setting PASSED [ 67%]
+tests/test_video_processing.py::TestVideoProcessingConfig::test_max_clips_setting PASSED [ 68%]
+tests/test_video_processing.py::TestVideoProcessingErrorHandling::test_missing_video_file_handling PASSED [ 68%]
+tests/test_video_processing.py::TestVideoProcessingErrorHandling::test_invalid_clip_time_handling PASSED [ 68%]
+tests/test_video_processing.py::TestVideoProcessingIntegration::test_complete_clip_workflow PASSED [ 68%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_missing_source_url_returns_400 PASSED [ 68%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_missing_user_id_returns_401 PASSED [ 68%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_with_valid_youtube_url PASSED [ 69%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_with_custom_fonts PASSED [ 69%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_with_logo_overlay PASSED [ 69%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_with_custom_ai_prompt PASSED [ 69%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_with_dynamic_clip_lengths PASSED [ 69%]
+tests/test_video_processing_endpoints.py::TestPostStartEndpoint::test_start_invalid_video_rejected PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestPostStartWithProgressEndpoint::test_start_with_progress_returns_task_id PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestPostStartWithProgressEndpoint::test_start_with_progress_initiates_background_processing PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestPostStartWithProgressEndpoint::test_start_with_progress_task_status_updates PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestPostStartWithProgressEndpoint::test_start_with_progress_logo_applied PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestGetTaskDetailsEndpoint::test_get_task_returns_valid_task PASSED [ 70%]
+tests/test_video_processing_endpoints.py::TestGetTaskDetailsEndpoint::test_get_task_returns_404_for_invalid_task PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskDetailsEndpoint::test_get_task_returns_task_status PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskDetailsEndpoint::test_get_task_returns_clip_count PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskDetailsEndpoint::test_get_task_returns_all_clips_metadata PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskClipsEndpoint::test_get_task_clips_returns_all_clips PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskClipsEndpoint::test_get_task_clips_includes_metadata PASSED [ 71%]
+tests/test_video_processing_endpoints.py::TestGetTaskClipsEndpoint::test_get_task_clips_includes_relevance_scores PASSED [ 72%]
+tests/test_video_processing_endpoints.py::TestGetTaskClipsEndpoint::test_get_task_clips_invalid_task_returns_404 PASSED [ 72%]
+tests/test_video_processing_endpoints.py::TestGetTaskClipsEndpoint::test_get_task_clips_empty_task_returns_empty_array PASSED [ 72%]
+tests/test_video_processing_parameters.py::test_video_processing_with_parameters SKIPPED [ 72%]
+tests/test_word_extraction.py::TestWordExtraction::test_extracts_words_not_bpe_tokens PASSED [ 72%]
+tests/test_word_extraction.py::TestWordExtraction::test_preserves_word_timing PASSED [ 72%]
+tests/test_word_extraction.py::TestWordExtraction::test_handles_multiple_sentences PASSED [ 73%]
+tests/test_word_extraction.py::TestWordExtraction::test_preserves_confidence_scores PASSED [ 73%]
+tests/test_word_extraction.py::TestWordExtraction::test_skips_empty_tokens PASSED [ 73%]
+tests/test_word_extraction.py::TestWordExtraction::test_skips_invalid_timing PASSED [ 73%]
+tests/test_word_extraction.py::TestWordExtraction::test_fallback_to_tokens_if_no_sentences PASSED [ 73%]
+tests/unit/test_ai_output_validation.py::TestZeroSegmentsValidation::test_all_segments_rejected_raises_error PASSED [ 74%]
+tests/unit/test_ai_output_validation.py::TestZeroSegmentsValidation::test_zero_segments_error_message_helpful PASSED [ 74%]
+tests/unit/test_ai_output_validation.py::TestSegmentRejectionLogging::test_insufficient_text_logged PASSED [ 74%]
+tests/unit/test_ai_output_validation.py::TestValidSegmentsAccepted::test_valid_segment_accepted PASSED [ 74%]
+tests/unit/test_ai_output_validation.py::TestValidSegmentsAccepted::test_multiple_valid_segments_accepted PASSED [ 74%]
+tests/unit/test_ai_output_validation.py::TestGroqResponseValidation::test_ultra_short_response_detected PASSED [ 74%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_with_x_user_id_header PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_with_user_id_header PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_prefers_x_user_id PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_missing_header_raises_401 PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_empty_header_raises_401 PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_whitespace_only_header_raises_401 PASSED [ 75%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_not_found_in_db_raises_401 PASSED [ 76%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_database_error_raises_500 PASSED [ 76%]
+tests/unit/test_dependencies.py::TestGetCurrentUser::test_get_current_user_verifies_in_database PASSED [ 76%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_returns_user_when_authenticated PASSED [ 76%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_returns_none_when_not_authenticated PASSED [ 76%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_returns_none_when_user_not_found PASSED [ 77%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_does_not_raise_on_missing_header PASSED [ 77%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_does_not_raise_on_database_error PASSED [ 77%]
+tests/unit/test_dependencies.py::TestGetOptionalUser::test_get_optional_user_with_both_header_formats PASSED [ 77%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextNoGhostWords::test_clip_starting_at_1_second_excludes_hello_everyone PASSED [ 77%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextNoGhostWords::test_clip_starting_mid_word_excludes_partial_word PASSED [ 77%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextNoGhostWords::test_exact_word_boundary_includes_word PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextNoGhostWords::test_word_starting_before_clip_is_excluded PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextBoundaries::test_end_time_boundary_excludes_words_starting_at_end PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextBoundaries::test_clip_shorter_than_word_duration PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextBoundaries::test_full_range_returns_all_words PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextEdgeCases::test_missing_cache_file_returns_none PASSED [ 78%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextEdgeCases::test_empty_word_list_returns_none PASSED [ 79%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextEdgeCases::test_malformed_cache_json_returns_none PASSED [ 79%]
+tests/unit/test_extract_text_from_cache.py::TestExtractTextEdgeCases::test_time_range_with_no_matching_words PASSED [ 79%]
+tests/unit/test_font_options.py::TestParseDefaultConstants::test_default_font_family PASSED [ 79%]
+tests/unit/test_font_options.py::TestParseDefaultConstants::test_default_font_size PASSED [ 79%]
+tests/unit/test_font_options.py::TestParseDefaultConstants::test_default_font_color PASSED [ 79%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_with_all_options PASSED [ 80%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_with_partial_options PASSED [ 80%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_with_no_options PASSED [ 80%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_with_empty_font_options PASSED [ 80%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_returns_dict PASSED [ 80%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_font_size_override PASSED [ 81%]
+tests/unit/test_font_options.py::TestParseFontOptions::test_parse_font_options_font_color_override PASSED [ 81%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_request_overrides PASSED [ 81%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_missing_in_request PASSED [ 81%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_ignores_none_in_request PASSED [ 81%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_empty_request PASSED [ 81%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_empty_defaults PASSED [ 82%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_preserves_defaults_dict PASSED [ 82%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_handles_extra_keys_in_request PASSED [ 82%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_numeric_values PASSED [ 82%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_empty_string_value PASSED [ 82%]
+tests/unit/test_font_options.py::TestMergeWithDefaults::test_merge_with_defaults_returns_new_dict PASSED [ 82%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathResolution::test_get_logo_path_none_when_not_set PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathResolution::test_get_logo_path_none_when_empty PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathResolution::test_get_logo_path_absolute_path_unchanged PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathResolution::test_get_logo_path_relative_converted_to_absolute PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathResolution::test_get_logo_path_returns_none_for_nonexistent_file PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathInVideoUtils::test_logo_path_conversion_to_absolute PASSED [ 83%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathInVideoUtils::test_logo_path_string_to_path_conversion PASSED [ 84%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathEdgeCases::test_get_logo_path_with_spaces_in_path PASSED [ 84%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathEdgeCases::test_get_logo_path_with_special_characters PASSED [ 84%]
+tests/unit/test_logo_path_resolution.py::TestLogoPathEdgeCases::test_missing_key_in_preferences PASSED [ 84%]
+tests/unit/test_millisecond_timestamps.py::test_parse_timestamps_with_milliseconds PASSED [ 84%]
+tests/unit/test_millisecond_timestamps.py::test_parse_timestamps_without_milliseconds PASSED [ 85%]
+tests/unit/test_millisecond_timestamps.py::test_parse_timestamps_edge_cases PASSED [ 85%]
+tests/unit/test_millisecond_timestamps.py::test_timestamp_segment_validation PASSED [ 85%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_clean_start_returns_tuple PASSED [ 85%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_allows_clean_starts PASSED [ 85%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_rejects_forbidden_starts PASSED [ 85%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_case_insensitive PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_whitespace_handling PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_validate_partial_matches_not_rejected PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestCleanStartValidator::test_forbidden_starts_constant PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_parse_timestamp_valid_format PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_parse_timestamp_invalid_format_raises_error PASSED [ 86%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_calculate_duration_basic PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_calculate_duration_invalid_timestamps PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_validate_duration_positive_duration PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_validate_duration_minimum_requirement PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTimestampParser::test_min_duration_seconds_constant PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_text_content_valid PASSED [ 87%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_text_content_empty PASSED [ 88%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_text_content_whitespace_only PASSED [ 88%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_text_content_too_few_words PASSED [ 88%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_timestamps_valid_segment PASSED [ 88%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_timestamps_identical_times PASSED [ 88%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_timestamps_too_short PASSED [ 89%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_segment_comprehensive PASSED [ 89%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_segment_with_forbidden_start PASSED [ 89%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_validate_segment_empty_text PASSED [ 89%]
+tests/unit/test_refactored_ai_classes.py::TestTranscriptSegmentValidator::test_min_word_count_constant PASSED [ 89%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_with_milliseconds PASSED [ 89%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_without_milliseconds PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_zero_minutes PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_large_minutes PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_invalid_format PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_parse_timestamp_empty_string PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_calculate_duration_with_milliseconds PASSED [ 90%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_calculate_duration_negative PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_validate_duration_valid PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_validate_duration_too_short PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_validate_duration_zero PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampParser::test_validate_duration_negative PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_validate_precise_format PASSED [ 91%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_validate_precise_format_single_digit_minute PASSED [ 92%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_validate_imprecise_format PASSED [ 92%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_validate_invalid_format PASSED [ 92%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_validate_with_whitespace PASSED [ 92%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_add_default_milliseconds_imprecise PASSED [ 92%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_add_default_milliseconds_precise PASSED [ 93%]
+tests/unit/test_timestamp_validators.py::TestTimestampFormatValidator::test_add_default_milliseconds_with_whitespace PASSED [ 93%]
+tests/unit/test_timestamp_validators.py::TestTimestampIntegration::test_full_validation_flow PASSED [ 93%]
+tests/unit/test_timestamp_validators.py::TestTimestampIntegration::test_fallback_flow_for_imprecise_timestamps PASSED [ 93%]
+tests/unit/test_user_preferences_service.py::TestUserPreferencesServiceInit::test_init_stores_db PASSED [ 93%]
+tests/unit/test_user_preferences_service.py::TestUserPreferencesServiceInit::test_default_preferences_are_defined PASSED [ 93%]
+tests/unit/test_user_preferences_service.py::TestGetUserPreferences::test_get_user_preferences_returns_dict PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestGetUserPreferences::test_get_user_preferences_uses_defaults_for_none_values PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestGetUserPreferences::test_get_user_preferences_raises_for_missing_user PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestGetUserPreferences::test_get_user_preferences_merges_with_defaults PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestMergeWithRequestOptions::test_merge_with_request_options_request_overrides_user PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestMergeWithRequestOptions::test_merge_with_request_options_user_used_when_request_missing PASSED [ 94%]
+tests/unit/test_user_preferences_service.py::TestMergeWithRequestOptions::test_merge_with_request_options_custom_ai_prompt PASSED [ 95%]
+tests/unit/test_user_preferences_service.py::TestMergeWithRequestOptions::test_merge_clip_length_settings PASSED [ 95%]
+tests/unit/test_user_preferences_service.py::TestGetLogoPath::test_get_logo_path_returns_path_object PASSED [ 95%]
+tests/unit/test_user_preferences_service.py::TestGetLogoPath::test_get_logo_path_returns_none_when_not_configured PASSED [ 95%]
+tests/unit/test_user_preferences_service.py::TestGetLogoPath::test_get_logo_path_returns_none_for_empty_path PASSED [ 95%]
+tests/unit/test_video_service_async.py::TestAsyncVideoServiceInit::test_init_stores_db_and_config PASSED [ 95%]
+tests/unit/test_video_service_async.py::TestCreateTask::test_create_task_returns_task_id PASSED [ 96%]
+tests/unit/test_video_service_async.py::TestCreateTask::test_create_task_creates_source_and_task PASSED [ 96%]
+tests/unit/test_video_service_async.py::TestCreateTask::test_create_task_sets_processing_status PASSED [ 96%]
+tests/unit/test_video_service_async.py::TestCreateTask::test_create_task_with_custom_font_options PASSED [ 96%]
+tests/unit/test_video_service_async.py::TestProcessVideoAsync::test_process_video_async_updates_task_status PASSED [ 96%]
+tests/unit/test_video_service_async.py::TestProcessVideoAsync::test_process_video_async_returns_none PASSED [ 97%]
+tests/unit/test_video_service_async.py::TestUpdateTaskStatus::test_update_task_status_executes_update PASSED [ 97%]
+tests/unit/test_video_service_async.py::TestUpdateTaskStatus::test_update_task_status_different_statuses PASSED [ 97%]
+tests/unit/test_video_service_async.py::TestProcessVideoAsyncErrorHandling::test_process_video_async_marks_error_on_failure PASSED [ 97%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampMMSSFormat::test_parse_mm_ss_integer_seconds PASSED [ 97%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampMMSSFormat::test_parse_mm_ss_with_milliseconds PASSED [ 97%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampMMSSFormat::test_parse_mm_ss_milliseconds_edge_cases PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampHHMMSSFormat::test_parse_hh_mm_ss_integer_seconds PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampHHMMSSFormat::test_parse_hh_mm_ss_with_milliseconds PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampHHMMSSFormat::test_parse_hh_mm_ss_milliseconds_edge_cases PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampPureSeconds::test_parse_pure_float_seconds PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampPureSeconds::test_parse_pure_integer_seconds PASSED [ 98%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampWhitespace::test_strip_whitespace PASSED [ 99%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampErrorHandling::test_invalid_format_returns_zero PASSED [ 99%]
+tests/unit/test_video_utils_timestamps.py::TestParseTimestampErrorHandling::test_malformed_timestamps PASSED [ 99%]
+tests/unit/test_video_utils_timestamps.py::TestIntegrationWithVideoProcessing::test_segment_duration_calculation PASSED [ 99%]
+tests/unit/test_video_utils_timestamps.py::TestIntegrationWithVideoProcessing::test_multiple_clips_timestamp_sequence PASSED [ 99%]
+tests/unit/test_video_utils_timestamps.py::TestIntegrationWithVideoProcessing::test_backward_compatibility_with_old_formats PASSED [100%]Running teardown with pytest sessionfinish...
+
+
+- generated xml file: /Users/cspenn/Documents/github/supoclip/backend/logs/test-results.xml -
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.12-final-0 _______________
+
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src/__init__.py                                0      0   100%
+src/ai.py                                    188     54    71%   83-94, 104-111, 148, 278-279, 304, 312-313, 350-351, 365-400, 413-414, 419-422, 441-456, 479, 492-495, 499-500
+src/ai_structured.py                         120     28    77%   117, 172-173, 178-179, 256-260, 266-270, 277-280, 290-312, 320-324, 362, 400, 425-427
+src/ai_types/__init__.py                       2      0   100%
+src/ai_types/ai_models.py                     14      0   100%
+src/api/__init__.py                            0      0   100%
+src/api/routes/__init__.py                     0      0   100%
+src/api/routes/fonts.py                       56     18    68%   46-48, 84-86, 118-120, 144-153, 163-165
+src/api/routes/tasks.py                      176    122    31%   30-47, 69, 76, 96-149, 159-168, 178-191, 200-261, 269-292, 300-334, 342-376
+src/config.py                                 52      1    98%   157
+src/database.py                               61     39    36%   50-54, 72-97, 108-118, 123-134, 141
+src/dependencies.py                           41      1    98%   35
+src/lifecycle.py                              49     32    35%   27-38, 43-49, 55-81
+src/logging_config.py                         54     10    81%   25, 72, 92, 128, 136-141
+src/main.py                                  218    136    38%   78-80, 119-120, 139-177, 183-230, 236-286, 313-315, 332-334, 343-380, 386-474, 479-505, 509
+src/models.py                                 96      1    99%   184
+src/repositories/__init__.py                   0      0   100%
+src/repositories/clip_repository.py           39     12    69%   30, 128, 133-139, 144-151, 156-161
+src/repositories/source_repository.py         29     18    38%   24-37, 44-53, 65-72
+src/repositories/task_repository.py           62     18    71%   30, 33-35, 92, 151-162, 169-199, 204-207, 212-216
+src/services/__init__.py                       0      0   100%
+src/services/font_service.py                 226    112    50%   57-59, 120-157, 182, 194-195, 201-202, 253-255, 273-274, 278-279, 313-315, 337-339, 352-413, 432-479, 491-506, 515-528
+src/services/task_service.py                  65     42    35%   43-73, 93-186, 192-202, 208, 213-218
+src/services/user_preferences_service.py      57      4    93%   193-196
+src/services/video_service.py                151     63    58%   79-88, 96-110, 118-123, 131-141, 200-204, 209-210, 226-227, 230-233, 236-239, 242-243, 270-276, 290-296, 348, 355, 364, 380, 405, 411-413
+src/services/video_service_async.py          128     65    49%   91, 95-96, 101, 138-149, 163-194, 260-376
+src/subtitle_renderer.py                      51     38    25%   17-19, 22-23, 26, 30-34, 38-45, 64-136
+src/transcription_mlx.py                     199     87    56%   18-20, 24-25, 65, 73, 78-79, 100-126, 144-146, 161-185, 282-284, 298-300, 327-331, 344, 378-379, 398-401, 411-459, 492, 553, 571-583, 590-618
+src/utils/__init__.py                          0      0   100%
+src/utils/async_helpers.py                    17      9    47%   25-29, 46-50
+src/utils/font_options.py                     13      0   100%
+src/video_utils.py                           780    391    50%   105-107, 173-195, 200-222, 291-294, 318-319, 335-360, 399-414, 422-424, 432-442, 446-456, 464, 480-503, 531-541, 555-566, 581, 593-596, 602-625, 630, 649, 655-682, 696-718, 777-805, 835, 845, 850-852, 859-888, 931-958, 988-1030, 1042-1098, 1168, 1172, 1177, 1206, 1223, 1249-1276, 1311-1357, 1380-1381, 1390-1418, 1442, 1456-1457, 1466-1490, 1528-1529, 1542-1545, 1579, 1635-1637, 1643-1645, 1692-1695, 1734-1741, 1753-1754, 1766-1819, 1860-1910, 1920, 1931
+src/workers/__init__.py                        0      0   100%
+src/workers/job_queue.py                      37     21    43%   41-44, 54-57, 77-97, 111, 124
+src/workers/local_progress.py                 63     39    38%   30, 44-45, 59-77, 89, 99, 109, 122-155, 170-172
+src/workers/local_queue.py                    90      6    93%   109, 113-114, 190-192
+src/workers/tasks.py                          27     19    30%   33-92
+src/youtube_utils.py                         140     90    36%   28-38, 47, 52-54, 61-62, 66-68, 121, 145-155, 160-161, 171-172, 215-217, 233-245, 253-296, 301-302, 312-327, 332-340, 348
+------------------------------------------------------------------------
+TOTAL                                       3301   1476    55%
+Coverage HTML written to dir logs/coverage-html
+Coverage JSON written to file logs/coverage.json
+Test 
+tests/test_end_to_end.py::TestE2EVideoProcessingPipeline::test_transcription_wit
+h_parakeet was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_end_to_end.py', 
+513, 'Skipped: MLX Whisper transcription not available: Failed to load audio: 
+ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers\n  built with
+Apple clang version 17.0.0 (clang-1700.6.3.2)\n  configuration: 
+--prefix=/opt/homebrew/Cellar/ffmpeg/8.0.1_1 --enable-shared --enable-pthreads 
+--enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay 
+--enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 
+--enable-libmp3lame --enable-videotoolbox --enable-audiotoolbox --enable-neon\n 
+libavutil      60.  8.100 / 60.  8.100\n  libavcodec     62. 11.100 / 62. 
+11.100\n  libavformat    62.  3.100 / 62.  3.100\n  libavdevice    62.  1.100 / 
+62.  1.100\n  libavfilter    11.  4.100 / 11.  4.100\n  libswscale      9.  
+1.100 /  9.  1.100\n  libswresample   6.  1.100 /  6.  1.100\n moov atom not 
+found\n Error opening input: Invalid data found when processing input\nError 
+opening input file 
+/var/folders/b9/b0k16x1d4vd76ln1n8bm43000000gn/T/supoclip_e2e_rj1d4f7j/uploads/t
+est_e2e.mp4.\nError opening input files: Invalid data found when processing 
+input')
+Test 
+tests/test_font_cutoff_and_short_clips.py::TestFontCutoffIssue::test_barlow_cond
+ensed_bold_cutoff_reproduction was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_font_cutoff_and_sho
+rt_clips.py', 93, 'Skipped: Font not found: 
+/Users/cspenn/Documents/github/supoclip/backend/fonts/Barlow-Condensed-Bold.ttf'
+)
+Test 
+tests/test_font_cutoff_and_short_clips.py::TestActualUserScenario::test_user_sce
+nario_reproduction was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_font_cutoff_and_sho
+rt_clips.py', 363, 'Skipped: API not available: No valid segments found. All 0 
+segments rejected (too short or AI model fragments). Requested: 47-58s. AI 
+returned average: N/A. Recommendation: Try shorter clip durations (10-45 seconds
+work best for viral content).')
+Test tests/test_logo_pipeline.py::test_logo_file_exists was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_pipeline.py', 
+291, 'Skipped: Test logo file not found at 
+/Users/cspenn/Documents/github/supoclip/backend/tests/docs/TI_Primary_2Color_Rev
+erse.png')
+Test 
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_acce
+pts_png_file was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_upload_feature
+.py', 53, 'Skipped: Tests require database fixtures with test users - auth 
+validates user exists in DB')
+Test 
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_acce
+pts_jpg_file was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_upload_feature
+.py', 71, 'Skipped: Tests require database fixtures with test users - auth 
+validates user exists in DB')
+Test 
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_reje
+cts_non_image_files was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_upload_feature
+.py', 89, 'Skipped: Tests require database fixtures with test users - auth 
+validates user exists in DB')
+Test 
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_miss
+ing_file_returns_400 was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_upload_feature
+.py', 101, 'Skipped: Tests require database fixtures with test users - auth 
+validates user exists in DB')
+Test 
+tests/test_logo_upload_feature.py::TestLogoUploadEndpoint::test_logo_upload_miss
+ing_user_id_returns_401 was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_logo_upload_feature
+.py', 112, 'Skipped: Tests require database fixtures with test users - auth 
+validates user exists in DB')
+Test 
+tests/test_video_processing_parameters.py::test_video_processing_with_parameters
+was skipped. Reason: 
+('/Users/cspenn/Documents/github/supoclip/backend/tests/test_video_processing_pa
+rameters.py', 32, 'Skipped: Integration test - downloads real video, run 
+manually')
+=========== 562 passed, 10 skipped, 2 xfailed, 11 warnings in 26.42s ===========

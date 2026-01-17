@@ -32,6 +32,9 @@ from ..youtube_utils import download_youtube_video, get_youtube_video_title
 
 logger = logging.getLogger(__name__)
 
+# Minimum file size in bytes to validate clip is not corrupted
+MIN_CLIP_FILE_SIZE_BYTES = 1000  # 1 KB minimum
+
 
 class AsyncVideoProcessingService:
     """Asynchronous video processing service.
@@ -337,7 +340,7 @@ class AsyncVideoProcessingService:
                             continue
 
                         file_size = clip_path.stat().st_size
-                        if file_size < 1000:  # Less than 1KB is likely corrupted
+                        if file_size < MIN_CLIP_FILE_SIZE_BYTES:
                             logger.error(
                                 f"[SERVICE=ASYNC] Clip file too small ({file_size} bytes): {clip_path}"
                             )
