@@ -328,6 +328,21 @@ class AsyncVideoProcessingService:
                 async with AsyncSessionLocal() as db:
                     clip_ids = []
                     for i, clip_info in enumerate(clips_info):
+                        # Validate clip file exists and has content
+                        clip_path = Path(clip_info["path"])
+                        if not clip_path.exists():
+                            logger.error(
+                                f"[SERVICE=ASYNC] Clip file does not exist: {clip_path}"
+                            )
+                            continue
+
+                        file_size = clip_path.stat().st_size
+                        if file_size < 1000:  # Less than 1KB is likely corrupted
+                            logger.error(
+                                f"[SERVICE=ASYNC] Clip file too small ({file_size} bytes): {clip_path}"
+                            )
+                            continue
+
                         clip_record = GeneratedClip(
                             task_id=task_id,
                             filename=clip_info["filename"],
