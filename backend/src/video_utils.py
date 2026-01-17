@@ -264,7 +264,6 @@ def extract_text_from_cache(
     words_in_range = []
     for word in transcript_data["words"]:
         word_start = word.get("start", 0)
-        word_end = word.get("end", 0)
         word_text = word.get("text", "")
 
         # Include word ONLY if it STARTS at or after clip start time
