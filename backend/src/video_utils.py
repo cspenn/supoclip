@@ -1661,6 +1661,7 @@ def create_clips_from_segments(
 
     for i, segment in enumerate(segments):
         try:
+            logger.info(f"[CLIP_DIAG] Starting clip {i + 1}/{len(segments)}")
             # Debug log the segment data
             logger.info(
                 f"Processing segment {i + 1}: start='{segment.get('start_time')}', end='{segment.get('end_time')}'"
@@ -1702,6 +1703,7 @@ def create_clips_from_segments(
             )
 
             if success:
+                logger.info(f"[CLIP_DIAG] Clip {i + 1} created successfully: {clip_path}")
                 clip_info = {
                     "clip_id": i + 1,
                     "filename": clip_filename,
@@ -1716,10 +1718,14 @@ def create_clips_from_segments(
                 clips_info.append(clip_info)
                 logger.info(f"Created clip {i + 1}: {duration:.1f}s")
             else:
+                logger.error(f"[CLIP_DIAG] Clip {i + 1} FAILED - check resource cleanup")
                 logger.error(f"Failed to create clip {i + 1}")
 
         except Exception as e:
+            logger.error(f"[CLIP_DIAG] Clip {i + 1} exception: {e}")
             logger.error(f"Error processing clip {i + 1}: {e}")
+
+        logger.info(f"[CLIP_DIAG] Completed iteration {i + 1}, proceeding to next")
 
     logger.info(f"Successfully created {len(clips_info)}/{len(segments)} clips")
     return clips_info
