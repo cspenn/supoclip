@@ -1512,6 +1512,12 @@ def create_optimized_clip(
     Args:
         output_resolution: Target resolution ("480p", "720p", or "1080p")
     """
+    # Initialize resources for cleanup in finally block
+    video = None
+    clip = None
+    cropped_clip = None
+    final_clip = None
+
     try:
         duration = end_time - start_time
         if duration <= 0:
@@ -1530,8 +1536,7 @@ def create_optimized_clip(
             logger.error(
                 f"Start time {start_time}s exceeds video duration {video.duration:.1f}s"
             )
-            video.close()
-            return False
+            return False  # finally block will cleanup video
 
         # Preserve original times for subtitle alignment
         original_start_time: float = start_time
@@ -1618,17 +1623,21 @@ def create_optimized_clip(
             **encoding_settings,
         )
 
-        # Cleanup
-        final_clip.close()
-        clip.close()
-        video.close()
-
         logger.info(f"Successfully created clip: {output_path}")
         return True
 
     except Exception as e:
         logger.error(f"Failed to create clip: {e}")
         return False
+
+    finally:
+        # Always cleanup resources, even on exception
+        for resource in [final_clip, cropped_clip, clip, video]:
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception:
+                    pass
 
 
 def create_clips_from_segments(
