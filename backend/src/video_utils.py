@@ -3,6 +3,7 @@ Utility functions for video-related operations.
 Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
 """
 
+from contextlib import suppress
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any, Union
 import logging
@@ -1631,12 +1632,10 @@ def create_optimized_clip(
 
     finally:
         # Always cleanup resources, even on exception
-        for resource in [final_clip, cropped_clip, clip, video]:
+        for resource in (final_clip, cropped_clip, clip, video):
             if resource is not None:
-                try:
+                with suppress(Exception):
                     resource.close()
-                except Exception:
-                    pass
 
 
 def create_clips_from_segments(
