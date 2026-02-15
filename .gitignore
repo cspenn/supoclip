@@ -6,3 +6,10 @@ logs/
 temp/
 .env
 *.m4a
+*.db
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+backend/docs/reports/
