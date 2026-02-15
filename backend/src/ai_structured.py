@@ -8,11 +8,11 @@ with Llama 4 Scout, and instead uses Groq's native Structured Outputs feature.
 
 import logging
 import json
-import os
 from contextlib import suppress
 from groq import AsyncGroq
 
 from .ai_types.ai_models import TranscriptSegment, TranscriptAnalysis
+from .config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -357,9 +357,9 @@ async def analyze_transcript_structured(
     _validate_transcript_input(transcript)
 
     # Initialize Groq client
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = Config().groq_api_key
     if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable not set")
+        raise ValueError("GROQ_API_KEY not configured in environment")
 
     client = AsyncGroq(api_key=api_key)
     response_content: str = ""

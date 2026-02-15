@@ -7,7 +7,6 @@ Module: backend/src/transcription_mlx.py
 """
 
 import logging
-import os
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -331,7 +330,7 @@ async def _reconstruct_words_with_llm(
         )
         return broken_words
 
-    groq_api_key = os.getenv("GROQ_API_KEY", "")
+    groq_api_key = Config().groq_api_key
     if not groq_api_key:
         logger.warning(
             "GROQ_API_KEY not configured, skipping word reconstruction. "
