@@ -1,5 +1,6 @@
 # start backend/src/models.py
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import (
     String,
     DateTime,
@@ -143,7 +144,7 @@ class Task(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="tasks")
-    source: Mapped["Source | None"] = relationship("Source", back_populates="tasks")
+    source: Mapped[Optional["Source"]] = relationship("Source", back_populates="tasks")
     generated_clips: Mapped[list["GeneratedClip"]] = relationship(
         "GeneratedClip", back_populates="task", cascade="all, delete-orphan"
     )
