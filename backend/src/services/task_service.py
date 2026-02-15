@@ -3,7 +3,7 @@ Task service - orchestrates task creation and processing workflow.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable
 import logging
 
 from ..repositories.task_repository import TaskRepository

@@ -4,7 +4,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from fastapi import HTTPException, Request, Depends
 from sqlalchemy import text

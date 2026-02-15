@@ -6,7 +6,7 @@ Optimized for high-quality downloads and better error handling.
 import re
 from urllib.parse import urlparse, parse_qs
 import yt_dlp  # type: ignore
-from typing import Optional, Dict, Any
+from typing import Any
 from pathlib import Path
 import logging
 import time

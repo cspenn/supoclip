@@ -7,7 +7,7 @@ job queue (LocalJobQueue). Tasks are executed with asyncio workers.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 from ..database import AsyncSessionLocal
 from ..services.task_service import TaskService

@@ -8,7 +8,7 @@ Module: backend/src/workers/local_queue.py
 import asyncio
 import logging
 import traceback
-from typing import Callable, Dict, Any, Optional
+from typing import Any, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid

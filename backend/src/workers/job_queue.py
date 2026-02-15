@@ -10,7 +10,7 @@ MODULE: backend/src/workers/job_queue.py
 """
 
 import logging
-from typing import Optional, Callable, Any
+from typing import Any, Callable
 
 from .local_queue import get_job_queue, LocalJobQueue
 

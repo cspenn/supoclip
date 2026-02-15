@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 import logging
 
 from ...services.font_service import FontService

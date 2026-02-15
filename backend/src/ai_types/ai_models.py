@@ -4,7 +4,7 @@ These models are used by both ai.py (Pydantic AI/Tool Calling) and
 ai_structured.py (Groq Structured Outputs) to ensure consistency.
 """
 
-from typing import List
+from __future__ import annotations
 
 from pydantic import BaseModel, Field
 

@@ -8,7 +8,7 @@ and default handling. Eliminates duplicated preference logic across endpoints.
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

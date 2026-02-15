@@ -4,7 +4,7 @@ Clip repository - handles all database operations for generated clips.
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from typing import List, Dict, Any
+from typing import Any
 from datetime import datetime
 import logging
 import uuid

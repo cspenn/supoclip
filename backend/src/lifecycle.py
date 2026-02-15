@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 

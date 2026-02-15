@@ -3,7 +3,7 @@ Video service - handles video processing business logic.
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Callable
+from typing import Any, Callable
 import logging
 
 from ..utils.async_helpers import run_in_thread

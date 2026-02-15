@@ -8,7 +8,7 @@ Module: backend/src/workers/local_progress.py
 import asyncio
 import logging
 from contextlib import suppress
-from typing import Dict, Optional, AsyncGenerator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime
 
