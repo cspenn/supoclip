@@ -392,7 +392,7 @@ class AsyncVideoProcessingService:
             logger.error(f"[SERVICE=ASYNC] Task {task_id} marked as error: {e}")
 
     async def _update_task_status(
-        self, task_id: str, status: str, error_message: Optional[str] = None
+        self, task_id: str, status: str, error_message: str | None = None
     ) -> None:
         """Update task status in database.
 
