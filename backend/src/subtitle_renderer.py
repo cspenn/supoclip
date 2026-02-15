@@ -1,6 +1,5 @@
 import tempfile
 from pathlib import Path
-from typing import Optional
 import logging
 from playwright.sync_api import sync_playwright
 
