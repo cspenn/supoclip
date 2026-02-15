@@ -1,13 +1,24 @@
+# start backend/src/config.py
+
+"""Configuration for SupoClip backend, validated via Pydantic BaseSettings.
+
+Uses:
+- SQLite for database (not PostgreSQL)
+- parakeet-mlx for transcription (not AssemblyAI)
+- Local asyncio queue for jobs (not Redis/arq)
+"""
+
 from dotenv import load_dotenv
-import os
 from openai import AsyncOpenAI
+from pydantic import Field
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
 
 
-class Config:
+class Config(BaseSettings):
     """Configuration for SupoClip backend (native macOS version).
 
     Uses:
@@ -16,81 +27,91 @@ class Config:
     - Local asyncio queue for jobs (not Redis/arq)
     """
 
+    model_config = SettingsConfigDict(
+        extra="ignore",
+    )
+
     # Default ports
-    DEFAULT_BACKEND_PORT = 8008
+    DEFAULT_BACKEND_PORT: int = 8008
 
-    def __init__(self) -> None:
-        """Initialize configuration from environment variables."""
-        # parakeet-mlx transcription model
-        # Default: mlx-community/parakeet-tdt-0.6b-v2
-        self.parakeet_model = os.getenv(
-            "PARAKEET_MODEL", "mlx-community/parakeet-tdt-0.6b-v2"
-        )
+    # parakeet-mlx transcription model
+    parakeet_model: str = Field(
+        default="mlx-community/parakeet-tdt-0.6b-v2",
+        validation_alias="PARAKEET_MODEL",
+    )
 
-        # Word reconstruction using Groq LLM (fixes broken sub-word tokens)
-        # parakeet-mlx uses BPE tokenization which returns sub-word tokens
-        # This setting enables reconstruction of complete words before subtitle generation
-        self.reconstruct_words_with_llm = (
-            os.getenv("RECONSTRUCT_WORDS_WITH_LLM", "true").lower() == "true"
-        )
+    # Word reconstruction using Groq LLM (fixes broken sub-word tokens)
+    reconstruct_words_with_llm: bool = Field(
+        default=True,
+        validation_alias="RECONSTRUCT_WORDS_WITH_LLM",
+    )
 
-        # Local LLM configuration (default - no API key required)
-        self.local_llm_enabled = (
-            os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
-        )
-        self.local_llm_base_url = os.getenv(
-            "LOCAL_LLM_BASE_URL", "http://localhost:6969/v1"
-        )
-        self.local_llm_model = os.getenv("LOCAL_LLM_MODEL", "local-model")
-        self.local_llm_api_key = os.getenv("LOCAL_LLM_API_KEY", "not-needed")
+    # Local LLM configuration (default - no API key required)
+    local_llm_enabled: bool = Field(
+        default=True,
+        validation_alias="LOCAL_LLM_ENABLED",
+    )
+    local_llm_base_url: str = Field(
+        default="http://localhost:6969/v1",
+        validation_alias="LOCAL_LLM_BASE_URL",
+    )
+    local_llm_model: str = Field(
+        default="local-model",
+        validation_alias="LOCAL_LLM_MODEL",
+    )
+    local_llm_api_key: str = Field(
+        default="not-needed",
+        validation_alias="LOCAL_LLM_API_KEY",
+    )
 
-        # Cloud LLM configuration (optional fallback)
-        self.llm = os.getenv("LLM_MODEL", "")
-        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.google_api_key = os.getenv("GOOGLE_API_KEY", "")
+    # Cloud LLM configuration (optional fallback)
+    llm: str = Field(default="", validation_alias="LLM_MODEL")
+    groq_api_key: str = Field(default="", validation_alias="GROQ_API_KEY")
+    openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+    google_api_key: str = Field(default="", validation_alias="GOOGLE_API_KEY")
 
-        # Video processing settings
-        self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "3600"))
-        self.output_dir = os.getenv("OUTPUT_DIR", "outputs")
+    # Video processing settings
+    max_video_duration: int = Field(default=3600, validation_alias="MAX_VIDEO_DURATION")
+    output_dir: str = Field(default="outputs", validation_alias="OUTPUT_DIR")
 
-        # Clip generation settings
-        self.max_clips = int(os.getenv("MAX_CLIPS", "10"))
-        self.clip_duration = int(os.getenv("CLIP_DURATION", "30"))  # seconds
+    # Clip generation settings
+    max_clips: int = Field(default=10, validation_alias="MAX_CLIPS")
+    clip_duration: int = Field(default=30, validation_alias="CLIP_DURATION")
 
-        # Temporary directory for video processing
-        self.temp_dir = os.getenv("TEMP_DIR", "temp")
+    # Temporary directory for video processing
+    temp_dir: str = Field(default="temp", validation_alias="TEMP_DIR")
 
-        # Database URL (SQLite)
-        self.database_url = os.getenv(
-            "DATABASE_URL", "sqlite+aiosqlite:///./supoclip.db"
-        )
+    # Database URL (SQLite)
+    database_url: str = Field(
+        default="sqlite+aiosqlite:///./supoclip.db",
+        validation_alias="DATABASE_URL",
+    )
 
-        # Local job queue settings
-        self.max_workers = int(os.getenv("MAX_WORKERS", "2"))
-        self.worker_timeout = int(os.getenv("WORKER_TIMEOUT", "3600"))
+    # Local job queue settings
+    max_workers: int = Field(default=2, validation_alias="MAX_WORKERS")
+    worker_timeout: int = Field(default=3600, validation_alias="WORKER_TIMEOUT")
 
-        # Authentication bypass for local development (no sign-in required)
-        # Set to true to disable authentication and use default user_id for all requests
-        self.disable_auth = os.getenv("DISABLE_AUTH", "false").lower() == "true"
-        self.default_user_id = os.getenv("DEFAULT_USER_ID", "local-user")
+    # Authentication bypass for local development
+    disable_auth: bool = Field(default=False, validation_alias="DISABLE_AUTH")
+    default_user_id: str = Field(default="local-user", validation_alias="DEFAULT_USER_ID")
 
-        # Logging configuration
-        self.log_level = os.getenv("LOG_LEVEL", "INFO")
-        self.log_dir = os.getenv("LOG_DIR", "logs")
-        self.log_retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
+    # Logging configuration
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_dir: str = Field(default="logs", validation_alias="LOG_DIR")
+    log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")
 
-        # Backend URL (for generating full URLs to clips)
-        self.backend_url = os.getenv(
-            "BACKEND_URL", f"http://localhost:{self.DEFAULT_BACKEND_PORT}"
-        )
+    # Backend URL (for generating full URLs to clips)
+    backend_url: str = Field(
+        default="http://localhost:8008",
+        validation_alias="BACKEND_URL",
+    )
 
-        # Gradual rollout percentage for async service
-        # 0 = all traffic to legacy sync service
-        # 50 = 50% legacy, 50% async
-        # 100 = all traffic to async service
-        self.async_rollout_percentage = int(os.getenv("ASYNC_ROLLOUT_PERCENTAGE", "0"))
+    # Gradual rollout percentage for async service
+    async_rollout_percentage: int = Field(
+        default=0,
+        validation_alias="ASYNC_ROLLOUT_PERCENTAGE",
+    )
 
     def get_llm_model(self) -> OpenAIModel | str:
         """Get configured LLM model (local-first, cloud fallback).
@@ -158,3 +179,5 @@ class Config:
                 f"Invalid log level: {level}. Must be one of: {', '.join(valid_levels)}"
             )
         return level
+
+# end backend/src/config.py

@@ -200,5 +200,29 @@ class UserPreferencesService:
 
         return logo_path
 
+    async def update_user_logo(
+        self, user_id: str, logo_path: str, corner_position: str
+    ) -> None:
+        """Update logo file path and corner position for a user.
+
+        Args:
+            user_id: User ID to update
+            logo_path: Absolute path to the resized logo file
+            corner_position: Corner position for logo overlay
+        """
+        await self.db.execute(
+            text(
+                "UPDATE users SET logo_file_path = :logo_path, "
+                "logo_corner_position = :position WHERE id = :user_id"
+            ),
+            {
+                "logo_path": logo_path,
+                "position": corner_position,
+                "user_id": user_id,
+            },
+        )
+        await self.db.commit()
+        logger.info(f"Updated logo for user {user_id}: {logo_path}")
+
 
 # end backend/src/services/user_preferences_service.py

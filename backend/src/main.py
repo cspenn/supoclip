@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .database import get_db, AsyncSessionLocal
+from .database import get_db
 from .api.routes.tasks import router as tasks_router
 from .api.routes.fonts import router as fonts_router
 from .dependencies import get_current_user
@@ -272,7 +272,11 @@ async def upload_video(request: Request):
 
 
 @app.post("/upload-logo")
-async def upload_logo(request: Request, user_id: str = Depends(get_current_user)):
+async def upload_logo(
+    request: Request,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Upload logo image for user branding"""
     try:
         from PIL import Image
@@ -338,21 +342,9 @@ async def upload_logo(request: Request, user_id: str = Depends(get_current_user)
         # Delete temp file
         temp_path.unlink()
 
-        # Update user record
-        async with AsyncSessionLocal() as db:
-            await db.execute(
-                text(
-                    "UPDATE users SET logo_file_path = :logo_path, logo_corner_position = :position WHERE id = :user_id"
-                ),
-                {
-                    "logo_path": str(logo_path),
-                    "position": corner_position,
-                    "user_id": user_id,
-                },
-            )
-            await db.commit()
-
-        logger.info(f"Logo uploaded for user {user_id}: {logo_path}")
+        # Update user record via service
+        pref_service = UserPreferencesService(db)
+        await pref_service.update_user_logo(user_id, str(logo_path), corner_position)
 
         return {
             "message": "Logo uploaded successfully",
