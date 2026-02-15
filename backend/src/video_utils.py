@@ -78,32 +78,34 @@ def resolve_font_path(font_family: str) -> str:
             logger.debug(f"Found bundled font with variation: {variation}")
             return str(font_path)
 
-    # Try system fonts via database (synchronous lookup)
+    # Try system fonts via database (synchronous lookup using SQLAlchemy)
     try:
-        import sqlite3
+        from sqlalchemy import create_engine, text
 
         db_url = config.database_url or "sqlite+aiosqlite:///./supoclip.db"
-        db_path = db_url.replace("sqlite+aiosqlite:///", "").replace("sqlite://", "")
+        sync_url = db_url.replace("sqlite+aiosqlite:", "sqlite:")
 
-        if Path(db_path).exists():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT file_path FROM system_fonts WHERE name = ? AND is_valid = 1",
-                (font_family,),
-            )
-            result = cursor.fetchone()
-            conn.close()
+        engine = create_engine(sync_url)
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT file_path FROM system_fonts "
+                    "WHERE name = :name AND is_valid = 1"
+                ),
+                {"name": font_family},
+            ).fetchone()
 
-            if result and result[0]:
-                system_font_path = result[0]
-                if Path(system_font_path).exists():
-                    logger.info(
-                        f"Found system font '{font_family}' at: {system_font_path}"
-                    )
-                    return system_font_path
-                else:
-                    logger.warning(f"System font file not found: {system_font_path}")
+        engine.dispose()
+
+        if result and result[0]:
+            system_font_path = result[0]
+            if Path(system_font_path).exists():
+                logger.info(
+                    f"Found system font '{font_family}' at: {system_font_path}"
+                )
+                return system_font_path
+            else:
+                logger.warning(f"System font file not found: {system_font_path}")
     except Exception as e:
         logger.debug(f"Could not query system fonts database: {e}")
 
