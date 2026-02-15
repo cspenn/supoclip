@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -206,12 +206,12 @@ class AsyncVideoProcessingService:
         clip_min_length: int = 10,
         clip_target_length: int = 30,
         clip_max_length: int = 45,
-        custom_ai_prompt: Optional[str] = None,
-        logo_path: Optional[str] = None,
+        custom_ai_prompt: str | None = None,
+        logo_path: str | None = None,
         logo_corner_position: str = "top-right",
         output_resolution: str = "720p",
-        subtitle_style: Optional[dict[str, Any]] = None,
-        subtitle_position: Optional[dict[str, Any]] = None,
+        subtitle_style: dict[str, Any] | None = None,
+        subtitle_position: dict[str, Any] | None = None,
     ) -> None:
         """Process video asynchronously in background.
 
@@ -371,9 +371,19 @@ class AsyncVideoProcessingService:
                     )
                     await db.commit()
 
-            # Mark as completed
-            await self._update_task_status(task_id, "completed")
-            logger.info(f"[SERVICE=ASYNC] Task {task_id} completed successfully!")
+            # Postcondition: only mark completed if valid clips were produced
+            if clip_ids:
+                await self._update_task_status(task_id, "completed")
+                logger.info(f"[SERVICE=ASYNC] Task {task_id} completed successfully!")
+            else:
+                await self._update_task_status(
+                    task_id,
+                    "error",
+                    error_message="No valid clips were produced — all clips were invalid or skipped.",
+                )
+                logger.error(
+                    f"[SERVICE=ASYNC] Task {task_id} failed: no valid clips produced"
+                )
 
         except Exception as e:
             logger.error(f"[SERVICE=ASYNC] Error processing task {task_id}: {e}")
