@@ -166,7 +166,6 @@ async def start_task_with_progress(
             font_size=preferences["font_size"],
             font_color=preferences["font_color"],
             clip_min_length=preferences["clip_min_length"],
-            clip_target_length=preferences["clip_target_length"],
             clip_max_length=preferences["clip_max_length"],
             custom_ai_prompt=preferences["custom_ai_prompt"],
             logo_path=logo_path,

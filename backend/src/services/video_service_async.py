@@ -204,7 +204,6 @@ class AsyncVideoProcessingService:
         font_size: int = 24,
         font_color: str = "#FFFFFF",
         clip_min_length: int = 10,
-        clip_target_length: int = 30,
         clip_max_length: int = 45,
         custom_ai_prompt: str | None = None,
         logo_path: str | None = None,
@@ -226,7 +225,6 @@ class AsyncVideoProcessingService:
             font_size: Font size for subtitles
             font_color: Font color for subtitles
             clip_min_length: Minimum clip length in seconds
-            clip_target_length: Target clip length in seconds
             clip_max_length: Maximum clip length in seconds
             custom_ai_prompt: Optional custom AI prompt override
             logo_path: Optional path to user logo

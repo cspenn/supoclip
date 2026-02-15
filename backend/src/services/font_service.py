@@ -54,7 +54,8 @@ class FontNameExtractor:
             if record.nameID == name_id:
                 try:
                     return record.toUnicode()
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to decode font name record {name_id}: {e}")
                     return None
         return None
 

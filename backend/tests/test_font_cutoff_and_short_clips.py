@@ -1,15 +1,18 @@
 # start backend/tests/test_font_cutoff_and_short_clips.py
 """
-Failing tests to demonstrate font cutoff and short clips issues.
+Tests for subtitle rendering and AI clip duration behavior.
 
-These tests SHOULD FAIL until fixes are implemented.
-They prove the existence of the reported bugs.
+- TestFontCutoffIssue: Regression tests for TextClip rendering path
+- TestBrowserSubtitleRenderer: Tests for current BrowserSubtitleRenderer path
+- TestShortClipsIssue: Tests for AI clip duration parameterization
+- TestActualUserScenario: Integration test reproducing user scenario
 """
 
 import pytest
 from pathlib import Path
 from moviepy.video.VideoClip import TextClip
 from src.ai_structured import analyze_transcript_structured, build_system_prompt
+from src.subtitle_renderer import BrowserSubtitleRenderer
 
 
 class TestFontCutoffIssue:

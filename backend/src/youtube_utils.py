@@ -341,11 +341,4 @@ def cleanup_downloaded_files(video_id: str):
             logger.warning(f"Failed to cleanup {file_path.name}: {e}")
 
 
-# Backward compatibility functions
-
-
-def extract_video_id(url: str) -> str | None:
-    """Backward compatibility wrapper."""
-    return get_youtube_video_id(url)
-
 # end backend/src/youtube_utils.py

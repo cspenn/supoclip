@@ -268,38 +268,6 @@ def _extract_single_token(token: Any) -> dict[str, Any] | None:
     }
 
 
-def _get_token_start_time(token: Any) -> int:
-    """
-    Get start time in milliseconds from parakeet token.
-
-    Args:
-        token: AlignedToken from parakeet_mlx
-
-    Returns:
-        Start time in milliseconds
-    """
-    # AlignedToken has .start attribute in seconds (float)
-    if hasattr(token, "start"):
-        return int(token.start * 1000)
-    return 0
-
-
-def _get_token_end_time(token: Any) -> int:
-    """
-    Get end time in milliseconds from parakeet token.
-
-    Args:
-        token: AlignedToken from parakeet_mlx
-
-    Returns:
-        End time in milliseconds
-    """
-    # AlignedToken has .end attribute in seconds (float)
-    if hasattr(token, "end"):
-        return int(token.end * 1000)
-    return 0
-
-
 async def _reconstruct_words_with_llm(
     broken_words: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:

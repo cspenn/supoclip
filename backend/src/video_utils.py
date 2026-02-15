@@ -978,7 +978,6 @@ class SubtitleTextClipCreator:
         font_size: int,
         font_color: str,
         max_text_width: int,
-        is_single_word: bool,
         style_options: dict[str, Any] | None = None,
     ) -> ImageClip | None:
         """
@@ -1047,9 +1046,6 @@ class SubtitleTextClipCreator:
         current_font_size = font_size
         max_attempts = 3
 
-        # Determine method based on content
-        is_single_word = len(text.strip().split()) == 1
-
         for attempt in range(max_attempts):
             text_clip = SubtitleTextClipCreator._create_clip_candidate(
                 text,
@@ -1057,7 +1053,6 @@ class SubtitleTextClipCreator:
                 current_font_size,
                 font_color,
                 max_text_width,
-                is_single_word,
                 style_options,
             )
 
@@ -1289,7 +1284,6 @@ class SubtitleClipBuilder:
         font_color: str,
         video_width: int,
         video_height: int,
-        words_per_subtitle: int = 1,
         style_options: dict[str, Any] | None = None,
         position_options: dict[str, Any] | None = None,
     ) -> list[ImageClip]:
@@ -1305,7 +1299,6 @@ class SubtitleClipBuilder:
             font_color: Font color (hex or name)
             video_width: Video width for text wrapping
             video_height: Video height for positioning
-            words_per_subtitle: Number of words per caption (default: 1 for word-by-word)
 
         Returns:
             List of ImageClip objects with precise timing
@@ -1410,7 +1403,6 @@ def create_subtitles(
         font_color,
         video_width,
         video_height,
-        1,  # words_per_subtitle
         subtitle_style,
         subtitle_position,
     )
@@ -1910,21 +1902,5 @@ def create_clips_with_transitions(
     logger.info(f"Successfully created {len(enhanced_clips)} clips with transitions")
     return enhanced_clips
 
-
-# Backward compatibility alias
-get_video_transcript_with_assemblyai = get_video_transcript
-
-
-def create_9_16_clip(
-    video_path: Path,
-    start_time: float,
-    end_time: float,
-    output_path: Path,
-    subtitle_text: str = "",
-) -> bool:
-    """Backward compatibility wrapper."""
-    return create_optimized_clip(
-        video_path, start_time, end_time, output_path, add_subtitles=bool(subtitle_text)
-    )
 
 # end backend/src/video_utils.py
