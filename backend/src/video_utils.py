@@ -1,7 +1,7 @@
 # start backend/src/video_utils.py
 """
 Utility functions for video-related operations.
-Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
+Optimized for MoviePy v2, parakeet-mlx transcription, and high-quality output.
 """
 
 from contextlib import suppress
@@ -168,7 +168,7 @@ def get_video_transcript(video_path: Path) -> str:
     """
     Get transcript using parakeet-mlx (offline, Apple Silicon optimized).
 
-    Replaces AssemblyAI with local processing for privacy and offline capability.
+    Uses parakeet-mlx for local, offline transcription.
     Formats transcript with precise word-level timestamps (SRT-style) for AI analysis.
     """
     logger.info(f"Getting transcript for: {video_path}")
@@ -197,7 +197,7 @@ def get_video_transcript(video_path: Path) -> str:
 
 
 def cache_transcript_data(video_path: Path, transcript) -> None:
-    """Cache AssemblyAI transcript data for subtitle generation."""
+    """Cache transcript data for subtitle generation."""
     cache_path = video_path.with_suffix(".transcript_cache.json")
 
     # Store word-level data
@@ -224,7 +224,7 @@ def cache_transcript_data(video_path: Path, transcript) -> None:
 
 
 def load_cached_transcript_data(video_path: Path) -> dict | None:
-    """Load cached AssemblyAI transcript data."""
+    """Load cached transcript data."""
     cache_path = video_path.with_suffix(".transcript_cache.json")
 
     if not cache_path.exists():
@@ -1358,7 +1358,7 @@ class SubtitleClipBuilder:
         return subtitle_clips
 
 
-def create_assemblyai_subtitles(
+def create_subtitles(
     video_path: Path,
     clip_start: float,
     clip_end: float,
@@ -1373,7 +1373,6 @@ def create_assemblyai_subtitles(
     """
     Create subtitles using parakeet-mlx's precise word timing.
 
-    Legacy function name kept for backward compatibility.
     Uses cached transcript data from parakeet-mlx transcription.
     """
     transcript_data = load_cached_transcript_data(video_path)
@@ -1415,7 +1414,7 @@ def create_assemblyai_subtitles(
         subtitle_position,
     )
 
-    logger.info(f"Created {len(subtitle_clips)} subtitle elements from AssemblyAI data")
+    logger.info(f"Created {len(subtitle_clips)} subtitle elements from transcript data")
     return subtitle_clips
 
 
@@ -1512,7 +1511,7 @@ def create_optimized_clip(
     subtitle_position: dict[str, Any] | None = None,
 ) -> bool:
     """
-    Create optimized 9:16 clip with AssemblyAI subtitles.
+    Create optimized 9:16 clip with parakeet-mlx subtitles.
 
     Args:
         output_resolution: Target resolution ("480p", "720p", or "1080p")
@@ -1585,7 +1584,7 @@ def create_optimized_clip(
         final_clips = [cropped_clip]
 
         if add_subtitles:
-            subtitle_clips = create_assemblyai_subtitles(
+            subtitle_clips = create_subtitles(
                 video_path,
                 original_start_time,
                 original_end_time,
