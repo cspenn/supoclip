@@ -1580,7 +1580,7 @@ def create_optimized_clip(
                 f"Using native resolution {new_width}x{new_height} (matches {output_resolution})"
             )
 
-        # Add AssemblyAI subtitles
+        # Add subtitles
         final_clips = [cropped_clip]
 
         if add_subtitles:
@@ -1910,14 +1910,8 @@ def create_clips_with_transitions(
     return enhanced_clips
 
 
-# Backward compatibility functions
-def get_video_transcript_with_assemblyai(path: Path) -> str:
-    """
-    Backward compatibility wrapper for old API.
-
-    Uses parakeet-mlx instead of AssemblyAI.
-    """
-    return get_video_transcript(path)
+# Backward compatibility alias
+get_video_transcript_with_assemblyai = get_video_transcript
 
 
 def create_9_16_clip(

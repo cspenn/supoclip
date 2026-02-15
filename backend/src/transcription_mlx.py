@@ -1,7 +1,7 @@
 # start backend/src/transcription_mlx.py
 """
 Video transcription using parakeet-mlx (offline, Apple Silicon optimized).
-Replaces AssemblyAI cloud API for local, privacy-preserving transcription.
+Provides local, privacy-preserving transcription on Apple Silicon.
 
 Module: backend/src/transcription_mlx.py
 """
@@ -42,7 +42,7 @@ def transcribe_video_mlx(
     """
     Transcribe video using parakeet-mlx (offline, Apple Silicon optimized).
 
-    This replaces the AssemblyAI API call with local processing.
+    Runs entirely on-device using Apple Silicon acceleration.
     Provides word-level timestamps compatible with existing clip generation.
 
     Args:
@@ -54,7 +54,7 @@ def transcribe_video_mlx(
         dict with transcription data:
             - text: Full transcript text
             - segments: List of segments with timing
-            - words: List of word-level timestamps (AssemblyAI-compatible format)
+            - words: List of word-level timestamps
             - language: Detected/specified language code
 
     Raises:
@@ -151,7 +151,7 @@ def _extract_segments_from_result(result: Any) -> list[dict[str, Any]]:
     """
     Extract segments from parakeet result.
 
-    Converts parakeet output format to AssemblyAI-compatible format.
+    Converts parakeet output format to a standardized segment format.
 
     Args:
         result: AlignedResult from parakeet_mlx
@@ -190,8 +190,8 @@ def _extract_words_from_result(result: Any) -> list[dict[str, Any]]:
     """
     Extract word-level timestamps from parakeet result.
 
-    Converts parakeet output format to AssemblyAI-compatible format
-    for seamless integration with existing clip generation code.
+    Converts parakeet output format to a standardized word-level format
+    for seamless integration with clip generation code.
 
     IMPORTANT: parakeet-mlx provides two levels of token access:
     - result.tokens: Flattened BPE sub-word tokens (e.g., ["Y", "es", ","])

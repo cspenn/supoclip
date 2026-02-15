@@ -259,7 +259,7 @@ class AsyncVideoProcessingService:
             # Process video
             if video_path:
                 logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Generating transcript with AssemblyAI..."
+                    f"[SERVICE=ASYNC] Task {task_id}: Generating transcript with parakeet-mlx..."
                 )
                 transcript = get_video_transcript(video_path)
                 logger.info(

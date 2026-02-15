@@ -3,7 +3,7 @@ Offline capability tests for SupoClip backend.
 
 Tests that the application can operate without external services:
 - No external API calls required by default
-- parakeet-mlx (local) instead of AssemblyAI (cloud)
+- parakeet-mlx for local transcription
 - SQLite (local) instead of PostgreSQL
 - Local job queue instead of Redis
 - No internet dependency for basic operation

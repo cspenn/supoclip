@@ -4,7 +4,7 @@
 
 Uses:
 - SQLite for database (not PostgreSQL)
-- parakeet-mlx for transcription (not AssemblyAI)
+- parakeet-mlx for local transcription
 - Local asyncio queue for jobs (not Redis/arq)
 """
 
@@ -23,7 +23,7 @@ class Config(BaseSettings):
 
     Uses:
     - SQLite for database (not PostgreSQL)
-    - parakeet-mlx for transcription (not AssemblyAI)
+    - parakeet-mlx for local transcription
     - Local asyncio queue for jobs (not Redis/arq)
     """
 
