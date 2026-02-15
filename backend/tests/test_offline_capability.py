@@ -70,9 +70,9 @@ class TestOfflineTranscription:
         # The module should exist and be importable
         assert transcribe_video_mlx is not None
 
-    def test_no_assembly_ai_required(self, test_config):
-        """Test that AssemblyAI API key is not required."""
-        # Config should initialize without AssemblyAI API
+    def test_no_cloud_api_required(self, test_config):
+        """Test that no cloud API key is required for transcription."""
+        # Config should initialize without cloud API keys
         assert test_config is not None
 
 

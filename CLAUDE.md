@@ -220,7 +220,7 @@ Backend stores font preferences in tasks table and applies during clip generatio
 - Face detection uses MediaPipe (primary), OpenCV DNN (fallback), Haar cascade (last resort)
 - Subtitles positioned at 75% down the video (lower-middle, not bottom)
 - H.264 encoding with even dimensions required (uses `round_to_even()`)
-- AssemblyAI transcript data cached as `.transcript_cache.json` alongside video files
+- Transcript data cached as `.transcript_cache.json` alongside video files
 
 ### AI Segment Selection
 

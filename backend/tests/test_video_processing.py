@@ -228,7 +228,7 @@ class TestSubtitleHandling:
         clip_path = clips_dir / "clip_words.mp4"
         clip_path.write_bytes(b"fake clip")
 
-        # Sample word timing data (AssemblyAI format)
+        # Sample word timing data (parakeet-mlx format)
         words_data = [
             {"text": "This", "start": 10.0, "end": 10.5},
             {"text": "is", "start": 10.5, "end": 10.8},
