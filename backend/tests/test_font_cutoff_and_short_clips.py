@@ -127,6 +127,55 @@ class TestFontCutoffIssue:
         )
 
 
+class TestBrowserSubtitleRenderer:
+    """
+    Tests for the current BrowserSubtitleRenderer rendering path.
+
+    Production now uses Playwright-based browser rendering instead of
+    MoviePy TextClip for subtitle generation. These tests verify the
+    renderer class interface without requiring Playwright browsers
+    to be installed.
+    """
+
+    def test_renderer_class_exists(self):
+        """BrowserSubtitleRenderer should be importable and instantiable."""
+        renderer = BrowserSubtitleRenderer()
+        assert renderer is not None
+        assert hasattr(renderer, "start")
+        assert hasattr(renderer, "stop")
+        assert hasattr(renderer, "render_text_to_image")
+
+    def test_renderer_is_context_manager(self):
+        """BrowserSubtitleRenderer should implement context manager protocol."""
+        renderer = BrowserSubtitleRenderer()
+        assert hasattr(renderer, "__enter__")
+        assert hasattr(renderer, "__exit__")
+
+    def test_renderer_initial_state(self):
+        """BrowserSubtitleRenderer should start with no browser running."""
+        renderer = BrowserSubtitleRenderer()
+        assert renderer._playwright is None
+        assert renderer._browser is None
+        assert renderer._page is None
+
+    def test_render_text_to_image_signature(self):
+        """render_text_to_image should accept all expected styling parameters."""
+        import inspect
+
+        sig = inspect.signature(BrowserSubtitleRenderer.render_text_to_image)
+        params = list(sig.parameters.keys())
+
+        expected_params = [
+            "self", "text", "font_family", "font_size", "color", "width",
+            "stroke_width", "stroke_color", "shadow_color", "shadow_offset",
+            "text_transform", "font_weight",
+        ]
+        for param in expected_params:
+            assert param in params, (
+                f"render_text_to_image missing parameter: {param}"
+            )
+
+
 class TestShortClipsIssue:
     """
     Tests demonstrating that AI generates short clips (10-20s)

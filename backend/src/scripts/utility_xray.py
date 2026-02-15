@@ -21,10 +21,13 @@ Usage:
 import argparse
 import ast
 import json
+import logging
 import os
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Import radon if available, otherwise provide fallback
 try:
@@ -42,7 +45,8 @@ def get_complexity_map(source_code: str) -> dict[int, int]:
     try:
         blocks = cc_visit(source_code)
         return {block.lineno: block.complexity for block in blocks}
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to compute complexity: {e}")
         return {}
 
 

@@ -17,11 +17,14 @@ Usage:
 
 import argparse
 import ast
+import logging
 import os
 from collections import defaultdict
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def extract_imports(file_path: Path) -> Iterator[str]:
@@ -29,7 +32,8 @@ def extract_imports(file_path: Path) -> Iterator[str]:
     try:
         source = file_path.read_text(encoding="utf-8")
         tree = ast.parse(source)
-    except Exception:
+    except (SyntaxError, UnicodeDecodeError, OSError) as e:
+        logger.debug(f"Failed to parse {file_path}: {e}")
         return
 
     for node in ast.walk(tree):

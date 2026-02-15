@@ -16,10 +16,13 @@ Usage:
 """
 
 import argparse
+import logging
 import sys
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     import grimp
@@ -82,7 +85,8 @@ def calculate_coupling_metrics(
             fan_out = len(graph.find_modules_directly_imported_by(module))
             fan_in = len(graph.find_modules_that_directly_import(module))
             metrics[module] = {"fan_in": fan_in, "fan_out": fan_out}
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to compute metrics for {module}: {e}")
             metrics[module] = {"fan_in": 0, "fan_out": 0}
 
     return metrics

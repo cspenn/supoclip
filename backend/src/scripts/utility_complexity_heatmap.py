@@ -18,12 +18,15 @@ Usage:
 
 import argparse
 import json
+import logging
 import operator
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:
     from radon.complexity import cc_rank, cc_visit
@@ -59,7 +62,8 @@ def analyze_file(file_path: Path) -> FileMetrics | None:
         source = file_path.read_text(encoding="utf-8")
         blocks = cc_visit(source)
         mi = mi_visit(source, True)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to analyze {file_path}: {e}")
         return None
 
     functions = [

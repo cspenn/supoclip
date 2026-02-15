@@ -273,12 +273,6 @@ def _validate_and_adjust_segments(
                 # CRITICAL: Do NOT auto-expand. Auto-expansion blindly adds time to start/end,
                 # which ruins hooks by picking up mid-sentence fragments from previous lines.
                 # Better to have a short good clip than a long broken one.
-                if duration < 5.0:
-                    logger.warning(
-                        f"REJECTED: Segment too short ({duration:.2f}s) and < 5.0s hard limit."
-                    )
-                    continue
-
                 logger.warning(
                     f"ACCEPTED (UNDERLENGTH): Segment {segment.start_time}-{segment.end_time} "
                     f"({duration:.2f}s) is shorter than min {min_length}s. "
