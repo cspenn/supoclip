@@ -1,23 +1,17 @@
 # start backend/src/database.py
-import os
 import logging
 from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
+from .config import Config
+
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv()
-
 # Database configuration - SQLite instead of PostgreSQL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite+aiosqlite:///./supoclip.db",  # Local SQLite database
-)
+DATABASE_URL = Config().database_url
 
 # Create async engine with SQLite-specific configuration
 connect_args = {}
