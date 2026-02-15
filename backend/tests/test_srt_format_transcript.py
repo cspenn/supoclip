@@ -5,7 +5,7 @@ timestamps, millisecond precision, word grouping (6 words per line),
 and line breaks at punctuation.
 """
 from dataclasses import dataclass
-from typing import List
+
 
 
 @dataclass
@@ -16,7 +16,7 @@ class Word:
     end: float    # in seconds
 
 
-def format_transcript_for_ai(words: List[Word], words_per_line: int = 6) -> str:
+def format_transcript_for_ai(words: list[Word], words_per_line: int = 6) -> str:
     """Format transcript in SRT-like format for AI analysis.
 
     Args:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# start backend/src/scripts/utility_complexity_heatmap.py
 """
 Utility Complexity Heatmap: Identify Refactoring Hotspots
 
@@ -305,3 +306,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# end backend/src/scripts/utility_complexity_heatmap.py

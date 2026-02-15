@@ -1,3 +1,4 @@
+# start backend/src/youtube_utils.py
 """
 Utility functions for YouTube-related operations.
 Optimized for high-quality downloads and better error handling.
@@ -23,7 +24,7 @@ class DownloadedFileLocator:
     VALID_EXTENSIONS = [".mp4", ".mkv", ".webm"]
 
     @staticmethod
-    def find_video_file(temp_dir: Path, video_id: str) -> Optional[Path]:
+    def find_video_file(temp_dir: Path, video_id: str) -> Path | None:
         """Find downloaded video file matching video_id."""
         for file_path in temp_dir.glob(f"{video_id}.*"):
             if (
@@ -61,7 +62,7 @@ class YouTubeDownloader:
         self.temp_dir = Path(config.temp_dir)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_optimal_download_options(self, video_id: str) -> Dict[str, Any]:
+    def get_optimal_download_options(self, video_id: str) -> dict[str, Any]:
         """Get optimal yt-dlp options for high-quality downloads with enhanced YouTube bypass."""
         output_path = self.temp_dir / f"{video_id}.%(ext)s"
 
@@ -112,7 +113,7 @@ class YouTubeDownloader:
         }
 
 
-def get_youtube_video_id(url: str) -> Optional[str]:
+def get_youtube_video_id(url: str) -> str | None:
     """
     Extract YouTube video ID from various URL formats.
     Supports standard, short, embed, and mobile URLs.
@@ -161,7 +162,7 @@ def validate_youtube_url(url: str) -> bool:
     return video_id is not None
 
 
-def get_youtube_video_info(url: str) -> Optional[Dict[str, Any]]:
+def get_youtube_video_info(url: str) -> dict[str, Any] | None:
     """
     Get comprehensive video information without downloading.
     Returns title, duration, description, and other metadata.
@@ -217,7 +218,7 @@ def get_youtube_video_info(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_youtube_video_title(url: str) -> Optional[str]:
+def get_youtube_video_title(url: str) -> str | None:
     """
     Get the title of a YouTube video from a URL.
     Enhanced with better error handling and validation.
@@ -228,7 +229,7 @@ def get_youtube_video_title(url: str) -> Optional[str]:
 
 def _perform_download_attempt(
     url: str, video_id: str, downloader: YouTubeDownloader, attempt: int
-) -> Optional[Path]:
+) -> Path | None:
     """Perform a single download attempt."""
     logger.info(f"Download attempt {attempt + 1}")
     ydl_opts = downloader.get_optimal_download_options(video_id)
@@ -245,7 +246,7 @@ def _perform_download_attempt(
     return file_path
 
 
-def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
+def download_youtube_video(url: str, max_retries: int = 3) -> Path | None:
     """
     Download YouTube video with optimized settings and retry logic.
     Returns the path to the downloaded file, or None if download fails.
@@ -296,7 +297,7 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Optional[Path]:
     return None
 
 
-def get_video_duration(url: str) -> Optional[int]:
+def get_video_duration(url: str) -> int | None:
     """Get video duration in seconds without downloading."""
     video_info = get_youtube_video_info(url)
     return video_info.get("duration") if video_info else None
@@ -343,6 +344,8 @@ def cleanup_downloaded_files(video_id: str):
 # Backward compatibility functions
 
 
-def extract_video_id(url: str) -> Optional[str]:
+def extract_video_id(url: str) -> str | None:
     """Backward compatibility wrapper."""
     return get_youtube_video_id(url)
+
+# end backend/src/youtube_utils.py

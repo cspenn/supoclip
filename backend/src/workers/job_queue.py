@@ -25,7 +25,7 @@ class JobQueue:
     JobQueue while delegating to LocalJobQueue internally.
     """
 
-    _instance: Optional[LocalJobQueue] = None
+    _instance: LocalJobQueue | None = None
 
     @classmethod
     async def get_pool(cls) -> LocalJobQueue:
@@ -97,7 +97,7 @@ class JobQueue:
         return job_id
 
     @classmethod
-    async def get_job_status(cls, job_id: str) -> Optional[str]:
+    async def get_job_status(cls, job_id: str) -> str | None:
         """
         Get the status of a job.
 

@@ -1,5 +1,5 @@
+# start backend/src/models.py
 from datetime import datetime
-from typing import List, Optional
 from sqlalchemy import (
     String,
     DateTime,
@@ -33,7 +33,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     emailVerified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     createdAt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -45,41 +45,41 @@ class User(Base):
     )
 
     # Additional fields for backend compatibility
-    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Default font preferences
-    default_font_family: Mapped[Optional[str]] = mapped_column(
+    default_font_family: Mapped[str | None] = mapped_column(
         String(100), nullable=True, server_default=text("'TikTokSans-Regular'")
     )
-    default_font_size: Mapped[Optional[int]] = mapped_column(
+    default_font_size: Mapped[int | None] = mapped_column(
         Integer, nullable=True, server_default=text("'24'")
     )
-    default_font_color: Mapped[Optional[str]] = mapped_column(
+    default_font_color: Mapped[str | None] = mapped_column(
         String(7), nullable=True, server_default=text("'#FFFFFF'")
     )
 
     # Clip length preferences
-    default_clip_min_length: Mapped[Optional[int]] = mapped_column(
+    default_clip_min_length: Mapped[int | None] = mapped_column(
         Integer, nullable=True, server_default=text("'10'")
     )
-    default_clip_target_length: Mapped[Optional[int]] = mapped_column(
+    default_clip_target_length: Mapped[int | None] = mapped_column(
         Integer, nullable=True, server_default=text("'30'")
     )
-    default_clip_max_length: Mapped[Optional[int]] = mapped_column(
+    default_clip_max_length: Mapped[int | None] = mapped_column(
         Integer, nullable=True, server_default=text("'45'")
     )
 
     # Custom AI prompt
-    custom_ai_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    custom_ai_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Logo branding preferences
-    logo_file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    logo_corner_position: Mapped[Optional[str]] = mapped_column(
+    logo_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    logo_corner_position: Mapped[str | None] = mapped_column(
         String(20), nullable=True, server_default=text("'top-right'")
     )
-    output_resolution: Mapped[Optional[str]] = mapped_column(
+    output_resolution: Mapped[str | None] = mapped_column(
         String(10), nullable=True, server_default=text("'720p'")
     )
 
@@ -92,7 +92,7 @@ class User(Base):
     )
 
     # Relationships
-    tasks: Mapped[List["Task"]] = relationship(
+    tasks: Mapped[list["Task"]] = relationship(
         "Task", back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -106,11 +106,11 @@ class Task(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    source_id: Mapped[Optional[str]] = mapped_column(
+    source_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
     )
     # Use JSON for SQLite compatibility (works with both SQLite and PostgreSQL)
-    generated_clips_ids: Mapped[Optional[List[str]]] = mapped_column(
+    generated_clips_ids: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True
     )
     status: Mapped[str] = mapped_column(
@@ -118,13 +118,13 @@ class Task(Base):
     )
 
     # Font customization fields
-    font_family: Mapped[Optional[str]] = mapped_column(
+    font_family: Mapped[str | None] = mapped_column(
         String(100), nullable=True, server_default=text("'TikTokSans-Regular'")
     )
-    font_size: Mapped[Optional[int]] = mapped_column(
+    font_size: Mapped[int | None] = mapped_column(
         Integer, nullable=True, server_default=text("'24'")
     )
-    font_color: Mapped[Optional[str]] = mapped_column(
+    font_color: Mapped[str | None] = mapped_column(
         String(7), nullable=True, server_default=text("'#FFFFFF'")
     )  # Hex color code
 
@@ -132,7 +132,7 @@ class Task(Base):
     progress: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("'0'")
     )
-    progress_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    progress_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -143,11 +143,11 @@ class Task(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="tasks")
-    source: Mapped[Optional["Source"]] = relationship("Source", back_populates="tasks")
-    generated_clips: Mapped[List["GeneratedClip"]] = relationship(
+    source: Mapped["Source | None"] = relationship("Source", back_populates="tasks")
+    generated_clips: Mapped[list["GeneratedClip"]] = relationship(
         "GeneratedClip", back_populates="task", cascade="all, delete-orphan"
     )
-    output_resolution: Mapped[Optional[str]] = mapped_column(
+    output_resolution: Mapped[str | None] = mapped_column(
         String(10), nullable=True, server_default=text("'720p'")
     )
 
@@ -175,7 +175,7 @@ class Source(Base):
     )
 
     # Relationships - Source can have multiple tasks
-    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="source")
+    tasks: Mapped[list["Task"]] = relationship("Task", back_populates="source")
 
     def decide_source_type(self, source_url: str) -> str:
         """Decide which type of source this is."""
@@ -200,11 +200,11 @@ class GeneratedClip(Base):
     duration: Mapped[float] = mapped_column(
         Float, nullable=False
     )  # Duration in seconds
-    text: Mapped[Optional[str]] = mapped_column(
+    text: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # Transcript text for this clip
     relevance_score: Mapped[float] = mapped_column(Float, nullable=False)
-    reasoning: Mapped[Optional[str]] = mapped_column(
+    reasoning: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # AI reasoning for selection
     clip_order: Mapped[int] = mapped_column(
@@ -230,16 +230,16 @@ class SystemFont(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     family: Mapped[str] = mapped_column(String(255), nullable=False)
     # 'normal', 'italic', etc.
-    style: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    style: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # 100, 400, 700, etc.
-    weight: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    weight: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    detection_timestamp: Mapped[Optional[str]] = mapped_column(
+    detection_timestamp: Mapped[str | None] = mapped_column(
         String(30), nullable=True
     )  # ISO8601 string
-    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # 'bundled' or 'system'
@@ -255,3 +255,5 @@ class SystemFont(Base):
             "source IN ('bundled', 'system')", name="check_system_fonts_source"
         ),
     )
+
+# end backend/src/models.py

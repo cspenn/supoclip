@@ -1,3 +1,4 @@
+# start backend/src/services/video_service.py
 """
 Video service - handles video processing business logic.
 """
@@ -43,10 +44,10 @@ class VideoProcessingResponse:
 
     @staticmethod
     def build_response(
-        segments_json: List[Dict[str, Any]],
-        clips_info: List[Dict[str, Any]],
+        segments_json: list[dict[str, Any]],
+        clips_info: list[dict[str, Any]],
         relevant_parts: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the response dictionary."""
         return {
             "segments": segments_json,
@@ -56,7 +57,7 @@ class VideoProcessingResponse:
         }
 
     @staticmethod
-    def segments_to_json(segments: List[Any]) -> List[Dict[str, Any]]:
+    def segments_to_json(segments: list[Any]) -> list[dict[str, Any]]:
         """Convert segment objects to JSON-serializable dicts."""
         return [
             {
@@ -88,7 +89,7 @@ class VideoService:
             return video_path
 
     @staticmethod
-    async def download_video(url: str) -> Optional[Path]:
+    async def download_video(url: str) -> Path | None:
         """
         Download a YouTube video asynchronously.
         Runs the sync download_youtube_video in a thread pool.
@@ -165,14 +166,14 @@ class VideoService:
     @staticmethod
     async def create_video_clips(
         video_path: Path,
-        segments: List[Dict[str, Any]],
+        segments: list[dict[str, Any]],
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
         output_resolution: str = "720p",
-        logo_path: Optional[str] = None,
-        logo_corner_position: Optional[str] = "top-right",
-    ) -> List[Dict[str, Any]]:
+        logo_path: str | None = None,
+        logo_corner_position: str | None = "top-right",
+    ) -> list[dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.
         Runs in thread pool as video processing is CPU-intensive.
@@ -246,7 +247,7 @@ class VideoService:
 
     @staticmethod
     def _apply_verbatim_text_to_segment(
-        segment: Dict[str, Any], video_path: Path
+        segment: dict[str, Any], video_path: Path
     ) -> None:
         """Apply verbatim transcript text to a segment, snapping to sentence start.
 
@@ -313,10 +314,10 @@ class VideoService:
         min_length: int = 10,
         max_length: int = 45,
         output_resolution: str = "720p",
-        logo_path: Optional[str] = None,
-        logo_corner_position: Optional[str] = "top-right",
-        progress_callback: Optional[Callable] = None,
-    ) -> Dict[str, Any]:
+        logo_path: str | None = None,
+        logo_corner_position: str | None = "top-right",
+        progress_callback: Callable | None = None,
+    ) -> dict[str, Any]:
         """
         Complete video processing pipeline.
         Returns dict with segments and clips info.
@@ -411,3 +412,5 @@ class VideoService:
         except Exception as e:
             logger.error(f"Error in video processing pipeline: {e}", exc_info=True)
             raise
+
+# end backend/src/services/video_service.py

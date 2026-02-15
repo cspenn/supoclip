@@ -1,3 +1,4 @@
+# start backend/src/subtitle_renderer.py
 import tempfile
 from pathlib import Path
 import logging
@@ -52,11 +53,11 @@ class BrowserSubtitleRenderer:
         width: int,
         stroke_width: int = 2,
         stroke_color: str = "black",
-        shadow_color: Optional[str] = None,
+        shadow_color: str | None = None,
         shadow_offset: int = 2,
         text_transform: str = "none",  # none, uppercase, lowercase, capitalize
         font_weight: str = "bold",
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Render text to a image file using browser CSS with extended styling.
         """
@@ -133,3 +134,5 @@ class BrowserSubtitleRenderer:
         except Exception as e:
             logger.error(f"Browser rendering failed: {e}")
             return None
+
+# end backend/src/subtitle_renderer.py

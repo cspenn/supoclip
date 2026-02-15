@@ -1,3 +1,4 @@
+# start backend/src/repositories/source_repository.py
 """
 Source repository - handles all database operations for video sources.
 """
@@ -17,8 +18,8 @@ class SourceRepository:
         db: AsyncSession,
         source_type: str,
         title: str,
-        url: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        url: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Create a new source record and return its ID."""
         from ..models import Source
@@ -39,7 +40,7 @@ class SourceRepository:
     @staticmethod
     async def get_source_by_id(
         db: AsyncSession, source_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get source by ID."""
         from sqlalchemy import text
 
@@ -70,3 +71,5 @@ class SourceRepository:
         )
         await db.commit()
         logger.info(f"Updated source {source_id} title to: {title}")
+
+# end backend/src/repositories/source_repository.py

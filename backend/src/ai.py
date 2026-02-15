@@ -1,3 +1,4 @@
+# start backend/src/ai.py
 """
 AI-related functions for transcript analysis with enhanced precision.
 """
@@ -502,3 +503,5 @@ async def get_most_relevant_parts_by_transcript(
         # Re-raise other exceptions so tasks correctly mark as failed
         logger.error(f"Error in transcript analysis: {e}", exc_info=True)
         raise
+
+# end backend/src/ai.py

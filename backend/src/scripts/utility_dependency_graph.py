@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# start backend/src/scripts/utility_dependency_graph.py
 """
 Utility Dependency Graph: Detect Circular Dependencies and Module Tangles
 
@@ -290,3 +291,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# end backend/src/scripts/utility_dependency_graph.py

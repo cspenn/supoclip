@@ -11,7 +11,7 @@ Provides:
 import asyncio
 import tempfile
 from pathlib import Path
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 from fastapi.testclient import TestClient

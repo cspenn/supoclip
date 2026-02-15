@@ -8,7 +8,7 @@ This script reproduces the caption clipping problem where text with descenders
 
 import sys
 from pathlib import Path
-from typing import Tuple
+
 
 from moviepy import TextClip
 from moviepy.video.fx import Margin
@@ -29,7 +29,7 @@ def create_test_caption(
     left_margin: int = 3,
     right_margin: int = 3,
     test_name: str = "test",
-) -> Tuple[TextClip, Path]:
+) -> tuple[TextClip, Path]:
     """
     Create a test caption with specified margins.
 

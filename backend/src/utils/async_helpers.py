@@ -1,3 +1,4 @@
+# start backend/src/utils/async_helpers.py
 """
 Helper functions for properly running synchronous operations in async context.
 """
@@ -48,3 +49,5 @@ def async_wrap(func: Callable[..., T]) -> Callable[..., Any]:
         return await run_in_thread(func, *args, **kwargs)
 
     return wrapper
+
+# end backend/src/utils/async_helpers.py

@@ -7,7 +7,7 @@ clips have accurate transcripts that match the audio.
 """
 
 from pathlib import Path
-from typing import List, Dict
+from typing import dict
 from src.video_utils import load_cached_transcript_data, parse_timestamp_to_seconds
 
 
@@ -67,7 +67,7 @@ def assert_no_ghost_words(
         )
 
 
-def validate_transcript_sync(video_path: Path, segments: List[Dict]) -> List[str]:
+def validate_transcript_sync(video_path: Path, segments: list[dict]) -> list[str]:
     """
     Validate all segments for transcript/audio sync issues.
 

@@ -1,3 +1,4 @@
+# start backend/src/api/routes/tasks.py
 """
 Task API routes using refactored architecture.
 """
@@ -374,3 +375,5 @@ async def delete_clip(
     except Exception as e:
         logger.error(f"Error deleting clip: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting clip: {e}")
+
+# end backend/src/api/routes/tasks.py

@@ -1,4 +1,4 @@
-# start src/utils/font_options.py
+# start backend/src/utils/font_options.py
 """Font options parsing and validation utilities.
 
 This module provides utilities for extracting and validating font customization
@@ -71,4 +71,4 @@ def merge_with_defaults(
     return merged
 
 
-# end src/utils/font_options.py
+# end backend/src/utils/font_options.py

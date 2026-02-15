@@ -9,7 +9,7 @@ result.sentences[].tokens, not via result.tokens (which are sub-word).
 """
 
 import pytest
-from typing import Any, List
+from typing import Any
 from dataclasses import dataclass
 from src.transcription_mlx import _extract_words_from_result
 
@@ -31,7 +31,7 @@ class MockAlignedSentence:
     text: str
     start: float
     end: float
-    tokens: List[MockAlignedToken]
+    tokens: list[MockAlignedToken]
 
     @property
     def duration(self) -> float:
@@ -49,9 +49,9 @@ class MockAlignedResult:
     """
 
     text: str
-    sentences: List[MockAlignedSentence]
+    sentences: list[MockAlignedSentence]
     # The flattened tokens list contains BPE sub-word fragments
-    tokens: List[MockAlignedToken]
+    tokens: list[MockAlignedToken]
 
 
 class TestWordExtraction:

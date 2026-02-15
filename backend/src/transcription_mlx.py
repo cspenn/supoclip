@@ -1,3 +1,4 @@
+# start backend/src/transcription_mlx.py
 """
 Video transcription using parakeet-mlx (offline, Apple Silicon optimized).
 Replaces AssemblyAI cloud API for local, privacy-preserving transcription.
@@ -37,7 +38,7 @@ TRANSCRIPT_CACHE_VERSION = 3
 
 def transcribe_video_mlx(
     video_path: Path, model_id: str = "mlx-community/parakeet-tdt-0.6b-v2"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Transcribe video using parakeet-mlx (offline, Apple Silicon optimized).
 
@@ -50,7 +51,7 @@ def transcribe_video_mlx(
                  (default: "mlx-community/parakeet-tdt-0.6b-v2")
 
     Returns:
-        Dict with transcription data:
+        dict with transcription data:
             - text: Full transcript text
             - segments: List of segments with timing
             - words: List of word-level timestamps (AssemblyAI-compatible format)
@@ -97,7 +98,7 @@ def transcribe_video_mlx(
             overlap_duration=15.0,
         )
 
-        formatted_result: Dict[str, Any] = {
+        formatted_result: dict[str, Any] = {
             "text": _extract_text_from_result(result),
             "segments": _extract_segments_from_result(result),
             "words": _extract_words_from_result(result),
@@ -146,7 +147,7 @@ def _extract_text_from_result(result: Any) -> str:
     return ""
 
 
-def _extract_segments_from_result(result: Any) -> List[Dict[str, Any]]:
+def _extract_segments_from_result(result: Any) -> list[dict[str, Any]]:
     """
     Extract segments from parakeet result.
 
@@ -158,7 +159,7 @@ def _extract_segments_from_result(result: Any) -> List[Dict[str, Any]]:
     Returns:
         List of segment dicts with timing information
     """
-    segments: List[Dict[str, Any]] = []
+    segments: list[dict[str, Any]] = []
 
     if hasattr(result, "sentences"):
         for idx, sentence in enumerate(result.sentences):
@@ -185,7 +186,7 @@ def _extract_segments_from_result(result: Any) -> List[Dict[str, Any]]:
     return segments
 
 
-def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
+def _extract_words_from_result(result: Any) -> list[dict[str, Any]]:
     """
     Extract word-level timestamps from parakeet result.
 
@@ -209,7 +210,7 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
             - end: End time in milliseconds
             - confidence: Confidence score (0-1)
     """
-    words: List[Dict[str, Any]] = []
+    words: list[dict[str, Any]] = []
 
     # PRIMARY: Extract from sentences[].tokens (word-level, not BPE sub-word)
     # This is the correct way to get word-level timestamps from parakeet-mlx
@@ -238,7 +239,7 @@ def _extract_words_from_result(result: Any) -> List[Dict[str, Any]]:
     return words
 
 
-def _extract_single_token(token: Any) -> Optional[Dict[str, Any]]:
+def _extract_single_token(token: Any) -> dict[str, Any] | None:
     """
     Extract word dict from a single AlignedToken.
 
@@ -246,7 +247,7 @@ def _extract_single_token(token: Any) -> Optional[Dict[str, Any]]:
         token: AlignedToken from parakeet_mlx
 
     Returns:
-        Dict with text, start, end, confidence or None if invalid
+        dict with text, start, end, confidence or None if invalid
     """
     # Must have non-empty text
     if not hasattr(token, "text") or not token.text.strip():
@@ -301,8 +302,8 @@ def _get_token_end_time(token: Any) -> int:
 
 
 async def _reconstruct_words_with_llm(
-    broken_words: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    broken_words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Reconstruct complete words from sub-word tokens using Groq LLM.
 
@@ -401,14 +402,14 @@ Output:"""
         return broken_words
 
 
-def _rebuild_segments_from_words(words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _rebuild_segments_from_words(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Rebuild segments from words based on punctuation splitting.
 
     Ensures that the 'segments' list (used for UI display) matches the
     'words' list (used for subtitles) after LLM reconstruction.
     """
-    segments: List[Dict[str, Any]] = []
+    segments: list[dict[str, Any]] = []
     current_words = []
     current_start = words[0]["start"] if words else 0
 
@@ -460,8 +461,8 @@ def _rebuild_segments_from_words(words: List[Dict[str, Any]]) -> List[Dict[str, 
 
 
 def _align_reconstructed_words(
-    broken_words: List[Dict[str, Any]], reconstructed_text: str
-) -> List[Dict[str, Any]]:
+    broken_words: list[dict[str, Any]], reconstructed_text: str
+) -> list[dict[str, Any]]:
     """
     Re-align timing information from broken tokens to reconstructed words.
 
@@ -483,7 +484,7 @@ def _align_reconstructed_words(
     if not reconstructed_words_list:
         return broken_words
 
-    aligned_words: List[Dict[str, Any]] = []
+    aligned_words: list[dict[str, Any]] = []
     broken_idx = 0
 
     for reconstructed_word in reconstructed_words_list:
@@ -553,7 +554,7 @@ def get_video_transcript_mlx(video_path: Path) -> str:
     return transcribe_video_mlx(video_path).get("text", "")
 
 
-def load_cached_transcript_mlx(video_path: Path) -> Optional[Dict[str, Any]]:
+def load_cached_transcript_mlx(video_path: Path) -> dict[str, Any] | None:
     """
     Load cached transcript if available without re-transcribing.
 
@@ -585,7 +586,7 @@ def load_cached_transcript_mlx(video_path: Path) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _process_word_reconstruction(formatted_result: Dict[str, Any]) -> Dict[str, Any]:
+def _process_word_reconstruction(formatted_result: dict[str, Any]) -> dict[str, Any]:
     """Reconstruct broken words from parakeet-mlx tokenization utilizing LLM."""
     config = Config()
 

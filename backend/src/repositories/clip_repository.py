@@ -1,3 +1,4 @@
+# start backend/src/repositories/clip_repository.py
 """
 Clip repository - handles all database operations for generated clips.
 """
@@ -82,7 +83,7 @@ class ClipRepository:
     @staticmethod
     async def get_clips_by_task(
         db: AsyncSession, task_id: str, backend_url: str = "http://localhost:8008"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get all clips for a specific task, ordered by clip_order.
 
@@ -159,3 +160,5 @@ class ClipRepository:
         )
         await db.commit()
         logger.info(f"Deleted clip {clip_id}")
+
+# end backend/src/repositories/clip_repository.py

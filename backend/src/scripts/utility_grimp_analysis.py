@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# start backend/src/scripts/utility_grimp_analysis.py
 """
 Utility Grimp Analysis: Import Graph Analysis Using Grimp
 
@@ -279,3 +280,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# end backend/src/scripts/utility_grimp_analysis.py

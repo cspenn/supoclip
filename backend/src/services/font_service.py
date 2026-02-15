@@ -23,16 +23,16 @@ logger = logging.getLogger(__name__)
 class FontMetadata:
     """Metadata for a font file."""
 
-    id: Optional[str] = None
+    id: str | None = None
     name: str = ""
     family: str = ""
-    style: Optional[str] = None
-    weight: Optional[int] = None
-    file_path: Optional[str] = None
-    file_hash: Optional[str] = None
+    style: str | None = None
+    weight: int | None = None
+    file_path: str | None = None
+    file_hash: str | None = None
     is_valid: bool = True
-    detection_timestamp: Optional[str] = None
-    metadata_json: Optional[Dict[str, Any]] = None
+    detection_timestamp: str | None = None
+    metadata_json: dict[str, Any] | None = None
     source: str = "bundled"  # 'bundled' or 'system'
 
 
@@ -40,7 +40,7 @@ class FontNameExtractor:
     """Extract specific names from font files."""
 
     @staticmethod
-    def extract_from_name_table(name_table, name_id: int) -> Optional[str]:
+    def extract_from_name_table(name_table, name_id: int) -> str | None:
         """Extract specific name from font name table by nameID.
 
         Args:
@@ -59,7 +59,7 @@ class FontNameExtractor:
         return None
 
     @staticmethod
-    def extract_all_names(name_table) -> dict[str, Optional[str]]:
+    def extract_all_names(name_table) -> dict[str, str | None]:
         """Extract family, style, and full name from font.
 
         Args:
@@ -79,7 +79,7 @@ class FontWeightExtractor:
     """Extract weight information from font files."""
 
     @staticmethod
-    def extract_weight(font: TTFont) -> Optional[int]:
+    def extract_weight(font: TTFont) -> int | None:
         """Extract font weight from OS/2 table if available.
 
         Args:
@@ -110,7 +110,7 @@ class FontService:
 
         logger.info("🎨 FontService initialized")
 
-    async def get_bundled_fonts(self) -> List[FontMetadata]:
+    async def get_bundled_fonts(self) -> list[FontMetadata]:
         """
         Get all bundled fonts from backend/fonts directory.
 
@@ -156,7 +156,7 @@ class FontService:
         logger.info(f"✅ Loaded {len(bundled_fonts)} bundled fonts")
         return bundled_fonts
 
-    async def detect_system_fonts(self) -> List[FontMetadata]:
+    async def detect_system_fonts(self) -> list[FontMetadata]:
         """
         Detect system-installed fonts using matplotlib.font_manager.
 
@@ -203,7 +203,7 @@ class FontService:
 
         return system_fonts
 
-    async def extract_font_metadata(self, font_path: Path) -> Optional[FontMetadata]:
+    async def extract_font_metadata(self, font_path: Path) -> FontMetadata | None:
         """
         Extract metadata from a font file using fontTools.
 
@@ -338,7 +338,7 @@ class FontService:
             logger.warning(f"⚠️ Failed to compute hash for {file_path}: {e}")
             return ""
 
-    async def cache_fonts(self, fonts: List[FontMetadata]) -> None:
+    async def cache_fonts(self, fonts: list[FontMetadata]) -> None:
         """
         Cache detected fonts in SQLite database.
 
@@ -413,8 +413,8 @@ class FontService:
                 await self.db_session.rollback()
 
     async def get_all_fonts(
-        self, search_query: Optional[str] = None, source_filter: Optional[str] = None
-    ) -> List[FontMetadata]:
+        self, search_query: str | None = None, source_filter: str | None = None
+    ) -> list[FontMetadata]:
         """
         Get all available fonts with optional filtering.
 
@@ -478,7 +478,7 @@ class FontService:
             logger.error(f"❌ Failed to retrieve fonts: {e}")
             return []
 
-    async def get_font_by_name(self, font_name: str) -> Optional[FontMetadata]:
+    async def get_font_by_name(self, font_name: str) -> FontMetadata | None:
         """
         Get a specific font by name.
 

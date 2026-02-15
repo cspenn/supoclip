@@ -1,3 +1,4 @@
+# start backend/src/workers/local_progress.py
 """
 In-memory progress tracking (replaces Redis pub/sub).
 Provides real-time progress updates with async generators for SSE streaming.
@@ -25,7 +26,7 @@ class Progress:
     status: str  # queued, processing, completed, error
     updated_at: datetime = field(default_factory=datetime.now)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert progress to dictionary for JSON serialization."""
         return {
             "task_id": self.task_id,
@@ -41,8 +42,8 @@ class LocalProgressTracker:
 
     def __init__(self) -> None:
         """Initialize the progress tracker."""
-        self.progress_data: Dict[str, Progress] = {}
-        self.subscribers: Dict[str, list] = {}  # task_id -> list of asyncio.Queue
+        self.progress_data: dict[str, Progress] = {}
+        self.subscribers: dict[str, list] = {}  # task_id -> list of asyncio.Queue
 
     async def update(
         self, task_id: str, progress: int, message: str, status: str = "processing"
@@ -76,7 +77,7 @@ class LocalProgressTracker:
 
         logger.debug(f"Progress update for {task_id}: {progress}% - {message}")
 
-    def get(self, task_id: str) -> Optional[Progress]:
+    def get(self, task_id: str) -> Progress | None:
         """
         Get current progress.
 
@@ -156,7 +157,7 @@ class LocalProgressTracker:
 
 
 # Global tracker instance
-_progress_tracker: Optional[LocalProgressTracker] = None
+_progress_tracker: LocalProgressTracker | None = None
 
 
 def get_progress_tracker() -> LocalProgressTracker:

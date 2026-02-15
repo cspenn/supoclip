@@ -160,7 +160,7 @@ class UserPreferencesService:
 
         return merged
 
-    def get_logo_path(self, preferences: dict[str, Any]) -> Optional[Path]:
+    def get_logo_path(self, preferences: dict[str, Any]) -> Path | None:
         """Extract logo path from preferences.
 
         Converts relative paths to absolute and validates existence.

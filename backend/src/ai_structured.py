@@ -1,3 +1,4 @@
+# start backend/src/ai_structured.py
 """
 AI analysis using Groq's Structured Outputs API (for Llama 4 Scout compatibility).
 
@@ -9,7 +10,6 @@ import logging
 import json
 import os
 from contextlib import suppress
-from typing import List
 from groq import AsyncGroq
 
 from .ai_types.ai_models import TranscriptSegment, TranscriptAnalysis
@@ -135,7 +135,7 @@ def _get_duration(segment: TranscriptSegment) -> float:
     return end_seconds - start_seconds
 
 
-def _analyze_response_durations(segments: List[TranscriptSegment]) -> List[float]:
+def _analyze_response_durations(segments: list[TranscriptSegment]) -> list[float]:
     """Analyze and log statistics about response durations."""
     durations = []
     for segment in segments:
@@ -183,8 +183,8 @@ def _validate_transcript_input(transcript: str) -> None:
 
 def _build_final_analysis(
     analysis: TranscriptAnalysis,
-    validated_segments: List[TranscriptSegment],
-    durations: List[float],
+    validated_segments: list[TranscriptSegment],
+    durations: list[float],
     min_length: int,
     max_length: int,
 ) -> TranscriptAnalysis:
@@ -237,8 +237,8 @@ def _build_final_analysis(
 
 
 def _validate_and_adjust_segments(
-    segments: List[TranscriptSegment], min_length: int, max_length: int
-) -> List[TranscriptSegment]:
+    segments: list[TranscriptSegment], min_length: int, max_length: int
+) -> list[TranscriptSegment]:
     """Validate, expand, or trim segments to meet constraints."""
     validated_segments = []
 
@@ -428,3 +428,5 @@ async def analyze_transcript_structured(
     except Exception as e:
         logger.error(f"Error in Groq structured analysis: {e}")
         raise
+
+# end backend/src/ai_structured.py

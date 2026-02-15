@@ -27,9 +27,9 @@ async def process_video_task(
     font_color: str = "#FFFFFF",
     min_length: int = 10,
     max_length: int = 45,
-    logo_path: Optional[str] = None,
-    logo_corner_position: Optional[str] = "top-right",
-) -> Dict[str, Any]:
+    logo_path: str | None = None,
+    logo_corner_position: str | None = "top-right",
+) -> dict[str, Any]:
     logger.info(
         f"WORKER RECEIVED: logo_path='{logo_path}', logo_corner_position='{logo_corner_position}'"
     )
@@ -50,7 +50,7 @@ async def process_video_task(
         logo_corner_position: Logo corner position (default: "top-right")
 
     Returns:
-        Dict with processing results
+        dict with processing results
     """
     logger.info(f"Worker processing task {task_id}")
 

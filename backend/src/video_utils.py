@@ -1,3 +1,4 @@
+# start backend/src/video_utils.py
 """
 Utility functions for video-related operations.
 Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
@@ -5,7 +6,7 @@ Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
 
 from contextlib import suppress
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any, Union
+from typing import Any
 import logging
 import json
 import numpy as np
@@ -131,7 +132,7 @@ class VideoProcessor:
 
     def get_optimal_encoding_settings(
         self, target_quality: str = "high"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get optimal encoding settings for different quality levels."""
         settings = {
             "high": {
@@ -222,7 +223,7 @@ def cache_transcript_data(video_path: Path, transcript) -> None:
     logger.info(f"Cached {len(words_data)} words to {cache_path}")
 
 
-def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
+def load_cached_transcript_data(video_path: Path) -> dict | None:
     """Load cached AssemblyAI transcript data."""
     cache_path = video_path.with_suffix(".transcript_cache.json")
 
@@ -239,7 +240,7 @@ def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
 
 def extract_text_from_cache(
     video_path: Path, start_time_seconds: float, end_time_seconds: float
-) -> Optional[str]:
+) -> str | None:
     """
     Extract verbatim text from transcript cache for a given time range.
 
@@ -309,7 +310,7 @@ class TargetDimensionCalculator:
     @staticmethod
     def calculate(
         original_width: int, original_height: int, target_ratio: float
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Calculate target width and height maintaining aspect ratio."""
         if original_width / original_height > target_ratio:
             new_width = round_to_even(int(original_height * target_ratio))
@@ -325,12 +326,12 @@ class FaceCenteredCropCalculator:
 
     @staticmethod
     def calculate(
-        face_centers: List[Tuple[float, float, float, float]],
+        face_centers: list[tuple[float, float, float, float]],
         new_width: int,
         new_height: int,
         original_width: int,
         original_height: int,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Calculate face-centered crop offsets."""
         total_weight = sum(area * confidence for _, _, area, confidence in face_centers)
         if total_weight == 0:
@@ -366,7 +367,7 @@ class CenterCropCalculator:
     @staticmethod
     def calculate(
         new_width: int, new_height: int, original_width: int, original_height: int
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Calculate center crop offsets."""
         x_offset = (
             (original_width - new_width) // 2 if original_width > new_width else 0
@@ -423,7 +424,7 @@ class TranscriptLineFormatter:
         self.current_line = []
         self.current_start = None
 
-    def add_word(self, word_data: Dict[str, Any]) -> None:
+    def add_word(self, word_data: dict[str, Any]) -> None:
         """Add word to current line.
 
         Args:
@@ -464,7 +465,7 @@ class TranscriptLineFormatter:
         return "\n".join(self.lines)
 
 
-def format_transcript_for_ai(transcript_data: Dict[str, Any]) -> str:
+def format_transcript_for_ai(transcript_data: dict[str, Any]) -> str:
     """
     Format transcript with SRT-style precise timing for AI analysis.
 
@@ -513,7 +514,7 @@ def detect_optimal_crop_region(
     start_time: float,
     end_time: float,
     target_ratio: float = 9 / 16,
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """Detect optimal crop region using improved face detection."""
     try:
         original_width, original_height = video_clip.size
@@ -569,7 +570,7 @@ def detect_optimal_crop_region(
 class FaceDetector:
     """Abstract base class for face detectors."""
 
-    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+    def detect(self, frame: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Detect faces in frame.
 
         Args:
@@ -597,7 +598,7 @@ class MediaPipeFaceDetector(FaceDetector):
         except Exception as e:
             logger.warning(f"MediaPipe initialization failed: {e}")
 
-    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+    def detect(self, frame: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Detect faces using MediaPipe."""
         if self.detector is None:
             return []
@@ -650,7 +651,7 @@ class OpenCVDNNFaceDetector(FaceDetector):
         except Exception as e:
             logger.info(f"OpenCV DNN detector not available: {e}")
 
-    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+    def detect(self, frame: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Detect faces using OpenCV DNN."""
         if self.net is None:
             return []
@@ -691,7 +692,7 @@ class HaarCascadeFaceDetector(FaceDetector):
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
 
-    def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
+    def detect(self, frame: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Detect faces using Haar cascade."""
         try:
             height, width = frame.shape[:2]
@@ -722,7 +723,7 @@ class VideoFrameSampler:
     """Sample frames from video clips."""
 
     @staticmethod
-    def generate_sample_times(start_time: float, end_time: float) -> List[float]:
+    def generate_sample_times(start_time: float, end_time: float) -> list[float]:
         """Generate times to sample for face detection.
 
         Args:
@@ -764,7 +765,7 @@ class FaceDetectionService:
             HaarCascadeFaceDetector(),
         ]
 
-    def detect_in_frame(self, frame: np.ndarray) -> List[Tuple[int, int, int, float]]:
+    def detect_in_frame(self, frame: np.ndarray) -> list[tuple[int, int, int, float]]:
         """Detect faces in single frame using detector chain.
 
         Args:
@@ -813,7 +814,7 @@ class FaceDetectionService:
 
 def detect_faces_in_clip(
     video_clip: VideoFileClip, start_time: float, end_time: float
-) -> List[Tuple[int, int, int, float]]:
+) -> list[tuple[int, int, int, float]]:
     """
     Improved face detection using multiple methods and temporal consistency.
     Returns list of (x, y, area, confidence) tuples.
@@ -853,8 +854,8 @@ def detect_faces_in_clip(
 
 
 def filter_face_outliers(
-    face_centers: List[Tuple[int, int, int, float]],
-) -> List[Tuple[int, int, int, float]]:
+    face_centers: list[tuple[int, int, int, float]],
+) -> list[tuple[int, int, int, float]]:
     """Remove face detections that are outliers (likely false positives)."""
     if len(face_centers) < 3:
         return face_centers
@@ -925,8 +926,8 @@ class SubtitleWordFilter:
 
     @staticmethod
     def get_relevant_words(
-        transcript_data: Dict[str, Any], clip_start_ms: int, clip_end_ms: int
-    ) -> List[Dict[str, Any]]:
+        transcript_data: dict[str, Any], clip_start_ms: int, clip_end_ms: int
+    ) -> list[dict[str, Any]]:
         """Extract words that fall within clip timerange."""
         relevant_words = []
         for word_data in transcript_data.get("words", []):
@@ -977,8 +978,8 @@ class SubtitleTextClipCreator:
         font_color: str,
         max_text_width: int,
         is_single_word: bool,
-        style_options: Optional[Dict[str, Any]] = None,
-    ) -> Optional[ImageClip]:
+        style_options: dict[str, Any] | None = None,
+    ) -> ImageClip | None:
         """
         Create a subtitle clip using BrowserSubtitleRenderer.
 
@@ -1036,8 +1037,8 @@ class SubtitleTextClipCreator:
         font_size: int,
         font_color: str,
         video_width: int,
-        style_options: Optional[Dict[str, Any]] = None,
-    ) -> Optional[ImageClip]:
+        style_options: dict[str, Any] | None = None,
+    ) -> ImageClip | None:
         """Create text clip with automatic size adjustment to fit lines."""
         max_text_width = int(
             video_width * (1 - 2 * SubtitleTextClipCreator.HORIZONTAL_PADDING)
@@ -1179,7 +1180,7 @@ def _find_sentence_start_backwards(
 
 def snap_segment_to_sentence_start(
     video_path: Path, start_time_seconds: float, search_window_seconds: float = 2.0
-) -> Tuple[float, str, str]:
+) -> tuple[float, str, str]:
     """Find the nearest valid sentence start to the given timestamp.
 
     Strategies:
@@ -1231,8 +1232,8 @@ class SubtitlePositioner:
         video_height: int,
         text_height: int,
         video_width: int = 0,  # Unused if centering, but needed for future absolute X
-        position_options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Union[str, int], int]:
+        position_options: dict[str, Any] | None = None,
+    ) -> tuple[str | int, int]:
         """
         Calculate subtitle position based on provided options or defaults.
 
@@ -1240,7 +1241,7 @@ class SubtitlePositioner:
             video_height: Height of video
             text_height: Height of subtitle clip
             video_width: Width of video
-            position_options: Dict with 'x', 'y' (float 0-1) and 'alignment'
+            position_options: dict with 'x', 'y' (float 0-1) and 'alignment'
 
         Returns:
             Tuple (x_pos, y_pos) compatible with MoviePy
@@ -1281,16 +1282,16 @@ class SubtitleClipBuilder:
 
     @staticmethod
     def build_clips(
-        relevant_words: List[Dict[str, Any]],
+        relevant_words: list[dict[str, Any]],
         font_path: str,
         font_size: int,
         font_color: str,
         video_width: int,
         video_height: int,
         words_per_subtitle: int = 1,
-        style_options: Optional[Dict[str, Any]] = None,
-        position_options: Optional[Dict[str, Any]] = None,
-    ) -> List[ImageClip]:
+        style_options: dict[str, Any] | None = None,
+        position_options: dict[str, Any] | None = None,
+    ) -> list[ImageClip]:
         """Build individual subtitle clips for each word with exact timing.
 
         This creates TikTok/YouTube Shorts-style captions where each word appears
@@ -1366,9 +1367,9 @@ def create_assemblyai_subtitles(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    subtitle_style: Optional[Dict[str, Any]] = None,
-    subtitle_position: Optional[Dict[str, Any]] = None,
-) -> List[ImageClip]:
+    subtitle_style: dict[str, Any] | None = None,
+    subtitle_position: dict[str, Any] | None = None,
+) -> list[ImageClip]:
     """
     Create subtitles using parakeet-mlx's precise word timing.
 
@@ -1420,7 +1421,7 @@ def create_assemblyai_subtitles(
 
 def _add_logo_overlay(
     final_clips: list,
-    logo_path: Optional[str],
+    logo_path: str | None,
     logo_position: str,
     video_width: int,
     video_height: int,
@@ -1504,11 +1505,11 @@ def create_optimized_clip(
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[str] = None,
+    logo_path: str | None = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
-    subtitle_style: Optional[Dict[str, Any]] = None,
-    subtitle_position: Optional[Dict[str, Any]] = None,
+    subtitle_style: dict[str, Any] | None = None,
+    subtitle_position: dict[str, Any] | None = None,
 ) -> bool:
     """
     Create optimized 9:16 clip with AssemblyAI subtitles.
@@ -1653,17 +1654,17 @@ def create_optimized_clip(
 
 def create_clips_from_segments(
     video_path: Path,
-    segments: List[Dict[str, Any]],
+    segments: list[dict[str, Any]],
     output_dir: Path,
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[str] = None,
+    logo_path: str | None = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
-    subtitle_style: Optional[Dict[str, Any]] = None,
-    subtitle_position: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
+    subtitle_style: dict[str, Any] | None = None,
+    subtitle_position: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Create optimized video clips from segments."""
     logger.info(f"Creating {len(segments)} clips")
 
@@ -1746,7 +1747,7 @@ def create_clips_from_segments(
     return clips_info
 
 
-def get_available_transitions() -> List[str]:
+def get_available_transitions() -> list[str]:
     """Get list of available transition video files."""
     transitions_dir = Path(__file__).parent.parent / "transitions"
     if not transitions_dir.exists():
@@ -1821,17 +1822,17 @@ def apply_transition_effect(
 
 def create_clips_with_transitions(
     video_path: Path,
-    segments: List[Dict[str, Any]],
+    segments: list[dict[str, Any]],
     output_dir: Path,
     font_family: str = "THEBOLDFONT-FREEVERSION",
     font_size: int = 24,
     font_color: str = "#FFFFFF",
-    logo_path: Optional[str] = None,
+    logo_path: str | None = None,
     logo_position: str = "top-right",
     output_resolution: str = "720p",
-    subtitle_style: Optional[Dict[str, Any]] = None,
-    subtitle_position: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
+    subtitle_style: dict[str, Any] | None = None,
+    subtitle_position: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Create video clips with transition effects between them."""
     logger.info(
         f"Creating {len(segments)} clips with transitions at {output_resolution}"
@@ -1931,3 +1932,5 @@ def create_9_16_clip(
     return create_optimized_clip(
         video_path, start_time, end_time, output_path, add_subtitles=bool(subtitle_text)
     )
+
+# end backend/src/video_utils.py

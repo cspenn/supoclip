@@ -16,7 +16,7 @@ from .services.font_service import FontService
 logger = logging.getLogger(__name__)
 
 # Global font service instance
-_font_service: Optional[FontService] = None
+_font_service: FontService | None = None
 
 
 async def get_font_service() -> FontService:
@@ -90,7 +90,7 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
 
 async def get_optional_user(
     request: Request, db: AsyncSession = Depends(get_db)
-) -> Optional[str]:
+) -> str | None:
     """Optional version of get_current_user.
 
     Returns None if user not authenticated instead of raising exception.

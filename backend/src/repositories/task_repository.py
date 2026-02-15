@@ -1,3 +1,4 @@
+# start backend/src/repositories/task_repository.py
 """
 Task repository - handles all database operations for tasks.
 """
@@ -75,7 +76,7 @@ class TaskRepository:
     @staticmethod
     async def get_task_by_id(
         db: AsyncSession, task_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get task by ID with source information."""
         result = await db.execute(
             text(
@@ -113,8 +114,8 @@ class TaskRepository:
         db: AsyncSession,
         task_id: str,
         status: str,
-        progress: Optional[int] = None,
-        progress_message: Optional[str] = None,
+        progress: int | None = None,
+        progress_message: str | None = None,
     ) -> None:
         """Update task status and optional progress."""
         params = {
@@ -145,7 +146,7 @@ class TaskRepository:
 
     @staticmethod
     async def update_task_clips(
-        db: AsyncSession, task_id: str, clip_ids: List[str]
+        db: AsyncSession, task_id: str, clip_ids: list[str]
     ) -> None:
         """Update task with generated clip IDs."""
         import json
@@ -164,7 +165,7 @@ class TaskRepository:
     @staticmethod
     async def get_user_tasks(
         db: AsyncSession, user_id: str, limit: int = 50
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get all tasks for a user."""
         result = await db.execute(
             text(
@@ -214,3 +215,5 @@ class TaskRepository:
         )
         await db.commit()
         logger.info(f"Deleted task {task_id}")
+
+# end backend/src/repositories/task_repository.py

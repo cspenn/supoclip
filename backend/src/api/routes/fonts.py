@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 async def list_fonts(
     source: str = Query(None, description="Filter by source: 'bundled' or 'system'"),
     service: FontService = Depends(get_font_service),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get all available fonts.
 
@@ -52,7 +52,7 @@ async def list_fonts(
 async def search_fonts(
     q: str = Query(..., description="Search query for font name or family"),
     service: FontService = Depends(get_font_service),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Search for fonts by name or family.
 
@@ -89,7 +89,7 @@ async def search_fonts(
 @router.post("/refresh")
 async def refresh_fonts(
     service: FontService = Depends(get_font_service),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Force refresh of system fonts.
 

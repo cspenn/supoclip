@@ -1,3 +1,4 @@
+# start backend/src/services/task_service.py
 """
 Task service - orchestrates task creation and processing workflow.
 """
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TaskService:
     """Service for task workflow orchestration."""
 
-    def __init__(self, db: AsyncSession, config: Optional[Config] = None):
+    def __init__(self, db: AsyncSession, config: Config | None = None):
         self.db = db
         self.config = config or Config()
         self.task_repo = TaskRepository()
@@ -30,7 +31,7 @@ class TaskService:
         self,
         user_id: str,
         url: str,
-        title: Optional[str] = None,
+        title: str | None = None,
         font_family: str = "TikTokSans-Regular",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
@@ -82,10 +83,10 @@ class TaskService:
         font_color: str = "#FFFFFF",
         min_length: int = 10,
         max_length: int = 45,
-        logo_path: Optional[str] = None,
-        logo_corner_position: Optional[str] = "top-right",
-        progress_callback: Optional[Callable] = None,
-    ) -> Dict[str, Any]:
+        logo_path: str | None = None,
+        logo_corner_position: str | None = "top-right",
+        progress_callback: Callable | None = None,
+    ) -> dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
         Returns processing results.
@@ -185,7 +186,7 @@ class TaskService:
             )
             raise
 
-    async def get_task_with_clips(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_with_clips(self, task_id: str) -> dict[str, Any] | None:
         """Get task details with all clips."""
         task = await self.task_repo.get_task_by_id(self.db, task_id)
 
@@ -203,7 +204,7 @@ class TaskService:
 
     async def get_user_tasks(
         self, user_id: str, limit: int = 50
-    ) -> list[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get all tasks for a user."""
         return await self.task_repo.get_user_tasks(self.db, user_id, limit)
 
@@ -216,3 +217,5 @@ class TaskService:
         await self.task_repo.delete_task(self.db, task_id)
 
         logger.info(f"Deleted task {task_id} and all associated clips")
+
+# end backend/src/services/task_service.py

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# start backend/src/scripts/utility_xray.py
 """
 Utility X-Ray: Architectural Skeletonizer with Complexity Metrics
 
@@ -200,3 +201,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# end backend/src/scripts/utility_xray.py

@@ -1,3 +1,4 @@
+# start backend/src/workers/local_queue.py
 """
 Local async queue for background tasks (replaces Redis/arq).
 Uses asyncio.Queue for lightweight job processing without external dependencies.
@@ -26,10 +27,10 @@ class Job:
     kwargs: dict = field(default_factory=dict)
     status: str = "queued"  # queued, processing, completed, error
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class LocalJobQueue:
@@ -43,7 +44,7 @@ class LocalJobQueue:
             max_workers: Number of concurrent workers
         """
         self.queue: asyncio.Queue = asyncio.Queue()
-        self.jobs: Dict[str, Job] = {}  # In-memory job storage
+        self.jobs: dict[str, Job] = {}  # In-memory job storage
         self.max_workers: int = max_workers
         self.workers: list = []
         self._running: bool = False
@@ -134,7 +135,7 @@ class LocalJobQueue:
         logger.info(f"Enqueued job {job_id}")
         return job_id
 
-    def get_job(self, job_id: str) -> Optional[Job]:
+    def get_job(self, job_id: str) -> Job | None:
         """
         Get job by ID.
 
@@ -146,7 +147,7 @@ class LocalJobQueue:
         """
         return self.jobs.get(job_id)
 
-    def get_job_status(self, job_id: str) -> Optional[str]:
+    def get_job_status(self, job_id: str) -> str | None:
         """
         Get job status.
 
@@ -176,7 +177,7 @@ class LocalJobQueue:
 
 
 # Global queue instance
-_job_queue: Optional[LocalJobQueue] = None
+_job_queue: LocalJobQueue | None = None
 
 
 def get_job_queue() -> LocalJobQueue:

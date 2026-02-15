@@ -1,3 +1,4 @@
+# start backend/src/main.py
 from .config import Config
 from .logging_config import setup_logging, cleanup_old_logs
 from pathlib import Path
@@ -390,3 +391,5 @@ def run_dev():
 
 if __name__ == "__main__":
     run_dev()
+
+# end backend/src/main.py

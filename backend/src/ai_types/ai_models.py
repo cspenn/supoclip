@@ -1,3 +1,4 @@
+# start backend/src/ai_types/ai_models.py
 """Shared AI model definitions for transcript analysis.
 
 These models are used by both ai.py (Pydantic AI/Tool Calling) and
@@ -34,6 +35,8 @@ class TranscriptAnalysis(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    most_relevant_segments: List[TranscriptSegment]
+    most_relevant_segments: list[TranscriptSegment]
     summary: str = Field(description="Brief summary of the video content")
-    key_topics: List[str] = Field(description="List of main topics discussed")
+    key_topics: list[str] = Field(description="List of main topics discussed")
+
+# end backend/src/ai_types/ai_models.py

@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from dataclasses import dataclass
-from typing import Optional
+
 
 from src.models import Base, SystemFont
 
@@ -19,13 +19,13 @@ class FontMetadata:
     id: str
     name: str
     family: str
-    style: Optional[str] = None
-    weight: Optional[int] = None
-    file_path: Optional[str] = None
-    file_hash: Optional[str] = None
+    style: str | None = None
+    weight: int | None = None
+    file_path: str | None = None
+    file_hash: str | None = None
     is_valid: bool = True
-    detection_timestamp: Optional[str] = None
-    metadata_json: Optional[dict] = None
+    detection_timestamp: str | None = None
+    metadata_json: dict | None = None
     source: str = "system"
 
 
