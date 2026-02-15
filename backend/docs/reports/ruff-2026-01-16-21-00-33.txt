@@ -1,2 +1,0 @@
-All checks passed!
-45 files left unchanged

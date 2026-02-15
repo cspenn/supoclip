@@ -273,7 +273,7 @@ This project adheres to strict coding standards documented in `docs/standards.md
 **File Conventions:**
 - All source files must start and end with a file path comment: `# start src/example/file.py`
 - Use absolute imports from project root only (no relative imports)
-- Maximum 750 lines per file (refactor if exceeded)
+- Maximum radon/xenon grade of A or B - C and below MUST be refactored
 - Standard invocation: `python -m src.main`
 - Keep main.py orchestration-focused; move core logic to modules
 
