@@ -919,8 +919,7 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         return result
 
     except (ValueError, IndexError) as e:
-        logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
-        return 0.0
+        raise ValueError(f"Failed to parse timestamp '{timestamp_str}': {e}") from e
 
 
 class SubtitleWordFilter:

@@ -91,19 +91,27 @@ class TestParseTimestampWhitespace:
 class TestParseTimestampErrorHandling:
     """Test error handling in timestamp parsing."""
 
-    def test_invalid_format_returns_zero(self):
-        """Test that invalid formats return 0.0 instead of raising exceptions."""
-        assert parse_timestamp_to_seconds("invalid") == 0.0
-        assert parse_timestamp_to_seconds("") == 0.0
-        assert parse_timestamp_to_seconds("no:colons:here:extra") == 0.0
-        assert parse_timestamp_to_seconds("12:34:56:78") == 0.0  # Too many parts
+    def test_invalid_format_raises_value_error(self):
+        """Test that invalid formats raise ValueError."""
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("invalid")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("no:colons:here:extra")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("12:34:56:78")  # Too many parts
 
-    def test_malformed_timestamps(self):
-        """Test that malformed timestamps don't crash the parser."""
-        assert parse_timestamp_to_seconds(":") == 0.0
-        assert parse_timestamp_to_seconds("::") == 0.0
-        assert parse_timestamp_to_seconds(":23") == 0.0
-        assert parse_timestamp_to_seconds("abc:def") == 0.0
+    def test_malformed_timestamps_raise_value_error(self):
+        """Test that malformed timestamps raise ValueError."""
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds(":")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("::")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds(":23")
+        with pytest.raises(ValueError):
+            parse_timestamp_to_seconds("abc:def")
 
 
 class TestIntegrationWithVideoProcessing:
