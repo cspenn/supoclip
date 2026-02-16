@@ -121,9 +121,9 @@
 - **Ordering**: SELECT columns → FROM table → WHERE conditions → ORDER BY
 
 ### Schema Patterns
-- **Timestamps**: created_at, updated_at (TIMESTAMP WITH TIME ZONE)
+- **Timestamps**: created_at, updated_at (SQLite TIMESTAMP, stored as TEXT in ISO format)
 - **IDs**: VARCHAR(36) for UUIDs
-- **Booleans**: BOOLEAN (PostgreSQL native)
+- **Booleans**: BOOLEAN (SQLite stores as INTEGER 0/1)
 - **Foreign Keys**: Include ON DELETE CASCADE or ON DELETE SET NULL
 - **Constraints**: CHECK constraints for valid values
 

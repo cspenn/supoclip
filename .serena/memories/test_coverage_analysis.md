@@ -130,7 +130,6 @@ backend/
 - Root endpoint ("/")
 - Health check endpoints ("/health")
 - Database health ("/health/db")
-- Redis health ("/health/redis")
 - Swagger docs ("/docs")
 - OpenAPI schema ("/openapi.json")
 - API structure and routing

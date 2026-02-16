@@ -143,7 +143,10 @@ class VideoService:
 
     @staticmethod
     async def analyze_transcript(
-        transcript: str, min_length: int = 10, max_length: int = 45
+        transcript: str,
+        min_length: int = 10,
+        max_length: int = 45,
+        custom_ai_prompt: str | None = None,
     ) -> Any:
         """
         Analyze transcript with AI to find relevant segments.
@@ -153,10 +156,14 @@ class VideoService:
             transcript: Video transcript text
             min_length: Minimum clip length in seconds (default: 10)
             max_length: Maximum clip length in seconds (default: 45)
+            custom_ai_prompt: Optional custom AI prompt override
         """
         logger.info("Starting AI analysis of transcript")
         relevant_parts = await get_most_relevant_parts_by_transcript(
-            transcript, min_length=min_length, max_length=max_length
+            transcript,
+            min_length=min_length,
+            max_length=max_length,
+            custom_prompt=custom_ai_prompt,
         )
         logger.info(
             f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
@@ -173,10 +180,24 @@ class VideoService:
         output_resolution: str = "720p",
         logo_path: str | None = None,
         logo_corner_position: str | None = "top-right",
+        subtitle_style: dict[str, Any] | None = None,
+        subtitle_position: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Create video clips from segments with transitions and subtitles.
         Runs in thread pool as video processing is CPU-intensive.
+
+        Args:
+            video_path: Path to source video file
+            segments: List of segment dicts with start_time, end_time, text, etc.
+            font_family: Font family for subtitles
+            font_size: Font size for subtitles
+            font_color: Font color for subtitles
+            output_resolution: Target resolution - "480p", "720p", or "1080p"
+            logo_path: Optional path to logo image file
+            logo_corner_position: Logo corner position (default: "top-right")
+            subtitle_style: Optional subtitle style overrides
+            subtitle_position: Optional subtitle position overrides
         """
         try:
             logger.info(f"Creating {len(segments)} video clips at {output_resolution}")
@@ -191,9 +212,11 @@ class VideoService:
                 font_family,
                 font_size,
                 font_color,
-                logo_path,  # Use parameter instead of hardcoded None
-                logo_corner_position,  # Use parameter instead of hardcoded "top-right"
+                logo_path,
+                logo_corner_position,
                 output_resolution,
+                subtitle_style,
+                subtitle_position,
             )
 
             logger.info(f"Successfully created {len(clips_info)} clips")
@@ -317,10 +340,17 @@ class VideoService:
         logo_path: str | None = None,
         logo_corner_position: str | None = "top-right",
         progress_callback: Callable | None = None,
+        custom_ai_prompt: str | None = None,
+        subtitle_style: dict[str, Any] | None = None,
+        subtitle_position: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Complete video processing pipeline.
         Returns dict with segments and clips info.
+
+        This is the single source of truth for the video processing pipeline.
+        Both the synchronous TaskService path and the async /start-with-progress
+        path delegate to this method for core video processing logic.
 
         Args:
             url: Video URL or file path
@@ -335,6 +365,9 @@ class VideoService:
             logo_corner_position: Logo corner position (default: "top-right")
             progress_callback: Optional function to call with progress updates
                               Signature: async def callback(progress: int, message: str)
+            custom_ai_prompt: Optional custom AI prompt override
+            subtitle_style: Optional subtitle style overrides
+            subtitle_position: Optional subtitle position overrides
         """
         try:
             # Log parameters at start
@@ -370,7 +403,10 @@ class VideoService:
             )
 
             relevant_parts = await VideoService.analyze_transcript(
-                transcript, min_length=min_length, max_length=max_length
+                transcript,
+                min_length=min_length,
+                max_length=max_length,
+                custom_ai_prompt=custom_ai_prompt,
             )
             logger.info(
                 f"Step 3 complete: AI analysis done ({len(relevant_parts.most_relevant_segments)} segments identified)"
@@ -399,6 +435,8 @@ class VideoService:
                 output_resolution,
                 logo_path,
                 logo_corner_position,
+                subtitle_style,
+                subtitle_position,
             )
             logger.info(f"Step 4 complete: Created {len(clips_info)} video clips")
 
@@ -412,5 +450,6 @@ class VideoService:
         except Exception as e:
             logger.error(f"Error in video processing pipeline: {e}", exc_info=True)
             raise
+
 
 # end backend/src/services/video_service.py

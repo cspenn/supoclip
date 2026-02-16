@@ -270,14 +270,12 @@ def _validate_and_adjust_segments(
                 continue
             # Handle too short
             if duration < min_length:
-                # CRITICAL: Do NOT auto-expand. Auto-expansion blindly adds time to start/end,
-                # which ruins hooks by picking up mid-sentence fragments from previous lines.
-                # Better to have a short good clip than a long broken one.
                 logger.warning(
-                    f"ACCEPTED (UNDERLENGTH): Segment {segment.start_time}-{segment.end_time} "
+                    f"REJECTED (UNDERLENGTH): Segment {segment.start_time}-{segment.end_time} "
                     f"({duration:.2f}s) is shorter than min {min_length}s. "
-                    f"Keeping original to preserve hook integrity."
+                    f"Rejecting to honor user-specified minimum clip length."
                 )
+                continue
 
             # Handle too long
             if duration > max_length:
@@ -422,5 +420,6 @@ async def analyze_transcript_structured(
     except Exception as e:
         logger.error(f"Error in Groq structured analysis: {e}")
         raise
+
 
 # end backend/src/ai_structured.py

@@ -135,4 +135,5 @@ async def init_db() -> None:
 async def close_db():
     await engine.dispose()
 
+
 # end backend/src/database.py

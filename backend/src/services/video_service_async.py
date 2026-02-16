@@ -4,6 +4,11 @@
 
 This service handles the /start-with-progress endpoint which processes videos
 asynchronously with SSE progress tracking. Can handle unlimited processing time.
+
+Architecture note: This service is responsible for task lifecycle management
+(DB operations, status updates, clip persistence) while delegating the core
+video processing pipeline to VideoService.process_video_complete(). This avoids
+duplicating the download -> transcribe -> analyze -> create-clips pipeline.
 """
 
 import json
@@ -15,20 +20,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..ai import get_most_relevant_parts_by_transcript
 from ..config import Config
 from ..database import AsyncSessionLocal
 from ..models import GeneratedClip, Source, Task
-from ..video_utils import (
-    create_clips_with_transitions,
-    extract_text_from_cache,
-    format_ms_to_timestamp_precise,
-    get_video_transcript,
-    parse_timestamp_to_seconds,
-    snap_segment_to_sentence_start,
-)
-from ..utils.async_helpers import run_in_thread
-from ..youtube_utils import download_youtube_video, get_youtube_video_title
+from .video_service import VideoService
+from ..youtube_utils import get_youtube_video_title
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +37,15 @@ class AsyncVideoProcessingService:
 
     Handles the /start-with-progress endpoint which processes videos with SSE progress tracking.
     Can handle unlimited processing time - returns task_id for client to track progress.
+
+    This service owns:
+    - Task/Source creation in the database
+    - Task status updates
+    - Clip file validation and persistence to the database
+
+    It delegates the core video processing pipeline (download, transcribe, analyze,
+    create clips) to VideoService.process_video_complete(), which is the single
+    source of truth for that logic.
     """
 
     def __init__(self, db: AsyncSession, config: Config):
@@ -121,80 +126,6 @@ class AsyncVideoProcessingService:
         logger.info(f"[SERVICE=ASYNC] Task created with ID: {task.id}")
         return task.id
 
-    @staticmethod
-    def _resolve_video_path(source_type: str, raw_source: dict[str, Any]) -> Path:
-        """Resolve video path based on source type.
-
-        Args:
-            source_type: Type of source ("youtube" or "upload")
-            raw_source: Source information with URL
-
-        Returns:
-            Path to the video file
-
-        Raises:
-            Exception: If video cannot be resolved
-        """
-        if source_type == "youtube":
-            logger.info("[SERVICE=ASYNC] Downloading YouTube video...")
-            video_path = download_youtube_video(raw_source["url"])
-            if not video_path:
-                raise Exception("Failed to download video")
-            logger.info(f"[SERVICE=ASYNC] Video downloaded to: {video_path}")
-            return video_path
-
-        video_path = raw_source["url"]
-        if isinstance(video_path, str) and not Path(video_path).exists():
-            raise Exception("Uploaded video file not found")
-        return Path(video_path) if isinstance(video_path, str) else video_path
-
-    @staticmethod
-    def _apply_verbatim_text_to_segment(
-        segment: dict[str, Any], video_path: Path
-    ) -> None:
-        """Apply verbatim transcript text to a segment, snapping to sentence start.
-
-        Modifies segment in-place.
-
-        Args:
-            segment: Segment dictionary to update
-            video_path: Path to video file
-        """
-        original_start_ts = segment["start_time"]
-        start_sec = parse_timestamp_to_seconds(original_start_ts)
-
-        # Snap to sentence start (within 2 second window)
-        new_start_sec, snap_word, snap_reason = snap_segment_to_sentence_start(
-            video_path, start_sec, search_window_seconds=2.0
-        )
-
-        # Update start time if snapped
-        if abs(new_start_sec - start_sec) > 0.01:
-            new_start_ts = format_ms_to_timestamp_precise(int(new_start_sec * 1000))
-            logger.info(
-                f"[SYNC] Snapped segment start: {original_start_ts} -> {new_start_ts} ({snap_reason})"
-            )
-            segment["start_time"] = new_start_ts
-            segment["original_ai_start_time"] = original_start_ts
-
-        # Extract verbatim text from transcript cache
-        verbatim_text = extract_text_from_cache(
-            video_path,
-            parse_timestamp_to_seconds(segment["start_time"]),
-            parse_timestamp_to_seconds(segment["end_time"]),
-        )
-
-        if verbatim_text:
-            original_ai_text = segment["text"]
-            segment["text"] = verbatim_text
-            logger.info(
-                f"[SYNC] Replaced text: '{original_ai_text[:30]}...' -> '{verbatim_text[:30]}...'"
-            )
-        else:
-            logger.warning(
-                f"[SYNC] Could not extract verbatim text for segment {segment['start_time']} - keeping AI text"
-            )
-
     async def process_video_async(
         self,
         task_id: str,
@@ -214,8 +145,9 @@ class AsyncVideoProcessingService:
     ) -> None:
         """Process video asynchronously in background.
 
-        This method is spawned as a background task and handles the entire
-        video processing pipeline with error handling and status updates.
+        This method is spawned as a background task. It delegates the core
+        video processing to VideoService.process_video_complete() and handles
+        task lifecycle (status updates, clip persistence, error handling).
 
         Args:
             task_id: Task ID to update
@@ -230,6 +162,8 @@ class AsyncVideoProcessingService:
             logo_path: Optional path to user logo
             logo_corner_position: Corner position for logo
             output_resolution: Target resolution - "480p", "720p", or "1080p"
+            subtitle_style: Optional subtitle style overrides
+            subtitle_position: Optional subtitle position overrides
         """
         try:
             logger.info(
@@ -237,7 +171,7 @@ class AsyncVideoProcessingService:
             )
             await self._update_task_status(task_id, "processing")
 
-            # Get source from database
+            # Get source type from database
             async with AsyncSessionLocal() as db:
                 source_result = await db.execute(
                     text(
@@ -249,125 +183,76 @@ class AsyncVideoProcessingService:
                 if not source_data:
                     raise Exception("Source not found")
 
-            logger.info(f"[SERVICE=ASYNC] Task {task_id}: Analyzing video source...")
+            source_type = source_data.type
+            logger.info(f"[SERVICE=ASYNC] Task {task_id}: Source type is '{source_type}'")
 
-            # Resolve video path based on source type
-            video_path = self._resolve_video_path(source_data.type, raw_source)
+            # Delegate to VideoService for the core processing pipeline.
+            # VideoService.process_video_complete handles: download, transcribe,
+            # AI analysis, verbatim text extraction, and clip creation.
+            result = await VideoService.process_video_complete(
+                url=raw_source["url"],
+                source_type=source_type,
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                min_length=clip_min_length,
+                max_length=clip_max_length,
+                output_resolution=output_resolution,
+                logo_path=logo_path,
+                logo_corner_position=logo_corner_position,
+                custom_ai_prompt=custom_ai_prompt,
+                subtitle_style=subtitle_style,
+                subtitle_position=subtitle_position,
+            )
 
-            # Process video
-            if video_path:
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Generating transcript with parakeet-mlx..."
-                )
-                transcript = get_video_transcript(video_path)
-                logger.info(
-                    f"[SERVICE=ASYNC] Transcript generated (length: {len(transcript)} characters)"
-                )
+            clips_info = result["clips"]
 
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: AI analyzing content for best clips..."
-                )
-                relevant_parts = await get_most_relevant_parts_by_transcript(
-                    transcript,
-                    min_length=clip_min_length,
-                    max_length=clip_max_length,
-                    custom_prompt=custom_ai_prompt,
-                )
-                logger.info(
-                    f"[SERVICE=ASYNC] AI analysis complete - found {len(relevant_parts.most_relevant_segments)} segments"
-                )
-
-                # Convert to JSON format
-                relevant_segments_json = [
-                    {
-                        "start_time": segment.start_time,
-                        "end_time": segment.end_time,
-                        "text": segment.text,
-                        "relevance_score": segment.relevance_score,
-                        "reasoning": segment.reasoning,
-                    }
-                    for segment in relevant_parts.most_relevant_segments
-                ]
-
-                # Apply verbatim transcript text to each segment
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Applying verbatim text extraction..."
-                )
-                for segment in relevant_segments_json:
-                    self._apply_verbatim_text_to_segment(segment, video_path)
-
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Creating {len(relevant_segments_json)} video clips with transitions..."
-                )
-                clips_output_dir = Path(self.config.temp_dir) / "clips"
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Font settings - Family: {font_family}, Size: {font_size}, Color: {font_color}"
-                )
-                # Run sync video processing in thread pool to avoid blocking asyncio loop
-                # (required because BrowserSubtitleRenderer uses sync Playwright API)
-                clips_info = await run_in_thread(
-                    create_clips_with_transitions,
-                    video_path,
-                    relevant_segments_json,
-                    clips_output_dir,
-                    font_family,
-                    font_size,
-                    font_color,
-                    logo_path,
-                    logo_corner_position,
-                    output_resolution,
-                    subtitle_style,
-                    subtitle_position,
-                )
-                logger.info(
-                    f"[SERVICE=ASYNC] Generated {len(clips_info)} video clips with transitions"
-                )
-
-                logger.info(
-                    f"[SERVICE=ASYNC] Task {task_id}: Saving clips to database..."
-                )
-                async with AsyncSessionLocal() as db:
-                    clip_ids = []
-                    for i, clip_info in enumerate(clips_info):
-                        # Validate clip file exists and has content
-                        clip_path = Path(clip_info["path"])
-                        if not clip_path.exists():
-                            logger.error(
-                                f"[SERVICE=ASYNC] Clip file does not exist: {clip_path}"
-                            )
-                            continue
-
-                        file_size = clip_path.stat().st_size
-                        if file_size < MIN_CLIP_FILE_SIZE_BYTES:
-                            logger.error(
-                                f"[SERVICE=ASYNC] Clip file too small ({file_size} bytes): {clip_path}"
-                            )
-                            continue
-
-                        clip_record = GeneratedClip(
-                            task_id=task_id,
-                            filename=clip_info["filename"],
-                            file_path=clip_info["path"],
-                            start_time=clip_info["start_time"],
-                            end_time=clip_info["end_time"],
-                            duration=clip_info["duration"],
-                            text=clip_info["text"],
-                            relevance_score=clip_info["relevance_score"],
-                            reasoning=clip_info["reasoning"],
-                            clip_order=i + 1,
+            # Save clips to database with file validation
+            logger.info(
+                f"[SERVICE=ASYNC] Task {task_id}: Saving {len(clips_info)} clips to database..."
+            )
+            clip_ids: list[str] = []
+            async with AsyncSessionLocal() as db:
+                for i, clip_info in enumerate(clips_info):
+                    # Validate clip file exists and has content
+                    clip_path = Path(clip_info["path"])
+                    if not clip_path.exists():
+                        logger.error(
+                            f"[SERVICE=ASYNC] Clip file does not exist: {clip_path}"
                         )
-                        db.add(clip_record)
-                        await db.flush()
-                        clip_ids.append(clip_record.id)
+                        continue
 
-                    # Update task with clip IDs
-                    await db.execute(
-                        text(
-                            "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
-                        ),
-                        {"clip_ids": json.dumps(clip_ids), "task_id": task_id},
+                    file_size = clip_path.stat().st_size
+                    if file_size < MIN_CLIP_FILE_SIZE_BYTES:
+                        logger.error(
+                            f"[SERVICE=ASYNC] Clip file too small ({file_size} bytes): {clip_path}"
+                        )
+                        continue
+
+                    clip_record = GeneratedClip(
+                        task_id=task_id,
+                        filename=clip_info["filename"],
+                        file_path=clip_info["path"],
+                        start_time=clip_info["start_time"],
+                        end_time=clip_info["end_time"],
+                        duration=clip_info["duration"],
+                        text=clip_info["text"],
+                        relevance_score=clip_info["relevance_score"],
+                        reasoning=clip_info["reasoning"],
+                        clip_order=i + 1,
                     )
-                    await db.commit()
+                    db.add(clip_record)
+                    await db.flush()
+                    clip_ids.append(clip_record.id)
+
+                # Update task with clip IDs
+                await db.execute(
+                    text(
+                        "UPDATE tasks SET generated_clips_ids = :clip_ids WHERE id = :task_id"
+                    ),
+                    {"clip_ids": json.dumps(clip_ids), "task_id": task_id},
+                )
+                await db.commit()
 
             # Postcondition: only mark completed if valid clips were produced
             if clip_ids:
@@ -377,7 +262,7 @@ class AsyncVideoProcessingService:
                 await self._update_task_status(
                     task_id,
                     "error",
-                    error_message="No valid clips were produced — all clips were invalid or skipped.",
+                    error_message="No valid clips were produced -- all clips were invalid or skipped.",
                 )
                 logger.error(
                     f"[SERVICE=ASYNC] Task {task_id} failed: no valid clips produced"
@@ -385,7 +270,7 @@ class AsyncVideoProcessingService:
 
         except Exception as e:
             logger.error(f"[SERVICE=ASYNC] Error processing task {task_id}: {e}")
-            # Store error message for user visibility (Fix 3: Better error reporting)
+            # Store error message for user visibility
             await self._update_task_status(task_id, "error", error_message=str(e))
             logger.error(f"[SERVICE=ASYNC] Task {task_id} marked as error: {e}")
 

@@ -37,7 +37,8 @@ class TestClipLengthParametersPassedThroughPipeline:
             mock_ai.assert_called_once_with(
                 "Test transcript",
                 min_length=50,
-                max_length=60
+                max_length=60,
+                custom_prompt=None,
             )
 
     @pytest.mark.asyncio
@@ -112,7 +113,7 @@ class TestIntegrationParameterFlow:
         # Track parameter flow through the pipeline
         captured_params = {}
 
-        async def mock_analyze_transcript(transcript, min_length=10, max_length=45):
+        async def mock_analyze_transcript(transcript, min_length=10, max_length=45, custom_ai_prompt=None):
             captured_params['ai_min_length'] = min_length
             captured_params['ai_max_length'] = max_length
             mock_result = Mock()

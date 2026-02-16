@@ -504,4 +504,5 @@ async def get_most_relevant_parts_by_transcript(
         logger.error(f"Error in transcript analysis: {e}", exc_info=True)
         raise
 
+
 # end backend/src/ai.py

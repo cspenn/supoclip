@@ -135,4 +135,5 @@ class BrowserSubtitleRenderer:
             logger.error(f"Browser rendering failed: {e}")
             return None
 
+
 # end backend/src/subtitle_renderer.py

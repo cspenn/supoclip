@@ -111,9 +111,7 @@ class Task(Base):
         String(36), ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
     )
     # Use JSON for SQLite compatibility (works with both SQLite and PostgreSQL)
-    generated_clips_ids: Mapped[list[str] | None] = mapped_column(
-        JSON, nullable=True
-    )
+    generated_clips_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), server_default=text("'pending'"), nullable=False
     )
@@ -256,5 +254,6 @@ class SystemFont(Base):
             "source IN ('bundled', 'system')", name="check_system_fonts_source"
         ),
     )
+
 
 # end backend/src/models.py

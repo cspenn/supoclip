@@ -218,14 +218,14 @@ class TestLogoParameterPassing:
 
         # Patch video processing functions and logger
         # Note: TextClip is not used in video_utils.py - it uses SubtitleTextClipCreator instead
-        with patch("src.video_utils.VideoFileClip") as mock_video, patch(
-            "src.video_utils.CompositeVideoClip"
+        with patch("src.clip_assembly.VideoFileClip") as mock_video, patch(
+            "src.clip_assembly.CompositeVideoClip"
         ) as mock_composite, patch(
-            "src.video_utils.ImageClip"
+            "src.clip_assembly.ImageClip"
         ) as mock_image, patch(
-            "src.video_utils.logger.info", side_effect=capture_log
+            "src.clip_assembly.logger.info", side_effect=capture_log
         ) as mock_logger_info, patch(
-            "src.video_utils.logger.warning"
+            "src.clip_assembly.logger.warning"
         ) as mock_logger_warning:
             # Setup mocks
             mock_video_clip = MagicMock()
@@ -295,12 +295,12 @@ def test_logo_file_exists():
 
 
 def test_logo_overlay_code_exists():
-    """Verify logo overlay code exists in video_utils.py."""
+    """Verify logo overlay code exists in clip_assembly.py."""
     from pathlib import Path
 
-    # Go up from tests/ to backend/, then into src/
-    video_utils_path = Path(__file__).parent.parent / "src" / "video_utils.py"
-    content = video_utils_path.read_text()
+    # Logo overlay code lives in clip_assembly.py after the video_utils split
+    clip_assembly_path = Path(__file__).parent.parent / "src" / "clip_assembly.py"
+    content = clip_assembly_path.read_text()
 
     # Check for key parts of logo overlay code
     # Note: Refactored code uses guard clauses (early returns) instead of if blocks
@@ -315,9 +315,9 @@ def test_logo_overlay_code_exists():
 
     for check_str, description in checks:
         if check_str in content:
-            print(f"✅ {description} found in video_utils.py")
+            print(f"✅ {description} found in clip_assembly.py")
         else:
-            pytest.fail(f"❌ {description} NOT found in video_utils.py")
+            pytest.fail(f"❌ {description} NOT found in clip_assembly.py")
 
 
 if __name__ == "__main__":

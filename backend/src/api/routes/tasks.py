@@ -376,4 +376,5 @@ async def delete_clip(
         logger.error(f"Error deleting clip: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting clip: {e}")
 
+
 # end backend/src/api/routes/tasks.py

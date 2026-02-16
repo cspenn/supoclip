@@ -161,4 +161,5 @@ class ClipRepository:
         await db.commit()
         logger.info(f"Deleted clip {clip_id}")
 
+
 # end backend/src/repositories/clip_repository.py

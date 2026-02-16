@@ -94,7 +94,9 @@ class Config(BaseSettings):
 
     # Authentication bypass for local development
     disable_auth: bool = Field(default=False, validation_alias="DISABLE_AUTH")
-    default_user_id: str = Field(default="local-user", validation_alias="DEFAULT_USER_ID")
+    default_user_id: str = Field(
+        default="local-user", validation_alias="DEFAULT_USER_ID"
+    )
 
     # Logging configuration
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
@@ -179,5 +181,6 @@ class Config(BaseSettings):
                 f"Invalid log level: {level}. Must be one of: {', '.join(valid_levels)}"
             )
         return level
+
 
 # end backend/src/config.py

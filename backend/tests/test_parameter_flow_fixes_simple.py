@@ -39,7 +39,8 @@ class TestClipLengthParametersFlowThroughPipeline:
             mock_ai.assert_called_once_with(
                 "Test transcript",
                 min_length=50,
-                max_length=60
+                max_length=60,
+                custom_prompt=None,
             )
 
     @pytest.mark.asyncio

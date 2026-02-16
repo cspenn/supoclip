@@ -2,139 +2,30 @@
 """
 Tests for subtitle rendering and AI clip duration behavior.
 
-- TestFontCutoffIssue: Regression tests for TextClip rendering path
-- TestBrowserSubtitleRenderer: Tests for current BrowserSubtitleRenderer path
+- TestBrowserSubtitleRenderer: Tests for BrowserSubtitleRenderer interface and rendering
+- TestFontResolution: Tests for font path resolution logic
 - TestShortClipsIssue: Tests for AI clip duration parameterization
-- TestActualUserScenario: Integration test reproducing user scenario
+- TestActualUserScenario: Integration test reproducing user scenario with BrowserSubtitleRenderer
 """
 
-import pytest
+import inspect
 from pathlib import Path
-from moviepy.video.VideoClip import TextClip
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.ai_structured import analyze_transcript_structured, build_system_prompt
 from src.subtitle_renderer import BrowserSubtitleRenderer
 
 
-class TestFontCutoffIssue:
-    """
-    Tests demonstrating that method='caption' with size=(width, None)
-    causes text to be vertically cropped.
-
-    Issue: User reports captions appearing cut in half.
-    Root Cause: MoviePy TextClip using method="caption" with constrained size.
-    Expected Behavior: Full text should be visible.
-    Actual Behavior: Text exceeding implicit height is cropped.
-    """
-
-    def test_caption_method_causes_text_cutoff(self):
-        """
-        SHOULD FAIL: Demonstrates caption mode crops text.
-
-        This test creates a TextClip using the EXACT parameters from video_utils.py
-        line 906-914 and verifies that text gets cut off.
-        """
-        # Simulate parameters from user's screenshot
-        text = "This is a multi-line caption that should wrap and display fully"
-        font_path = "Arial"  # Use system font for test
-        font_size = 30  # User's setting from screenshot
-        video_width = 720  # Standard 9:16 width
-
-        # Calculate max_text_width exactly as video_utils.py does
-        HORIZONTAL_PADDING = 0.1
-        max_text_width = int(video_width * (1 - 2 * HORIZONTAL_PADDING))
-
-        # Create TextClip with CURRENT implementation (method="caption")
-        text_clip_caption = TextClip(
-            text=text,
-            font=font_path,
-            font_size=font_size,
-            color="white",
-            stroke_color="black",
-            stroke_width=1,
-            method="caption",  # ← Current implementation causes cutoff
-            size=(max_text_width, None),  # ← Height is None but still crops
-            text_align="center",
-        )
-
-        # Create TextClip with FIXED implementation (method="label")
-        text_clip_label = TextClip(
-            text=text,
-            font=font_path,
-            font_size=font_size,
-            color="white",
-            stroke_color="black",
-            stroke_width=1,
-            method="label",  # ← Fixed implementation
-            text_align="center",
-        )
-
-        # ASSERTION: Caption mode should produce smaller height (text is cropped)
-        # This test SHOULD FAIL because caption mode DOES crop text
-        caption_height = text_clip_caption.size[1]
-        label_height = text_clip_label.size[1]
-
-        # If fix is NOT applied, caption_height will be less than label_height
-        # This assertion will FAIL proving the bug exists
-        assert caption_height >= label_height, (
-            f"Font cutoff detected! Caption mode height ({caption_height}px) "
-            f"is less than label mode height ({label_height}px). "
-            f"This proves text is being cropped. "
-            f"FIX: Change method='caption' to method='label' in video_utils.py line 913"
-        )
-
-    def test_barlow_condensed_bold_cutoff_reproduction(self):
-        """
-        SHOULD FAIL: Reproduces exact user scenario with Barlow Condensed Bold.
-
-        User screenshot shows:
-        - Font: "Barlow Condensed Bold" at 30px
-        - Text appears cut in half vertically
-        """
-        # Check if font exists
-        font_path = Path("/Users/cspenn/Documents/github/supoclip/backend/fonts/Barlow-Condensed-Bold.ttf")
-        if not font_path.exists():
-            pytest.skip(f"Font not found: {font_path}")
-
-        text = "Example subtitle text that wraps to multiple lines for testing"
-        font_size = 30  # User's setting
-        video_width = 720
-
-        HORIZONTAL_PADDING = 0.1
-        max_text_width = int(video_width * (1 - 2 * HORIZONTAL_PADDING))
-
-        # Current implementation
-        text_clip = TextClip(
-            text=text,
-            font=str(font_path),
-            font_size=font_size,
-            color="white",
-            stroke_color="black",
-            stroke_width=1,
-            method="caption",  # ← Bug is here
-            size=(max_text_width, None),
-            text_align="center",
-        )
-
-        # Calculate expected height for 2 lines (font_size * 1.5 * 2 lines)
-        expected_min_height = font_size * 1.5 * 2
-
-        # ASSERTION: Text clip height should accommodate at least 2 lines
-        actual_height = text_clip.size[1]
-        assert actual_height >= expected_min_height, (
-            f"Text cutoff detected! Actual height {actual_height}px "
-            f"is less than expected minimum {expected_min_height}px for 2 lines. "
-            f"Text is being cropped by caption mode."
-        )
-
-
 class TestBrowserSubtitleRenderer:
     """
-    Tests for the current BrowserSubtitleRenderer rendering path.
+    Tests for the BrowserSubtitleRenderer rendering path.
 
-    Production now uses Playwright-based browser rendering instead of
+    Production uses Playwright-based browser rendering instead of
     MoviePy TextClip for subtitle generation. These tests verify the
-    renderer class interface without requiring Playwright browsers
-    to be installed.
+    renderer class interface and rendering behavior. Playwright browser
+    calls are mocked to allow unit testing without browser installation.
     """
 
     def test_renderer_class_exists(self):
@@ -160,8 +51,6 @@ class TestBrowserSubtitleRenderer:
 
     def test_render_text_to_image_signature(self):
         """render_text_to_image should accept all expected styling parameters."""
-        import inspect
-
         sig = inspect.signature(BrowserSubtitleRenderer.render_text_to_image)
         params = list(sig.parameters.keys())
 
@@ -174,6 +63,346 @@ class TestBrowserSubtitleRenderer:
             assert param in params, (
                 f"render_text_to_image missing parameter: {param}"
             )
+
+    def test_render_text_to_image_default_values(self):
+        """render_text_to_image should have sensible defaults for optional params."""
+        sig = inspect.signature(BrowserSubtitleRenderer.render_text_to_image)
+        params = sig.parameters
+
+        assert params["stroke_width"].default == 2
+        assert params["stroke_color"].default == "black"
+        assert params["shadow_color"].default is None
+        assert params["shadow_offset"].default == 2
+        assert params["text_transform"].default == "none"
+        assert params["font_weight"].default == "bold"
+
+    def test_stop_clears_all_state(self):
+        """Calling stop() should reset all internal state to None."""
+        renderer = BrowserSubtitleRenderer()
+        # Simulate started state
+        renderer._playwright = MagicMock()
+        renderer._browser = MagicMock()
+        renderer._page = MagicMock()
+
+        renderer.stop()
+
+        assert renderer._playwright is None
+        assert renderer._browser is None
+        assert renderer._page is None
+
+    def test_stop_closes_browser_before_playwright(self):
+        """stop() should close browser before stopping playwright."""
+        renderer = BrowserSubtitleRenderer()
+        call_order = []
+
+        mock_browser = MagicMock()
+        mock_browser.close.side_effect = lambda: call_order.append("browser_close")
+
+        mock_playwright = MagicMock()
+        mock_playwright.stop.side_effect = lambda: call_order.append("playwright_stop")
+
+        renderer._browser = mock_browser
+        renderer._playwright = mock_playwright
+        renderer._page = MagicMock()
+
+        renderer.stop()
+
+        assert call_order == ["browser_close", "playwright_stop"], (
+            f"Expected browser.close() before playwright.stop(), got: {call_order}"
+        )
+
+    def test_context_manager_calls_start_and_stop(self):
+        """Context manager should call start() on enter and stop() on exit."""
+        renderer = BrowserSubtitleRenderer()
+
+        with patch.object(renderer, "start") as mock_start, \
+             patch.object(renderer, "stop") as mock_stop:
+            with renderer:
+                mock_start.assert_called_once()
+            mock_stop.assert_called_once()
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_start_launches_headless_chromium(self, mock_sync_pw):
+        """start() should launch a headless Chromium browser."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        mock_pw_instance.chromium.launch.assert_called_once_with(headless=True)
+        mock_browser.new_page.assert_called_once()
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_start_is_idempotent(self, mock_sync_pw):
+        """Calling start() twice should not create a second browser."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+        renderer.start()
+
+        # Should only launch once since _playwright is already set
+        mock_sync_pw.return_value.start.assert_called_once()
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_returns_png_path(self, mock_sync_pw):
+        """render_text_to_image should return a Path to a .png file."""
+        # Set up mock chain
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        mock_element = MagicMock()
+        mock_page.query_selector.return_value = mock_element
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        result = renderer.render_text_to_image(
+            text="Hello world",
+            font_family="Arial",
+            font_size=30,
+            color="white",
+            width=576,
+        )
+
+        assert result is not None
+        assert isinstance(result, Path)
+        assert result.suffix == ".png"
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_returns_none_when_element_not_found(self, mock_sync_pw):
+        """render_text_to_image should return None if subtitle element is missing."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        # Simulate element not found
+        mock_page.query_selector.return_value = None
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        result = renderer.render_text_to_image(
+            text="Hello world",
+            font_family="Arial",
+            font_size=30,
+            color="white",
+            width=576,
+        )
+
+        assert result is None
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_returns_none_on_exception(self, mock_sync_pw):
+        """render_text_to_image should return None if rendering raises an exception."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        # Simulate rendering exception
+        mock_page.set_content.side_effect = RuntimeError("Browser crashed")
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        result = renderer.render_text_to_image(
+            text="Hello world",
+            font_family="Arial",
+            font_size=30,
+            color="white",
+            width=576,
+        )
+
+        assert result is None
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_sets_html_with_correct_styling(self, mock_sync_pw):
+        """render_text_to_image should generate HTML with the correct CSS properties."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        mock_element = MagicMock()
+        mock_page.query_selector.return_value = mock_element
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        renderer.render_text_to_image(
+            text="Test subtitle",
+            font_family="Barlow Condensed",
+            font_size=30,
+            color="#FFFFFF",
+            width=576,
+            stroke_width=3,
+            stroke_color="black",
+            text_transform="uppercase",
+            font_weight="bold",
+        )
+
+        # Verify the HTML content passed to set_content
+        set_content_call = mock_page.set_content.call_args[0][0]
+        assert "Barlow Condensed" in set_content_call
+        assert "30px" in set_content_call
+        assert "#FFFFFF" in set_content_call
+        assert "576px" in set_content_call
+        assert "3px" in set_content_call
+        assert "uppercase" in set_content_call
+        assert "bold" in set_content_call
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_includes_shadow_when_specified(self, mock_sync_pw):
+        """render_text_to_image should include text-shadow CSS when shadow_color is set."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        mock_element = MagicMock()
+        mock_page.query_selector.return_value = mock_element
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        renderer.render_text_to_image(
+            text="Shadow test",
+            font_family="Arial",
+            font_size=24,
+            color="white",
+            width=576,
+            shadow_color="rgba(0,0,0,0.8)",
+            shadow_offset=3,
+        )
+
+        set_content_call = mock_page.set_content.call_args[0][0]
+        assert "text-shadow" in set_content_call
+        assert "rgba(0,0,0,0.8)" in set_content_call
+        assert "3px" in set_content_call
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_text_no_shadow_when_not_specified(self, mock_sync_pw):
+        """render_text_to_image should not include text-shadow when shadow_color is None."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+
+        mock_element = MagicMock()
+        mock_page.query_selector.return_value = mock_element
+
+        renderer = BrowserSubtitleRenderer()
+        renderer.start()
+
+        renderer.render_text_to_image(
+            text="No shadow test",
+            font_family="Arial",
+            font_size=24,
+            color="white",
+            width=576,
+            shadow_color=None,
+        )
+
+        set_content_call = mock_page.set_content.call_args[0][0]
+        assert "text-shadow" not in set_content_call
+
+    @patch("src.subtitle_renderer.sync_playwright")
+    def test_render_auto_starts_if_not_started(self, mock_sync_pw):
+        """render_text_to_image should auto-start the browser if not already running."""
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+        mock_page.query_selector.return_value = MagicMock()
+
+        renderer = BrowserSubtitleRenderer()
+        # Do NOT call renderer.start() - should auto-start
+
+        result = renderer.render_text_to_image(
+            text="Auto start test",
+            font_family="Arial",
+            font_size=24,
+            color="white",
+            width=576,
+        )
+
+        # Verify browser was started
+        mock_sync_pw.return_value.start.assert_called_once()
+        assert result is not None
+
+
+class TestFontResolution:
+    """
+    Tests for font path resolution logic used with BrowserSubtitleRenderer.
+
+    BrowserSubtitleRenderer receives a font_family name derived from the font path.
+    Production code uses Path(font_path).stem to extract the family name.
+    These tests verify that font resolution works correctly for the renderer.
+    """
+
+    def test_font_stem_extraction(self):
+        """Font family name should be extracted from font path stem."""
+        font_path = "/path/to/fonts/Barlow-Condensed-Bold.ttf"
+        font_family = Path(font_path).stem
+        assert font_family == "Barlow-Condensed-Bold"
+
+    def test_font_stem_with_spaces(self):
+        """Font paths with special characters should produce valid stems."""
+        font_path = "/path/to/fonts/THEBOLDFONT-FREEVERSION.ttf"
+        font_family = Path(font_path).stem
+        assert font_family == "THEBOLDFONT-FREEVERSION"
+
+    def test_bundled_fonts_directory_exists(self):
+        """The bundled fonts directory should exist in the project."""
+        fonts_dir = Path(__file__).parent.parent / "fonts"
+        assert fonts_dir.exists(), f"Fonts directory not found: {fonts_dir}"
+
+    def test_default_font_exists(self):
+        """The default fallback font should exist."""
+        default_font = (
+            Path(__file__).parent.parent / "fonts" / "THEBOLDFONT-FREEVERSION.ttf"
+        )
+        assert default_font.exists(), f"Default font not found: {default_font}"
+
+    def test_resolve_font_path_returns_existing_file(self):
+        """resolve_font_path should return a path to an existing .ttf file."""
+        from src.video_utils import resolve_font_path
+
+        result = resolve_font_path("THEBOLDFONT-FREEVERSION")
+        assert Path(result).exists()
+        assert result.endswith(".ttf")
+
+    def test_resolve_font_path_falls_back_to_default(self):
+        """resolve_font_path should fall back to default font for unknown names."""
+        from src.video_utils import resolve_font_path
+
+        result = resolve_font_path("NonExistentFont12345")
+        assert Path(result).exists()
+        assert "THEBOLDFONT-FREEVERSION" in result
 
 
 class TestShortClipsIssue:
@@ -320,9 +549,6 @@ class TestShortClipsIssue:
         Current: if duration < 10:
         Should be: if duration < min_length:
         """
-        from src.ai_structured import analyze_transcript_structured
-        import inspect
-
         # Get source code of analyze_transcript_structured
         source = inspect.getsource(analyze_transcript_structured)
 
@@ -343,23 +569,22 @@ class TestActualUserScenario:
     - Clip length: 47-58 seconds (inferred from "too short" complaint)
 
     Expected:
-    - Full captions visible
+    - Full captions visible (no vertical cropping)
     - Clips 47-58 seconds long
 
-    Actual (before fix):
-    - Captions cut off vertically
-    - Clips 11-16 seconds long
+    Now tests BrowserSubtitleRenderer path instead of old TextClip path.
     """
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_user_scenario_reproduction(self):
+    @patch("src.subtitle_renderer.sync_playwright")
+    async def test_user_scenario_reproduction(self, mock_sync_pw):
         """
-        SHOULD FAIL: Full integration test of user's exact scenario.
+        Integration test of user's exact scenario using BrowserSubtitleRenderer.
 
-        This test will fail in two ways:
-        1. TextClip will have reduced height (font cutoff)
-        2. AI will generate short clips (ignoring length settings)
+        Verifies:
+        1. BrowserSubtitleRenderer can render with user's font settings
+        2. AI generates clips within requested duration range
         """
         # User settings from screenshot
         font_family = "Barlow Condensed Bold"
@@ -367,27 +592,51 @@ class TestActualUserScenario:
         clip_min_length = 47
         clip_max_length = 58
 
-        # Part 1: Test font rendering
-        font_path = Path("/Users/cspenn/Documents/github/supoclip/backend/fonts/Barlow-Condensed-Bold.ttf")
-        if font_path.exists():
-            video_width = 720
-            HORIZONTAL_PADDING = 0.1
-            max_text_width = int(video_width * (1 - 2 * HORIZONTAL_PADDING))
+        # Part 1: Test font rendering via BrowserSubtitleRenderer
+        video_width = 720
+        horizontal_padding = 0.1
+        max_text_width = int(video_width * (1 - 2 * horizontal_padding))
 
-            text_clip = TextClip(
-                text="Test caption text",
-                font=str(font_path),
+        # Set up mock Playwright chain
+        mock_pw_instance = MagicMock()
+        mock_sync_pw.return_value.start.return_value = mock_pw_instance
+        mock_browser = MagicMock()
+        mock_pw_instance.chromium.launch.return_value = mock_browser
+        mock_page = MagicMock()
+        mock_browser.new_page.return_value = mock_page
+        mock_element = MagicMock()
+        mock_page.query_selector.return_value = mock_element
+
+        with BrowserSubtitleRenderer() as renderer:
+            result = renderer.render_text_to_image(
+                text="Test caption text that should display fully",
+                font_family=font_family,
                 font_size=font_size,
                 color="white",
-                method="caption",  # ← Bug
-                size=(max_text_width, None),
+                width=max_text_width,
+                stroke_width=2,
+                stroke_color="black",
+                font_weight="bold",
             )
 
-            # Should have adequate height
-            min_expected_height = font_size * 1.5
-            assert text_clip.size[1] >= min_expected_height, (
-                f"Font cutoff issue reproduced! Height {text_clip.size[1]} < {min_expected_height}"
+            # BrowserSubtitleRenderer should return a valid path (no vertical cropping issue)
+            assert result is not None, (
+                "BrowserSubtitleRenderer returned None - rendering failed"
             )
+            assert isinstance(result, Path)
+            assert result.suffix == ".png"
+
+        # Verify HTML was generated with correct font styling
+        set_content_call = mock_page.set_content.call_args[0][0]
+        assert font_family in set_content_call, (
+            f"Expected font family '{font_family}' in rendered HTML"
+        )
+        assert f"{font_size}px" in set_content_call, (
+            f"Expected font size '{font_size}px' in rendered HTML"
+        )
+        assert f"{max_text_width}px" in set_content_call, (
+            f"Expected width '{max_text_width}px' in rendered HTML"
+        )
 
         # Part 2: Test AI clip length
         sample_transcript = "[00:00] Sample transcript content for testing..." * 50

@@ -74,9 +74,7 @@ class TaskRepository:
         return task_id
 
     @staticmethod
-    async def get_task_by_id(
-        db: AsyncSession, task_id: str
-    ) -> dict[str, Any] | None:
+    async def get_task_by_id(db: AsyncSession, task_id: str) -> dict[str, Any] | None:
         """Get task by ID with source information."""
         result = await db.execute(
             text(
@@ -215,5 +213,6 @@ class TaskRepository:
         )
         await db.commit()
         logger.info(f"Deleted task {task_id}")
+
 
 # end backend/src/repositories/task_repository.py

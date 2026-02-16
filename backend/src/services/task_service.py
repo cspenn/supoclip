@@ -218,4 +218,5 @@ class TaskService:
 
         logger.info(f"Deleted task {task_id} and all associated clips")
 
+
 # end backend/src/services/task_service.py

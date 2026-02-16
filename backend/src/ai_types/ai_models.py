@@ -39,4 +39,5 @@ class TranscriptAnalysis(BaseModel):
     summary: str = Field(description="Brief summary of the video content")
     key_topics: list[str] = Field(description="List of main topics discussed")
 
+
 # end backend/src/ai_types/ai_models.py
