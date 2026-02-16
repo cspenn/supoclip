@@ -184,7 +184,9 @@ class AsyncVideoProcessingService:
                     raise Exception("Source not found")
 
             source_type = source_data.type
-            logger.info(f"[SERVICE=ASYNC] Task {task_id}: Source type is '{source_type}'")
+            logger.info(
+                f"[SERVICE=ASYNC] Task {task_id}: Source type is '{source_type}'"
+            )
 
             # Delegate to VideoService for the core processing pipeline.
             # VideoService.process_video_complete handles: download, transcribe,

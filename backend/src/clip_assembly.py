@@ -332,22 +332,37 @@ def create_optimized_clip(
         # Add subtitles
         if add_subtitles:
             subtitle_overlays = _build_subtitle_overlays(
-                video_path, start_time, end_time,
-                width, height, font_family, font_size, font_color,
-                subtitle_style, subtitle_position,
+                video_path,
+                start_time,
+                end_time,
+                width,
+                height,
+                font_family,
+                font_size,
+                font_color,
+                subtitle_style,
+                subtitle_position,
             )
             final_clips.extend(subtitle_overlays)
 
         # Add logo
         _add_logo_overlay(
-            final_clips, logo_path, logo_position,
-            width, height, cropped_clip.duration,
+            final_clips,
+            logo_path,
+            logo_position,
+            width,
+            height,
+            cropped_clip.duration,
         )
 
         # Compose and encode
         _compose_and_encode(
-            final_clips, cropped_clip, output_path,
-            font_family, font_size, font_color,
+            final_clips,
+            cropped_clip,
+            output_path,
+            font_family,
+            font_size,
+            font_color,
         )
 
         logger.info(f"Successfully created clip: {output_path}")

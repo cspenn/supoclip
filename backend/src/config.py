@@ -8,6 +8,8 @@ Uses:
 - Local asyncio queue for jobs (not Redis/arq)
 """
 
+from typing import ClassVar
+
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from pydantic import Field
@@ -31,8 +33,8 @@ class Config(BaseSettings):
         extra="ignore",
     )
 
-    # Default ports
-    DEFAULT_BACKEND_PORT: int = 8008
+    # Default ports (class constant, not a settings field)
+    DEFAULT_BACKEND_PORT: ClassVar[int] = 8008
 
     # parakeet-mlx transcription model
     parakeet_model: str = Field(
