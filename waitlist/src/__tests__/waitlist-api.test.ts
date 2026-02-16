@@ -96,12 +96,10 @@ describe("waitlist API route handler", () => {
 describe("waitlist API route handler (integration)", () => {
   let mockSend: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
-    vi.resetModules();
-    // Get access to the mock
-    const resendMod = vi.mocked(require("resend"));
-    const instance = new resendMod.Resend("test-key");
-    mockSend = instance.emails.send as ReturnType<typeof vi.fn>;
+  beforeEach(async () => {
+    // Access the shared mock from the hoisted vi.mock factory
+    const resendMod = await import("resend") as unknown as { __mockSend: ReturnType<typeof vi.fn> };
+    mockSend = resendMod.__mockSend;
     mockSend.mockReset();
   });
 

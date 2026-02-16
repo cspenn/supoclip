@@ -145,7 +145,14 @@ class CleanStartValidator:
 
 
 def validate_clean_start(segment_text: str) -> tuple[bool, str]:
-    """Legacy wrapper for backward compatibility."""
+    """Legacy wrapper for CleanStartValidator.validate.
+
+    Args:
+        segment_text: Text to validate for clean start.
+
+    Returns:
+        Tuple of (is_valid, reason_string).
+    """
     return CleanStartValidator.validate(segment_text)
 
 
@@ -320,7 +327,20 @@ async def _analyze_with_structured_model(
     max_length: int,
     custom_prompt: str | None,
 ) -> TranscriptAnalysis:
-    """Analyze using Groq Structured Outputs API (Llama 4 Scout)."""
+    """Analyze transcript using Groq Structured Outputs API (Llama 4 Scout).
+
+    Args:
+        transcript: Full transcript text with timestamps.
+        min_length: Minimum clip duration in seconds.
+        max_length: Maximum clip duration in seconds.
+        custom_prompt: Optional custom instructions for AI analysis.
+
+    Returns:
+        TranscriptAnalysis with validated segments.
+
+    Raises:
+        ValueError: If structured output validation fails.
+    """
     logger.info("Using Groq Structured Outputs API for Llama 4 Scout compatibility")
     from .ai_structured import analyze_transcript_structured
 
@@ -361,7 +381,14 @@ async def _analyze_with_structured_model(
 async def _analyze_with_standard_model(
     analysis_prompt: str,
 ) -> TranscriptAnalysis:
-    """Analyze using standard Pydantic AI agent (Tool Calling)."""
+    """Analyze transcript using standard Pydantic AI agent (Tool Calling).
+
+    Args:
+        analysis_prompt: Formatted analysis prompt for the AI agent.
+
+    Returns:
+        TranscriptAnalysis with validated and filtered segments.
+    """
     # Lazy initialize agent on first use
     agent = _get_transcript_agent()
     result = await agent.run(analysis_prompt)
@@ -473,7 +500,23 @@ async def get_most_relevant_parts_by_transcript(
     max_length: int = 45,
     custom_prompt: str | None = None,
 ) -> TranscriptAnalysis:
-    """Get the most relevant parts of a transcript for creating clips - simplified version."""
+    """Analyze transcript with AI to find the most engaging segments for clips.
+
+    Routes to either Groq Structured Outputs or standard Pydantic AI depending
+    on the configured LLM model.
+
+    Args:
+        transcript: Full transcript text with timestamps.
+        min_length: Minimum clip duration in seconds.
+        max_length: Maximum clip duration in seconds.
+        custom_prompt: Optional custom instructions for AI analysis.
+
+    Returns:
+        TranscriptAnalysis with validated and sorted segments.
+
+    Raises:
+        ValueError: If transcript is empty, too short, or analysis fails.
+    """
     logger.info(f"Starting AI analysis of transcript ({len(transcript)} chars)")
     logger.info(f"Clip length settings - Min: {min_length}s, Max: {max_length}s")
     if custom_prompt:

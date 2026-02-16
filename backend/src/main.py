@@ -56,6 +56,7 @@ app.mount("/clips", StaticFiles(directory=str(clips_dir)), name="clips")
 
 @app.get("/")
 def read_root():
+    """Return API metadata and status information."""
     return {
         "name": "SupoClip API",
         "version": "0.1.0",
@@ -68,6 +69,7 @@ def read_root():
 
 @app.get("/health")
 async def health_check():
+    """Return basic health check status."""
     return {"status": "healthy"}
 
 
@@ -286,7 +288,7 @@ async def upload_logo(
 
         form_data = await request.form()
         logo_file = form_data.get("logo")
-        corner_position = form_data.get("corner_position", "top-right")
+        corner_position = str(form_data.get("corner_position", "top-right"))
 
         if not logo_file or not hasattr(logo_file, "filename"):
             raise HTTPException(status_code=400, detail="No logo file provided")

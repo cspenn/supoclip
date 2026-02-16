@@ -49,7 +49,24 @@ class ClipRepository:
         reasoning: str,
         clip_order: int,
     ) -> str:
-        """Create a new clip record and return its ID."""
+        """Create a new clip record and return its ID.
+
+        Args:
+            db: Database session.
+            task_id: Parent task ID.
+            filename: Clip filename.
+            file_path: Full path to clip file.
+            start_time: Clip start timestamp (MM:SS format).
+            end_time: Clip end timestamp (MM:SS format).
+            duration: Clip duration in seconds.
+            clip_text: Transcript text for this clip.
+            relevance_score: AI relevance score (0-1).
+            reasoning: AI reasoning for clip selection.
+            clip_order: Order index within the task.
+
+        Returns:
+            UUID string of the created clip.
+        """
         clip_id = str(uuid.uuid4())
         await db.execute(
             text(
@@ -130,7 +147,15 @@ class ClipRepository:
 
     @staticmethod
     async def get_clips_count(db: AsyncSession, task_id: str) -> int:
-        """Get the count of clips for a task."""
+        """Get the count of clips for a task.
+
+        Args:
+            db: Database session.
+            task_id: Task ID to count clips for.
+
+        Returns:
+            Number of clips associated with the task.
+        """
         result = await db.execute(
             text(
                 "SELECT COUNT(*) as count FROM generated_clips WHERE task_id = :task_id"
@@ -141,7 +166,15 @@ class ClipRepository:
 
     @staticmethod
     async def delete_clips_by_task(db: AsyncSession, task_id: str) -> int:
-        """Delete all clips for a task. Returns count of deleted clips."""
+        """Delete all clips for a task.
+
+        Args:
+            db: Database session.
+            task_id: Task ID whose clips should be deleted.
+
+        Returns:
+            Number of clips deleted.
+        """
         result = await db.execute(
             text("DELETE FROM generated_clips WHERE task_id = :task_id"),
             {"task_id": task_id},
@@ -153,7 +186,12 @@ class ClipRepository:
 
     @staticmethod
     async def delete_clip(db: AsyncSession, clip_id: str) -> None:
-        """Delete a single clip by ID."""
+        """Delete a single clip by ID.
+
+        Args:
+            db: Database session.
+            clip_id: Clip ID to delete.
+        """
         await db.execute(
             text("DELETE FROM generated_clips WHERE id = :clip_id"),
             {"clip_id": clip_id},

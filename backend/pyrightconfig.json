@@ -1,0 +1,22 @@
+{
+  "include": ["src"],
+  "exclude": [
+    "tests",
+    "scripts",
+    "src/scripts",
+    ".venv",
+    "**/.venv",
+    "**/node_modules",
+    "docs",
+    "logs",
+    "temp"
+  ],
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "reportAttributeAccessIssue": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportCallIssue": "warning",
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning",
+  "reportPossiblyUnbound": "warning"
+}

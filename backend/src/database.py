@@ -42,6 +42,11 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
+    """Provide an async database session as a FastAPI dependency.
+
+    Yields:
+        AsyncSession: Database session that is automatically closed after use.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -114,7 +119,7 @@ async def _apply_migration_file(conn, migration_path: Path, description: str) ->
 
 
 async def init_db() -> None:
-    """Initialize database and apply migrations."""
+    """Initialize database tables and apply SQL migrations."""
     async with engine.begin() as conn:
         # Create all tables from models
         await conn.run_sync(Base.metadata.create_all)
@@ -133,6 +138,7 @@ async def init_db() -> None:
 
 
 async def close_db():
+    """Close all database connections and dispose of the engine."""
     await engine.dispose()
 
 

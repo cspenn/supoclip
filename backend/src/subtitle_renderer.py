@@ -19,10 +19,12 @@ class BrowserSubtitleRenderer:
         self._page = None
 
     def __enter__(self):
+        """Start the browser engine and return self for context manager usage."""
         self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Stop the browser engine on context manager exit."""
         self.stop()
 
     def start(self):
@@ -58,8 +60,27 @@ class BrowserSubtitleRenderer:
         text_transform: str = "none",  # none, uppercase, lowercase, capitalize
         font_weight: str = "bold",
     ) -> Path | None:
-        """
-        Render text to a image file using browser CSS with extended styling.
+        """Render text to a PNG image file using browser CSS styling.
+
+        Uses Playwright headless Chromium to render styled text with stroke,
+        shadow, and font customization, then captures the element as a
+        transparent PNG.
+
+        Args:
+            text: Subtitle text to render.
+            font_family: CSS font family name.
+            font_size: Font size in pixels.
+            color: Text color (CSS color value).
+            width: Maximum width in pixels for text wrapping.
+            stroke_width: Text stroke width in pixels.
+            stroke_color: Text stroke color.
+            shadow_color: Optional text shadow color.
+            shadow_offset: Shadow offset in pixels.
+            text_transform: CSS text-transform value.
+            font_weight: CSS font weight value.
+
+        Returns:
+            Path to the rendered PNG file, or None on failure.
         """
         if not self._page:
             self.start()

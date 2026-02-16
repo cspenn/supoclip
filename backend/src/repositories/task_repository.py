@@ -49,7 +49,20 @@ class TaskRepository:
         font_size: int = 24,
         font_color: str = "#FFFFFF",
     ) -> str:
-        """Create a new task and return its ID."""
+        """Create a new task and return its ID.
+
+        Args:
+            db: Database session.
+            user_id: Owner user ID.
+            source_id: Associated source ID.
+            status: Initial task status.
+            font_family: Font family for subtitles.
+            font_size: Font size in pixels.
+            font_color: Font color hex code.
+
+        Returns:
+            UUID string of the created task.
+        """
         task_id = str(uuid.uuid4())
         await db.execute(
             text(
@@ -75,7 +88,15 @@ class TaskRepository:
 
     @staticmethod
     async def get_task_by_id(db: AsyncSession, task_id: str) -> dict[str, Any] | None:
-        """Get task by ID with source information."""
+        """Get task by ID with source information.
+
+        Args:
+            db: Database session.
+            task_id: Task ID to retrieve.
+
+        Returns:
+            Task dictionary with source details, or None if not found.
+        """
         result = await db.execute(
             text(
                 """
@@ -115,7 +136,15 @@ class TaskRepository:
         progress: int | None = None,
         progress_message: str | None = None,
     ) -> None:
-        """Update task status and optional progress."""
+        """Update task status and optional progress.
+
+        Args:
+            db: Database session.
+            task_id: Task ID to update.
+            status: New status value.
+            progress: Optional progress percentage (0-100).
+            progress_message: Optional progress message string.
+        """
         params = {
             "task_id": task_id,
             "status": status,
@@ -146,7 +175,13 @@ class TaskRepository:
     async def update_task_clips(
         db: AsyncSession, task_id: str, clip_ids: list[str]
     ) -> None:
-        """Update task with generated clip IDs."""
+        """Update task with generated clip IDs.
+
+        Args:
+            db: Database session.
+            task_id: Task ID to update.
+            clip_ids: List of clip ID strings to store as JSON.
+        """
         import json
 
         # SQLite requires JSON column values to be serialized to JSON strings
@@ -164,7 +199,16 @@ class TaskRepository:
     async def get_user_tasks(
         db: AsyncSession, user_id: str, limit: int = 50
     ) -> list[dict[str, Any]]:
-        """Get all tasks for a user."""
+        """Get all tasks for a user ordered by creation date descending.
+
+        Args:
+            db: Database session.
+            user_id: User ID to retrieve tasks for.
+            limit: Maximum number of tasks to return.
+
+        Returns:
+            List of task dictionaries with source info and clip counts.
+        """
         result = await db.execute(
             text(
                 """
@@ -199,7 +243,15 @@ class TaskRepository:
 
     @staticmethod
     async def user_exists(db: AsyncSession, user_id: str) -> bool:
-        """Check if a user exists in the database."""
+        """Check if a user exists in the database.
+
+        Args:
+            db: Database session.
+            user_id: User ID to check.
+
+        Returns:
+            True if user exists, False otherwise.
+        """
         result = await db.execute(
             text("SELECT 1 FROM users WHERE id = :user_id"), {"user_id": user_id}
         )
@@ -207,7 +259,12 @@ class TaskRepository:
 
     @staticmethod
     async def delete_task(db: AsyncSession, task_id: str) -> None:
-        """Delete a task by ID."""
+        """Delete a task by ID.
+
+        Args:
+            db: Database session.
+            task_id: Task ID to delete.
+        """
         await db.execute(
             text("DELETE FROM tasks WHERE id = :task_id"), {"task_id": task_id}
         )

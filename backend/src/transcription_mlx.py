@@ -185,6 +185,48 @@ def _extract_segments_from_result(result: Any) -> list[dict[str, Any]]:
     return segments
 
 
+def _collect_words_from_tokens(tokens: Any) -> list[dict[str, Any]]:
+    """
+    Collect word dicts from a sequence of tokens.
+
+    Iterates through tokens, extracts valid word dicts via _extract_single_token,
+    and returns the collected list.
+
+    Args:
+        tokens: Iterable of AlignedToken objects from parakeet_mlx
+
+    Returns:
+        List of valid word dicts extracted from the tokens
+    """
+    words: list[dict[str, Any]] = []
+    for token in tokens:
+        word_dict = _extract_single_token(token)
+        if word_dict:
+            words.append(word_dict)
+    return words
+
+
+def _collect_words_from_sentences(sentences: Any) -> list[dict[str, Any]]:
+    """
+    Collect word dicts from sentence-level tokens.
+
+    Iterates through sentences and extracts words from each sentence's
+    token list, skipping sentences without valid tokens.
+
+    Args:
+        sentences: Iterable of AlignedSentence objects from parakeet_mlx
+
+    Returns:
+        List of valid word dicts extracted from all sentence tokens
+    """
+    words: list[dict[str, Any]] = []
+    for sentence in sentences:
+        if not hasattr(sentence, "tokens") or not sentence.tokens:
+            continue
+        words.extend(_collect_words_from_tokens(sentence.tokens))
+    return words
+
+
 def _extract_words_from_result(result: Any) -> list[dict[str, Any]]:
     """
     Extract word-level timestamps from parakeet result.
@@ -209,17 +251,10 @@ def _extract_words_from_result(result: Any) -> list[dict[str, Any]]:
             - end: End time in milliseconds
             - confidence: Confidence score (0-1)
     """
-    words: list[dict[str, Any]] = []
-
     # PRIMARY: Extract from sentences[].tokens (word-level, not BPE sub-word)
     # This is the correct way to get word-level timestamps from parakeet-mlx
     if hasattr(result, "sentences") and result.sentences:
-        for sentence in result.sentences:
-            if hasattr(sentence, "tokens") and sentence.tokens:
-                for token in sentence.tokens:
-                    word_dict = _extract_single_token(token)
-                    if word_dict:
-                        words.append(word_dict)
+        words = _collect_words_from_sentences(result.sentences)
         if words:
             logger.debug(f"📝 Extracted {len(words)} words from sentences")
             return words
@@ -230,12 +265,9 @@ def _extract_words_from_result(result: Any) -> list[dict[str, Any]]:
         logger.warning(
             "⚠️ No sentences found, falling back to flattened tokens (may be BPE sub-words)"
         )
-        for token in result.tokens:
-            word_dict = _extract_single_token(token)
-            if word_dict:
-                words.append(word_dict)
+        return _collect_words_from_tokens(result.tokens)
 
-    return words
+    return []
 
 
 def _extract_single_token(token: Any) -> dict[str, Any] | None:
@@ -374,7 +406,18 @@ def _rebuild_segments_from_words(words: list[dict[str, Any]]) -> list[dict[str, 
     Rebuild segments from words based on punctuation splitting.
 
     Ensures that the 'segments' list (used for UI display) matches the
-    'words' list (used for subtitles) after LLM reconstruction.
+    'words' list (used for subtitles) after LLM reconstruction. Splits
+    on sentence-ending punctuation (.!?) to create natural segment
+    boundaries.
+
+    Args:
+        words: List of word dicts, each containing 'text', 'start',
+            and 'end' keys with timing in milliseconds.
+
+    Returns:
+        List of segment dicts with id, timing, text, and placeholder
+        fields (tokens, temperature, avg_logprob, etc.) for format
+        compatibility.
     """
     segments: list[dict[str, Any]] = []
     current_words = []
@@ -554,7 +597,21 @@ def load_cached_transcript_mlx(video_path: Path) -> dict[str, Any] | None:
 
 
 def _process_word_reconstruction(formatted_result: dict[str, Any]) -> dict[str, Any]:
-    """Reconstruct broken words from parakeet-mlx tokenization utilizing LLM."""
+    """Reconstruct broken words from parakeet-mlx tokenization utilizing LLM.
+
+    Checks if LLM-based word reconstruction is enabled in config, and if so,
+    runs the async reconstruction pipeline to merge sub-word tokens into
+    complete words. Updates words, text, and segments in the result dict.
+
+    Args:
+        formatted_result: Transcription result dict containing 'words',
+            'text', and 'segments' keys.
+
+    Returns:
+        Updated transcription result dict with reconstructed words,
+        rebuilt text, and rebuilt segments. Returns input unchanged
+        if reconstruction is disabled or fails.
+    """
     config = Config()
 
     words_list = list(formatted_result.get("words", []))

@@ -25,7 +25,15 @@ class DownloadedFileLocator:
 
     @staticmethod
     def find_video_file(temp_dir: Path, video_id: str) -> Path | None:
-        """Find downloaded video file matching video_id."""
+        """Find downloaded video file matching video_id.
+
+        Args:
+            temp_dir: Directory to search for downloaded files.
+            video_id: YouTube video ID to match against filenames.
+
+        Returns:
+            Path to the video file if found, None otherwise.
+        """
         for file_path in temp_dir.glob(f"{video_id}.*"):
             if (
                 file_path.is_file()
@@ -44,12 +52,24 @@ class DownloadRetryHandler:
 
     @staticmethod
     def should_retry(attempt: int, max_retries: int) -> bool:
-        """Check if should retry download."""
+        """Check if download should be retried.
+
+        Args:
+            attempt: Current attempt number (0-indexed).
+            max_retries: Maximum number of retries allowed.
+
+        Returns:
+            True if another retry should be attempted.
+        """
         return attempt < max_retries - 1
 
     @staticmethod
     def wait_before_retry(attempt: int) -> None:
-        """Wait with exponential backoff before retry."""
+        """Wait with exponential backoff before retry.
+
+        Args:
+            attempt: Current attempt number for backoff calculation.
+        """
         wait_time = 2**attempt  # Exponential backoff: 1, 2, 4 seconds
         logger.info(f"Retrying in {wait_time} seconds...")
         time.sleep(wait_time)
@@ -63,7 +83,14 @@ class YouTubeDownloader:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def get_optimal_download_options(self, video_id: str) -> dict[str, Any]:
-        """Get optimal yt-dlp options for high-quality downloads with enhanced YouTube bypass."""
+        """Get optimal yt-dlp options for high-quality downloads with enhanced YouTube bypass.
+
+        Args:
+            video_id: YouTube video ID for output path template.
+
+        Returns:
+            Dictionary of yt-dlp options configured for reliable downloads.
+        """
         output_path = self.temp_dir / f"{video_id}.%(ext)s"
 
         return {
@@ -114,9 +141,15 @@ class YouTubeDownloader:
 
 
 def get_youtube_video_id(url: str) -> str | None:
-    """
-    Extract YouTube video ID from various URL formats.
-    Supports standard, short, embed, and mobile URLs.
+    """Extract YouTube video ID from various URL formats.
+
+    Supports standard, short, embed, mobile, and Shorts URLs.
+
+    Args:
+        url: YouTube URL string to parse.
+
+    Returns:
+        11-character video ID string, or None if not a valid YouTube URL.
     """
     if not isinstance(url, str) or not url.strip():
         return None
@@ -157,15 +190,28 @@ def get_youtube_video_id(url: str) -> str | None:
 
 
 def validate_youtube_url(url: str) -> bool:
-    """Validate if URL is a proper YouTube URL."""
+    """Validate if URL is a proper YouTube URL.
+
+    Args:
+        url: URL string to validate.
+
+    Returns:
+        True if the URL contains a valid YouTube video ID.
+    """
     video_id = get_youtube_video_id(url)
     return video_id is not None
 
 
 def get_youtube_video_info(url: str) -> dict[str, Any] | None:
-    """
-    Get comprehensive video information without downloading.
-    Returns title, duration, description, and other metadata.
+    """Get comprehensive video information without downloading.
+
+    Extracts title, duration, description, and other metadata using yt-dlp.
+
+    Args:
+        url: YouTube video URL.
+
+    Returns:
+        Dictionary with video metadata, or None if extraction fails.
     """
     video_id = get_youtube_video_id(url)
     if not video_id:
@@ -219,9 +265,13 @@ def get_youtube_video_info(url: str) -> dict[str, Any] | None:
 
 
 def get_youtube_video_title(url: str) -> str | None:
-    """
-    Get the title of a YouTube video from a URL.
-    Enhanced with better error handling and validation.
+    """Get the title of a YouTube video from a URL.
+
+    Args:
+        url: YouTube video URL.
+
+    Returns:
+        Video title string, or None if retrieval fails.
     """
     video_info = get_youtube_video_info(url)
     return video_info.get("title") if video_info else None
@@ -230,7 +280,17 @@ def get_youtube_video_title(url: str) -> str | None:
 def _perform_download_attempt(
     url: str, video_id: str, downloader: YouTubeDownloader, attempt: int
 ) -> Path | None:
-    """Perform a single download attempt."""
+    """Perform a single download attempt.
+
+    Args:
+        url: YouTube video URL to download.
+        video_id: Extracted YouTube video ID.
+        downloader: YouTubeDownloader instance with configured options.
+        attempt: Current attempt number (0-indexed) for logging.
+
+    Returns:
+        Path to downloaded video file, or None if not found after download.
+    """
     logger.info(f"Download attempt {attempt + 1}")
     ydl_opts = downloader.get_optimal_download_options(video_id)
 
@@ -247,9 +307,17 @@ def _perform_download_attempt(
 
 
 def download_youtube_video(url: str, max_retries: int = 3) -> Path | None:
-    """
-    Download YouTube video with optimized settings and retry logic.
-    Returns the path to the downloaded file, or None if download fails.
+    """Download YouTube video with optimized settings and retry logic.
+
+    Uses exponential backoff for retries and validates video metadata
+    before attempting download.
+
+    Args:
+        url: YouTube video URL to download.
+        max_retries: Maximum number of download attempts.
+
+    Returns:
+        Path to the downloaded video file, or None if all attempts fail.
     """
     logger.info(f"Starting YouTube download: {url}")
 
@@ -298,7 +366,14 @@ def download_youtube_video(url: str, max_retries: int = 3) -> Path | None:
 
 
 def get_video_duration(url: str) -> int | None:
-    """Get video duration in seconds without downloading."""
+    """Get video duration in seconds without downloading.
+
+    Args:
+        url: YouTube video URL.
+
+    Returns:
+        Duration in seconds, or None if unavailable.
+    """
     video_info = get_youtube_video_info(url)
     return video_info.get("duration") if video_info else None
 
@@ -306,9 +381,15 @@ def get_video_duration(url: str) -> int | None:
 def is_video_suitable_for_processing(
     url: str, min_duration: int = 60, max_duration: int = 7200
 ) -> bool:
-    """
-    Check if video is suitable for processing based on duration and other factors.
-    Default limits: 1 minute to 2 hours.
+    """Check if video is suitable for processing based on duration.
+
+    Args:
+        url: YouTube video URL to check.
+        min_duration: Minimum acceptable duration in seconds.
+        max_duration: Maximum acceptable duration in seconds.
+
+    Returns:
+        True if video duration is within acceptable range.
     """
     video_info = get_youtube_video_info(url)
     if not video_info:
@@ -329,7 +410,11 @@ def is_video_suitable_for_processing(
 
 
 def cleanup_downloaded_files(video_id: str):
-    """Clean up downloaded files for a specific video ID."""
+    """Clean up downloaded files for a specific video ID.
+
+    Args:
+        video_id: YouTube video ID whose files should be removed.
+    """
     temp_dir = Path(config.temp_dir)
 
     for file_path in temp_dir.glob(f"{video_id}.*"):

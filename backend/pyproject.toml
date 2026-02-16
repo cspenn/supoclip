@@ -56,5 +56,20 @@ dev = [
     "mypy>=1.19.1",
 ]
 
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.pyright]
+include = ["src"]
+exclude = ["tests", "scripts", "src/scripts", ".venv", "**/.venv", "**/node_modules", "docs", "logs", "temp"]
+reportMissingImports = false
+reportMissingModuleSource = false
+reportAttributeAccessIssue = "warning"
+reportOptionalMemberAccess = "warning"
+reportCallIssue = "warning"
+reportArgumentType = "warning"
+reportReturnType = "warning"
+reportPossiblyUnbound = "warning"
+
 [project.scripts]
 run-dev = "src.main:run_dev"

@@ -20,7 +20,11 @@ _font_service: FontService | None = None
 
 
 async def get_font_service() -> FontService:
-    """Get or create font service instance."""
+    """Get or create the global font service instance.
+
+    Returns:
+        FontService singleton instance.
+    """
     global _font_service
     if _font_service is None:
         config = Config()
@@ -29,7 +33,11 @@ async def get_font_service() -> FontService:
 
 
 def set_font_service(service: FontService) -> None:
-    """Set the global font service instance."""
+    """Set the global font service instance.
+
+    Args:
+        service: FontService instance to store globally.
+    """
     global _font_service
     _font_service = service
 

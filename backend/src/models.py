@@ -177,7 +177,14 @@ class Source(Base):
     tasks: Mapped[list["Task"]] = relationship("Task", back_populates="source")
 
     def decide_source_type(self, source_url: str) -> str:
-        """Decide which type of source this is."""
+        """Decide which type of source this is based on URL.
+
+        Args:
+            source_url: URL string to classify.
+
+        Returns:
+            Source type string: "youtube" or "video_url".
+        """
         if "youtube" in source_url:
             return "youtube"
         return "video_url"

@@ -21,7 +21,18 @@ class SourceRepository:
         url: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        """Create a new source record and return its ID."""
+        """Create a new source record and return its ID.
+
+        Args:
+            db: Database session.
+            source_type: Source type ("youtube", "video_url", or "upload").
+            title: Display title for the source.
+            url: Optional source URL (not persisted in model).
+            metadata: Optional metadata dictionary (not persisted in model).
+
+        Returns:
+            UUID string of the created source.
+        """
         from ..models import Source
 
         source = Source()
@@ -41,7 +52,15 @@ class SourceRepository:
     async def get_source_by_id(
         db: AsyncSession, source_id: str
     ) -> dict[str, Any] | None:
-        """Get source by ID."""
+        """Get source by ID.
+
+        Args:
+            db: Database session.
+            source_id: Source ID to retrieve.
+
+        Returns:
+            Source dictionary, or None if not found.
+        """
         from sqlalchemy import text
 
         result = await db.execute(
@@ -62,7 +81,13 @@ class SourceRepository:
 
     @staticmethod
     async def update_source_title(db: AsyncSession, source_id: str, title: str) -> None:
-        """Update the title of a source."""
+        """Update the title of a source.
+
+        Args:
+            db: Database session.
+            source_id: Source ID to update.
+            title: New title string.
+        """
         from sqlalchemy import text
 
         await db.execute(

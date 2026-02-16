@@ -218,7 +218,7 @@ class TestResolveFontPathFunctionality:
         conn.close()
 
         # Mock config to point to our test database
-        with patch('src.video_utils.config') as mock_config:
+        with patch('src.font_resolver.config') as mock_config:
             mock_config.database_url = f"sqlite+aiosqlite:///{db_path}"
 
             result = resolve_font_path("TestSystemFont")

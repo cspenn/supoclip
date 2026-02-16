@@ -36,9 +36,21 @@ class TaskService:
         font_size: int = 24,
         font_color: str = "#FFFFFF",
     ) -> str:
-        """
-        Create a new task with associated source.
-        Returns the task ID.
+        """Create a new task with associated source record.
+
+        Args:
+            user_id: ID of the authenticated user.
+            url: Video URL or file path.
+            title: Optional video title (auto-detected if not provided).
+            font_family: Font family name for subtitles.
+            font_size: Font size in pixels.
+            font_color: Font color hex code.
+
+        Returns:
+            Task ID string.
+
+        Raises:
+            ValueError: If user not found in database.
         """
         # Validate user exists
         if not await self.task_repo.user_exists(self.db, user_id):
@@ -87,9 +99,28 @@ class TaskService:
         logo_corner_position: str | None = "top-right",
         progress_callback: Callable | None = None,
     ) -> dict[str, Any]:
-        """
-        Process a task: download video, analyze, create clips.
-        Returns processing results.
+        """Process a task: download video, analyze transcript, and create clips.
+
+        Orchestrates the full pipeline and persists clips to the database.
+
+        Args:
+            task_id: Task ID to process and update.
+            url: Video URL or file path.
+            source_type: Source type ("youtube" or "upload").
+            font_family: Font family name for subtitles.
+            font_size: Font size in pixels.
+            font_color: Font color hex code.
+            min_length: Minimum clip length in seconds.
+            max_length: Maximum clip length in seconds.
+            logo_path: Optional path to logo overlay image.
+            logo_corner_position: Logo corner position.
+            progress_callback: Optional async callback for progress updates.
+
+        Returns:
+            Dictionary with task_id, clips_count, segments, summary, and key_topics.
+
+        Raises:
+            Exception: If any processing step fails (task marked as error).
         """
         try:
             logger.info(f"Starting processing for task {task_id}")
@@ -187,7 +218,14 @@ class TaskService:
             raise
 
     async def get_task_with_clips(self, task_id: str) -> dict[str, Any] | None:
-        """Get task details with all clips."""
+        """Get task details with all associated clips.
+
+        Args:
+            task_id: Task ID to retrieve.
+
+        Returns:
+            Task dictionary with clips list, or None if not found.
+        """
         task = await self.task_repo.get_task_by_id(self.db, task_id)
 
         if not task:
@@ -205,11 +243,23 @@ class TaskService:
     async def get_user_tasks(
         self, user_id: str, limit: int = 50
     ) -> list[dict[str, Any]]:
-        """Get all tasks for a user."""
+        """Get all tasks for a user.
+
+        Args:
+            user_id: User ID to retrieve tasks for.
+            limit: Maximum number of tasks to return.
+
+        Returns:
+            List of task dictionaries ordered by creation date.
+        """
         return await self.task_repo.get_user_tasks(self.db, user_id, limit)
 
     async def delete_task(self, task_id: str) -> None:
-        """Delete a task and all its associated clips."""
+        """Delete a task and all its associated clips.
+
+        Args:
+            task_id: Task ID to delete.
+        """
         # Delete all clips for this task
         await self.clip_repo.delete_clips_by_task(self.db, task_id)
 

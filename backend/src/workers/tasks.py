@@ -30,28 +30,27 @@ async def process_video_task(
     logo_path: str | None = None,
     logo_corner_position: str | None = "top-right",
 ) -> dict[str, Any]:
+    """Background worker task to process a video.
+
+    Args:
+        task_id: Task ID to update.
+        url: Video URL or file path.
+        source_type: "youtube" or "upload".
+        user_id: User ID who created the task.
+        font_family: Font family for subtitles.
+        font_size: Font size for subtitles.
+        font_color: Font color for subtitles.
+        min_length: Minimum clip length in seconds.
+        max_length: Maximum clip length in seconds.
+        logo_path: Optional path to logo image file.
+        logo_corner_position: Logo corner position.
+
+    Returns:
+        Dictionary with processing results.
+    """
     logger.info(
         f"WORKER RECEIVED: logo_path='{logo_path}', logo_corner_position='{logo_corner_position}'"
     )
-    """
-    Background worker task to process a video.
-
-    Args:
-        task_id: Task ID to update
-        url: Video URL or file path
-        source_type: "youtube" or "upload"
-        user_id: User ID who created the task
-        font_family: Font family for subtitles
-        font_size: Font size for subtitles
-        font_color: Font color for subtitles
-        min_length: Minimum clip length in seconds (default: 10)
-        max_length: Maximum clip length in seconds (default: 45)
-        logo_path: Optional path to logo image file
-        logo_corner_position: Logo corner position (default: "top-right")
-
-    Returns:
-        dict with processing results
-    """
     logger.info(f"Worker processing task {task_id}")
 
     # Create progress tracker (local in-memory version)

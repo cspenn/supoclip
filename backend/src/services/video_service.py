@@ -48,7 +48,16 @@ class VideoProcessingResponse:
         clips_info: list[dict[str, Any]],
         relevant_parts: Any,
     ) -> dict[str, Any]:
-        """Build the response dictionary."""
+        """Build the video processing response dictionary.
+
+        Args:
+            segments_json: List of segment dictionaries.
+            clips_info: List of generated clip info dictionaries.
+            relevant_parts: TranscriptAnalysis result with summary and topics.
+
+        Returns:
+            Response dictionary with segments, clips, summary, and key_topics.
+        """
         return {
             "segments": segments_json,
             "clips": clips_info,
@@ -58,7 +67,14 @@ class VideoProcessingResponse:
 
     @staticmethod
     def segments_to_json(segments: list[Any]) -> list[dict[str, Any]]:
-        """Convert segment objects to JSON-serializable dicts."""
+        """Convert segment objects to JSON-serializable dicts.
+
+        Args:
+            segments: List of TranscriptSegment objects.
+
+        Returns:
+            List of dictionaries with start_time, end_time, text, relevance_score, reasoning.
+        """
         return [
             {
                 "start_time": segment.start_time,
@@ -76,7 +92,19 @@ class VideoService:
 
     @staticmethod
     async def _get_video_path(url: str, source_type: str) -> Path:
-        """Get video path by downloading or validating existing path."""
+        """Get video path by downloading or validating existing path.
+
+        Args:
+            url: Video URL or file path.
+            source_type: Source type ("youtube" or "upload").
+
+        Returns:
+            Path to the video file.
+
+        Raises:
+            VideoDownloadError: If YouTube download fails.
+            VideoNotFoundError: If uploaded video file not found.
+        """
         if source_type == "youtube":
             video_path = await VideoService.download_video(url)
             if not video_path:
@@ -90,9 +118,16 @@ class VideoService:
 
     @staticmethod
     async def download_video(url: str) -> Path | None:
-        """
-        Download a YouTube video asynchronously.
-        Runs the sync download_youtube_video in a thread pool.
+        """Download a YouTube video asynchronously via thread pool.
+
+        Args:
+            url: YouTube video URL to download.
+
+        Returns:
+            Path to the downloaded video file, or None if download fails.
+
+        Raises:
+            Exception: If download encounters an unrecoverable error.
         """
         try:
             logger.info(f"Starting video download: {url}")
@@ -112,9 +147,13 @@ class VideoService:
 
     @staticmethod
     async def get_video_title(url: str) -> str:
-        """
-        Get video title asynchronously.
-        Returns a default title if retrieval fails.
+        """Get video title asynchronously.
+
+        Args:
+            url: YouTube video URL.
+
+        Returns:
+            Video title string, or "YouTube Video" if retrieval fails.
         """
         try:
             title = await run_in_thread(get_youtube_video_title, url)
@@ -125,9 +164,16 @@ class VideoService:
 
     @staticmethod
     async def generate_transcript(video_path: Path) -> str:
-        """
-        Generate transcript from video using parakeet-mlx.
-        Runs in thread pool to avoid blocking.
+        """Generate transcript from video using parakeet-mlx via thread pool.
+
+        Args:
+            video_path: Path to the video file.
+
+        Returns:
+            Formatted transcript string with word-level timestamps.
+
+        Raises:
+            Exception: If transcription fails.
         """
         try:
             logger.info(f"Generating transcript for: {video_path}")
@@ -148,15 +194,16 @@ class VideoService:
         max_length: int = 45,
         custom_ai_prompt: str | None = None,
     ) -> Any:
-        """
-        Analyze transcript with AI to find relevant segments.
-        This is already async, no need to wrap.
+        """Analyze transcript with AI to find relevant segments.
 
         Args:
-            transcript: Video transcript text
-            min_length: Minimum clip length in seconds (default: 10)
-            max_length: Maximum clip length in seconds (default: 45)
-            custom_ai_prompt: Optional custom AI prompt override
+            transcript: Video transcript text.
+            min_length: Minimum clip length in seconds.
+            max_length: Maximum clip length in seconds.
+            custom_ai_prompt: Optional custom AI prompt override.
+
+        Returns:
+            TranscriptAnalysis with validated segments sorted by relevance.
         """
         logger.info("Starting AI analysis of transcript")
         relevant_parts = await get_most_relevant_parts_by_transcript(
@@ -183,21 +230,27 @@ class VideoService:
         subtitle_style: dict[str, Any] | None = None,
         subtitle_position: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """
-        Create video clips from segments with transitions and subtitles.
+        """Create video clips from segments with transitions and subtitles.
+
         Runs in thread pool as video processing is CPU-intensive.
 
         Args:
-            video_path: Path to source video file
+            video_path: Path to source video file.
             segments: List of segment dicts with start_time, end_time, text, etc.
-            font_family: Font family for subtitles
-            font_size: Font size for subtitles
-            font_color: Font color for subtitles
-            output_resolution: Target resolution - "480p", "720p", or "1080p"
-            logo_path: Optional path to logo image file
-            logo_corner_position: Logo corner position (default: "top-right")
-            subtitle_style: Optional subtitle style overrides
-            subtitle_position: Optional subtitle position overrides
+            font_family: Font family for subtitles.
+            font_size: Font size for subtitles.
+            font_color: Font color for subtitles.
+            output_resolution: Target resolution - "480p", "720p", or "1080p".
+            logo_path: Optional path to logo image file.
+            logo_corner_position: Logo corner position.
+            subtitle_style: Optional subtitle style overrides.
+            subtitle_position: Optional subtitle position overrides.
+
+        Returns:
+            List of clip info dictionaries for successfully created clips.
+
+        Raises:
+            Exception: If clip creation encounters an error.
         """
         try:
             logger.info(f"Creating {len(segments)} video clips at {output_resolution}")
@@ -229,7 +282,14 @@ class VideoService:
 
     @staticmethod
     def determine_source_type(url: str) -> str:
-        """Determine if source is YouTube or uploaded file."""
+        """Determine if source is YouTube or uploaded file.
+
+        Args:
+            url: Video URL or file path.
+
+        Returns:
+            Source type string: "youtube" or "upload".
+        """
         video_id = get_youtube_video_id(url)
         return "youtube" if video_id else "upload"
 
@@ -344,30 +404,35 @@ class VideoService:
         subtitle_style: dict[str, Any] | None = None,
         subtitle_position: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """
-        Complete video processing pipeline.
-        Returns dict with segments and clips info.
+        """Execute the complete video processing pipeline.
 
         This is the single source of truth for the video processing pipeline.
         Both the synchronous TaskService path and the async /start-with-progress
         path delegate to this method for core video processing logic.
 
+        Pipeline: download -> transcribe -> AI analysis -> verbatim text -> create clips.
+
         Args:
-            url: Video URL or file path
-            source_type: "youtube" or "upload"
-            font_family: Font family for subtitles
-            font_size: Font size for subtitles
-            font_color: Font color for subtitles
-            min_length: Minimum clip length in seconds (default: 10)
-            max_length: Maximum clip length in seconds (default: 45)
-            output_resolution: Target resolution - "480p", "720p", or "1080p" (default: 720p)
-            logo_path: Optional path to logo image file
-            logo_corner_position: Logo corner position (default: "top-right")
-            progress_callback: Optional function to call with progress updates
-                              Signature: async def callback(progress: int, message: str)
-            custom_ai_prompt: Optional custom AI prompt override
-            subtitle_style: Optional subtitle style overrides
-            subtitle_position: Optional subtitle position overrides
+            url: Video URL or file path.
+            source_type: "youtube" or "upload".
+            font_family: Font family for subtitles.
+            font_size: Font size for subtitles.
+            font_color: Font color for subtitles.
+            min_length: Minimum clip length in seconds.
+            max_length: Maximum clip length in seconds.
+            output_resolution: Target resolution preset.
+            logo_path: Optional path to logo image file.
+            logo_corner_position: Logo corner position.
+            progress_callback: Optional async callback with signature (int, str).
+            custom_ai_prompt: Optional custom AI prompt override.
+            subtitle_style: Optional subtitle style overrides.
+            subtitle_position: Optional subtitle position overrides.
+
+        Returns:
+            Dictionary with segments, clips, summary, and key_topics.
+
+        Raises:
+            Exception: If any pipeline step fails.
         """
         try:
             # Log parameters at start

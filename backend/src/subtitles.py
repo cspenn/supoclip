@@ -343,7 +343,7 @@ class VideoProcessor:
         font_size: int = 24,
         font_color: str = "#FFFFFF",
     ):
-        from .video_utils import resolve_font_path
+        from .font_resolver import resolve_font_path
 
         self.font_family = font_family
         self.font_size = font_size

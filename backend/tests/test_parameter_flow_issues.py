@@ -217,7 +217,7 @@ class TestSystemFontDatabaseLookup:
         conn.close()
 
         # Mock the config to point to our test database
-        with patch('src.video_utils.config') as mock_config:
+        with patch('src.font_resolver.config') as mock_config:
             mock_config.database_url = f"sqlite+aiosqlite:///{db_path}"
 
             result = resolve_font_path(test_font_name)
@@ -245,7 +245,7 @@ class TestFontNameVariations:
         font_file.write_text("fake font data")
 
         # Mock the bundled fonts directory
-        with patch('src.video_utils.Path') as mock_path_class:
+        with patch('src.font_resolver.Path') as mock_path_class:
             # Make Path(__file__).parent.parent return our temp dir
             mock_path_instance = MagicMock()
             mock_path_instance.parent.parent = temp_dir

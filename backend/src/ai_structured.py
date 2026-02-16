@@ -107,7 +107,17 @@ QUALITY REQUIREMENTS:
 def build_user_prompt(
     transcript: str, min_length: int, max_length: int, custom_prompt: str | None = None
 ) -> str:
-    """Build the user prompt for the AI."""
+    """Build the user prompt for AI transcript analysis.
+
+    Args:
+        transcript: The video transcript to analyze.
+        min_length: Minimum clip duration in seconds.
+        max_length: Maximum clip duration in seconds.
+        custom_prompt: Optional custom instructions to append.
+
+    Returns:
+        Formatted user prompt string.
+    """
     user_prompt_parts = [
         "Analyze this video transcript and identify the most engaging segments for short-form content.",
         f"Segments MUST be between {min_length}-{max_length} seconds for optimal engagement.",
@@ -127,7 +137,14 @@ def build_user_prompt(
 
 
 def _get_duration(segment: TranscriptSegment) -> float:
-    """Calculate duration of a segment in seconds."""
+    """Calculate duration of a segment in seconds.
+
+    Args:
+        segment: TranscriptSegment with start_time and end_time in MM:SS.mmm format.
+
+    Returns:
+        Duration in seconds as a float.
+    """
     start_parts = segment.start_time.split(":")
     end_parts = segment.end_time.split(":")
     start_seconds = int(start_parts[0]) * 60 + float(start_parts[1])
@@ -136,7 +153,14 @@ def _get_duration(segment: TranscriptSegment) -> float:
 
 
 def _analyze_response_durations(segments: list[TranscriptSegment]) -> list[float]:
-    """Analyze and log statistics about response durations."""
+    """Analyze and log statistics about response durations.
+
+    Args:
+        segments: List of TranscriptSegment objects from API response.
+
+    Returns:
+        List of valid segment durations in seconds.
+    """
     durations = []
     for segment in segments:
         with suppress(ValueError, IndexError):
@@ -239,7 +263,19 @@ def _build_final_analysis(
 def _validate_and_adjust_segments(
     segments: list[TranscriptSegment], min_length: int, max_length: int
 ) -> list[TranscriptSegment]:
-    """Validate, expand, or trim segments to meet constraints."""
+    """Validate, reject, or trim segments to meet duration constraints.
+
+    Rejects segments that are too short or have invalid data. Trims
+    segments that exceed max_length to the maximum allowed duration.
+
+    Args:
+        segments: List of TranscriptSegment objects to validate.
+        min_length: Minimum acceptable clip duration in seconds.
+        max_length: Maximum acceptable clip duration in seconds.
+
+    Returns:
+        List of validated TranscriptSegment objects.
+    """
     validated_segments = []
 
     for segment in segments:

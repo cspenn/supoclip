@@ -23,7 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 async def initialize_font_service(db_session: AsyncSession, config: Config) -> None:
-    """Initialize font service with database session."""
+    """Initialize font service with database session.
+
+    Loads bundled fonts immediately and starts background system font detection.
+
+    Args:
+        db_session: Database session for font caching.
+        config: Application configuration.
+    """
     font_service = FontService(db_session=db_session, temp_dir=Path(config.temp_dir))
     set_font_service(font_service)
 
@@ -39,7 +46,11 @@ async def initialize_font_service(db_session: AsyncSession, config: Config) -> N
 
 
 async def _detect_system_fonts_background(font_service: FontService) -> None:
-    """Background task to detect and cache system fonts."""
+    """Background task to detect and cache system fonts.
+
+    Args:
+        font_service: FontService instance to use for detection and caching.
+    """
     try:
         logger.info("🔍 Starting background system font detection...")
         system_fonts = await font_service.detect_system_fonts()
@@ -51,7 +62,17 @@ async def _detect_system_fonts_background(font_service: FontService) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan context manager."""
+    """Application lifespan context manager.
+
+    Handles startup (database init, font service, job queue) and
+    shutdown (worker cleanup, database close) lifecycle events.
+
+    Args:
+        app: FastAPI application instance.
+
+    Yields:
+        None after startup is complete.
+    """
     config = Config()
 
     try:
