@@ -13,3 +13,4 @@ htmlcov/
 .ruff_cache/
 .pytest_cache/
 backend/docs/reports/
+.worktrees/
