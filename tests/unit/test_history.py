@@ -1,0 +1,345 @@
+# start tests/unit/test_history.py
+"""Unit tests for src/pages/history.py."""
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from src.pages.history import (
+    _format_date,
+    _truncate,
+    delete_task,
+    render,
+)
+
+# ---------------------------------------------------------------------------
+# Helper factories
+# ---------------------------------------------------------------------------
+
+
+def _make_task(
+    task_id: str,
+    source_url: str = "https://youtu.be/abc123",
+    status: str = "completed",
+    created_at: datetime | None = None,
+) -> MagicMock:
+    """Build a mock Task object.
+
+    Args:
+        task_id: Value for ``task.id``.
+        source_url: Value for ``task.source_url``.
+        status: Value for ``task.status``.
+        created_at: Value for ``task.created_at``; defaults to a fixed UTC time.
+
+    Returns:
+        MagicMock configured to look like a Task ORM instance.
+    """
+    task = MagicMock()
+    task.id = task_id
+    task.source_url = source_url
+    task.status = status
+    task.created_at = created_at or datetime(2026, 3, 17, 14, 30, 0, tzinfo=UTC)
+    return task
+
+
+# ---------------------------------------------------------------------------
+# Pure utility tests
+# ---------------------------------------------------------------------------
+
+
+class TestFormatDate:
+    """Tests for _format_date()."""
+
+    def test_formats_datetime_correctly(self) -> None:
+        """_format_date returns the expected human-readable string."""
+        dt = datetime(2026, 3, 17, 14, 30, 0, tzinfo=UTC)
+        assert _format_date(dt) == "Mar 17, 2026 14:30"
+
+    def test_formats_single_digit_day_with_leading_zero(self) -> None:
+        """Day component is zero-padded to two digits."""
+        dt = datetime(2026, 1, 5, 9, 5, 0, tzinfo=UTC)
+        result = _format_date(dt)
+        assert "Jan 05, 2026" in result
+
+    def test_formats_time_component(self) -> None:
+        """Hour and minute are included in the formatted output."""
+        dt = datetime(2026, 6, 1, 23, 59, 0, tzinfo=UTC)
+        result = _format_date(dt)
+        assert "23:59" in result
+
+
+class TestTruncate:
+    """Tests for _truncate()."""
+
+    def test_short_string_unchanged(self) -> None:
+        """Strings at or below max_len are returned as-is."""
+        assert _truncate("hello", 10) == "hello"
+
+    def test_exact_max_len_unchanged(self) -> None:
+        """A string exactly at max_len is not truncated."""
+        s = "a" * 50
+        assert _truncate(s) == s
+
+    def test_long_string_truncated_with_ellipsis(self) -> None:
+        """Strings longer than max_len are cut and appended with '…'."""
+        s = "a" * 60
+        result = _truncate(s)
+        assert result.endswith("…")
+        assert len(result) == 51  # 50 chars + ellipsis
+
+    def test_custom_max_len(self) -> None:
+        """Custom max_len parameter is respected."""
+        result = _truncate("hello world", max_len=5)
+        assert result == "hello…"
+
+
+# ---------------------------------------------------------------------------
+# delete_task() tests
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteTask:
+    """Tests for delete_task()."""
+
+    async def test_deletes_existing_task_and_reloads(self) -> None:
+        """delete_task() removes the task from the DB and calls ui.navigate.reload."""
+        mock_task = _make_task("task-001")
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_task)
+        mock_session.delete = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("src.pages.history.get_session", return_value=mock_session),
+            patch("src.pages.history.ui") as mock_ui,
+        ):
+            await delete_task("task-001")
+
+        mock_session.get.assert_awaited_once()
+        mock_session.delete.assert_awaited_once_with(mock_task)
+        mock_session.commit.assert_awaited_once()
+        mock_ui.navigate.reload.assert_called_once()
+
+    async def test_no_error_when_task_not_found(self) -> None:
+        """delete_task() is a no-op (no exception) when task_id does not exist."""
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=None)
+        mock_session.delete = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("src.pages.history.get_session", return_value=mock_session),
+            patch("src.pages.history.ui"),
+        ):
+            await delete_task("nonexistent-id")
+
+        mock_session.delete.assert_not_awaited()
+
+    async def test_reload_called_even_when_task_missing(self) -> None:
+        """ui.navigate.reload() is called regardless of whether the task existed."""
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=None)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("src.pages.history.get_session", return_value=mock_session),
+            patch("src.pages.history.ui") as mock_ui,
+        ):
+            await delete_task("nonexistent-id")
+
+        mock_ui.navigate.reload.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# render() tests — with tasks
+# ---------------------------------------------------------------------------
+
+
+class TestRenderWithTasks:
+    """Tests for render() when tasks are present in the database."""
+
+    async def test_renders_three_tasks(self) -> None:
+        """render() calls _render_task_row once per task returned by _load_tasks."""
+        tasks = [
+            _make_task("t1", status="completed"),
+            _make_task("t2", status="processing"),
+            _make_task("t3", status="failed"),
+        ]
+        clip_counts = {"t1": 3, "t2": 0, "t3": 1}
+
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(return_value=(tasks, clip_counts)),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row") as mock_row,
+            patch("src.pages.history._render_empty_state") as mock_empty,
+        ):
+            # Provide a context manager stub for ui.row() and ui.column()
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.column.return_value = cm
+
+            await render()
+
+        assert mock_row.call_count == 3
+        mock_empty.assert_not_called()
+
+    async def test_clip_counts_passed_correctly(self) -> None:
+        """render() passes the correct clip count to each task row."""
+        tasks = [_make_task("t1"), _make_task("t2")]
+        clip_counts = {"t1": 5, "t2": 2}
+        row_calls: list[tuple[object, int]] = []
+
+        def capture_row(task: object, count: int) -> None:
+            row_calls.append((task, count))
+
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(return_value=(tasks, clip_counts)),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row", side_effect=capture_row),
+            patch("src.pages.history._render_empty_state"),
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.column.return_value = cm
+
+            await render()
+
+        assert row_calls[0] == (tasks[0], 5)
+        assert row_calls[1] == (tasks[1], 2)
+
+    async def test_missing_clip_count_defaults_to_zero(self) -> None:
+        """render() defaults clip count to 0 for tasks absent from clip_counts."""
+        tasks = [_make_task("t1")]
+        clip_counts: dict[str, int] = {}  # no entry for "t1"
+        row_calls: list[tuple[object, int]] = []
+
+        def capture_row(task: object, count: int) -> None:
+            row_calls.append((task, count))
+
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(return_value=(tasks, clip_counts)),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row", side_effect=capture_row),
+            patch("src.pages.history._render_empty_state"),
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.column.return_value = cm
+
+            await render()
+
+        assert row_calls[0] == (tasks[0], 0)
+
+
+# ---------------------------------------------------------------------------
+# render() tests — empty state
+# ---------------------------------------------------------------------------
+
+
+class TestRenderEmptyState:
+    """Tests for render() when the task list is empty."""
+
+    async def test_renders_empty_state_when_no_tasks(self) -> None:
+        """render() calls _render_empty_state and skips _render_task_row when empty."""
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(return_value=([], {})),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row") as mock_row,
+            patch("src.pages.history._render_empty_state") as mock_empty,
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.column.return_value = cm
+
+            await render()
+
+        mock_empty.assert_called_once()
+        mock_row.assert_not_called()
+
+    async def test_no_task_cards_rendered_when_empty(self) -> None:
+        """render() does not attempt to create any card UI for an empty task list."""
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(return_value=([], {})),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row") as mock_row,
+            patch("src.pages.history._render_empty_state"),
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.card = MagicMock(return_value=cm)
+
+            await render()
+
+        mock_row.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# render() error handling
+# ---------------------------------------------------------------------------
+
+
+class TestRenderErrorHandling:
+    """Tests for render() when the database query raises an exception."""
+
+    async def test_shows_notification_on_db_error(self) -> None:
+        """render() shows a negative notification when _load_tasks raises."""
+        with (
+            patch(
+                "src.pages.history._load_tasks",
+                new=AsyncMock(side_effect=RuntimeError("DB unavailable")),
+            ),
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history._render_navigation"),
+            patch("src.pages.history._render_task_row") as mock_row,
+            patch("src.pages.history._render_empty_state") as mock_empty,
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+
+            await render()
+
+        mock_ui.notify.assert_called_once()
+        call_kwargs = mock_ui.notify.call_args
+        assert call_kwargs.kwargs.get("type") == "negative" or (
+            len(call_kwargs.args) > 1 and call_kwargs.args[1] == "negative"
+        )
+        mock_row.assert_not_called()
+        mock_empty.assert_not_called()
+# end tests/unit/test_history.py

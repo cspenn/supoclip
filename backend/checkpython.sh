@@ -1,1 +1,0 @@
-/users/cspenn/code/masterlibraries/checkpython.sh
