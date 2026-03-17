@@ -416,7 +416,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -476,7 +476,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -535,7 +535,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -694,7 +694,7 @@ class TestProcessVideo:
         fake_video.touch()
         mock_session = _make_mock_session()
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -745,7 +745,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = _ClipErr
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -805,7 +805,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = _ClipErr
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -863,7 +863,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -925,7 +925,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
@@ -982,7 +982,7 @@ class TestProcessVideo:
         mock_clip_module.ClipGenerationError = Exception
         mock_clip_module.ClipOptions = MagicMock(return_value=object())
 
-        mock_transcription = {"words": [], "text": LONG_TRANSCRIPT}
+        mock_transcription = []
         mock_transcribe = MagicMock()
         mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)

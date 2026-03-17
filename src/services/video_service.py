@@ -366,7 +366,7 @@ async def process_video(
 
             transcription = await transcribe_video(source_video)
             transcript_text = format_transcript_text(transcription)
-            words: list[dict] = transcription.get("words", [])
+            words: list[dict] = transcription
         except ImportError:
             # pipeline/transcribe not yet written — surface a clear error.
             msg = "Transcription pipeline module not available"
