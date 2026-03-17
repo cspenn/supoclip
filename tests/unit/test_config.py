@@ -12,21 +12,11 @@ class TestConfigDefaults:
 
     def test_loads_with_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config() initializes successfully with all defaults."""
-        # Clear env vars that .env file may have set to test Pydantic defaults
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        monkeypatch.delenv("BACKEND_PORT", raising=False)
-        monkeypatch.delenv("LOG_LEVEL", raising=False)
-        monkeypatch.delenv("LOCAL_LLM_ENABLED", raising=False)
-        monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
-        monkeypatch.delenv("LOCAL_LLM_MODEL", raising=False)
         monkeypatch.delenv("LLM_MODEL", raising=False)
-        monkeypatch.delenv("DEFAULT_MIN_CLIP_LENGTH", raising=False)
-        monkeypatch.delenv("DEFAULT_MAX_CLIP_LENGTH", raising=False)
-        # Temporarily point to non-existent .env file
-        monkeypatch.setenv("HOME", str(Path.home()))
-        # Create a temporary config using explicit SettingsConfigDict with no env_file
+        # Temporarily suppress .env file loading to test Pydantic defaults
         from pydantic_settings import SettingsConfigDict
-        original_config = Config.model_config
+        original = Config.model_config
         Config.model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
         try:
             config = Config()
@@ -40,7 +30,7 @@ class TestConfigDefaults:
             assert config.default_min_clip_length == 15
             assert config.default_max_clip_length == 45
         finally:
-            Config.model_config = original_config
+            Config.model_config = original
 
     def test_class_vars(self) -> None:
         """ClassVar constants are set correctly."""
