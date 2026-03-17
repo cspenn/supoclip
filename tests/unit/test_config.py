@@ -2,14 +2,17 @@
 """Unit tests for src/config.py."""
 from pathlib import Path
 
+import pytest
+
 from src.config import Config, get_config
 
 
 class TestConfigDefaults:
     """Tests for Config default values."""
 
-    def test_loads_with_defaults(self) -> None:
+    def test_loads_with_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config() initializes successfully with all defaults."""
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         config = Config()
         assert config.app_port == 8008
         assert config.log_level == "INFO"

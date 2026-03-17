@@ -4,261 +4,309 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupoClip is an open-source alternative to OpusClip - an AI-powered video clipping tool that transforms long-form content into viral short clips. The project consists of three main applications:
+SupoClip is an open-source alternative to OpusClip - an AI-powered video clipping tool that transforms long-form content into viral short clips. It is a **single all-Python application** using NiceGUI for the UI and FastAPI for the API, running in one process with no frontend build step.
 
-1. **Backend** (Python/FastAPI) - Video processing, AI analysis, and API
-2. **Frontend** (Next.js 15) - Main application interface
-3. **Waitlist** (Next.js 15) - Landing page for hosted version signups
+There is no React, no TypeScript, no Node.js, no npm. Everything is Python.
 
 ## Architecture
 
-### Monorepo Structure
+### Project Structure
 
 ```
 supoclip/
-├── backend/       # Python FastAPI backend
-├── frontend/      # Next.js 15 main app
-└── waitlist/      # Next.js 15 landing page
+├── src/
+│   ├── main.py              # FastAPI + NiceGUI app entry point
+│   ├── config.py            # Pydantic BaseSettings
+│   ├── database.py          # SQLAlchemy async + SQLite
+│   ├── models.py            # Task, GeneratedClip, UserPreferences
+│   ├── pages/
+│   │   ├── home.py          # URL input, file upload, start
+│   │   ├── task.py          # Progress, clip viewer, download
+│   │   ├── history.py       # Task list
+│   │   └── settings.py      # Font, preferences
+│   ├── pipeline/
+│   │   ├── download.py      # yt-dlp YouTube downloads
+│   │   ├── transcribe.py    # parakeet-mlx transcription
+│   │   ├── analyze.py       # Pydantic AI (unified LLM analysis)
+│   │   ├── clip.py          # ffmpeg video operations
+│   │   ├── subtitles.py     # pysubs2 ASS subtitle generation
+│   │   └── face_detect.py   # MediaPipe face detection
+│   └── services/
+│       └── video_service.py # Pipeline orchestration
+├── fonts/                   # Custom TTF font files
+├── transitions/             # Transition effect videos (.mp4)
+├── tests/
+├── docs/
+│   ├── prd.md               # Product requirements
+│   ├── spec.md              # Technical specification
+│   └── rules-python.md      # Python coding standards
+├── pyproject.toml
+├── checkpython.sh           # Automated quality gate (never modify)
+└── .pre-commit-config.yaml
 ```
 
 ### Technology Stack
 
-**Backend:**
-- FastAPI with async/await patterns
-- parakeet-mlx for video transcription (word-level timing, offline)
-- Pydantic AI for transcript analysis and clip selection
-- MoviePy v2 for video processing
-- OpenCV + MediaPipe for face detection and smart cropping
-- SQLite for local persistence
-- Local asyncio queue for job processing
-- yt-dlp for YouTube video downloads
+**Python only. No JavaScript, TypeScript, or Node.js.**
 
-**Frontend:**
-- Next.js 15 with App Router and Turbopack
-- Better Auth with Prisma adapter for authentication
-- ShadCN UI components + TailwindCSS v4
-- Server-side rendering patterns
+Core:
+- FastAPI + NiceGUI (UI and API in one process, one event loop)
+- SQLAlchemy + aiosqlite (async SQLite)
+- Pydantic + pydantic-settings (models and configuration)
+- structlog (structured logging)
 
-**Database:**
-- SQLite with tables: users, tasks, sources, generated_clips, session, account, system_fonts
-- Uses both snake_case (tasks) and camelCase (Better Auth tables) conventions
+Pipeline:
+- parakeet-mlx (offline transcription, Apple Silicon, word-level timing)
+- pydantic-ai (LLM analysis and structured outputs)
+- yt-dlp (YouTube download)
+- mediapipe (face detection only; no OpenCV DNN fallbacks)
+- pysubs2 (ASS subtitle generation)
+- ffmpeg (all video operations via subprocess; no MoviePy)
+- Pillow (image processing)
+
+Package manager: `uv` (not pip, not poetry)
+
+Database:
+- SQLite with 3 tables: Task, GeneratedClip, UserPreferences
+- All snake_case field names
+- Created automatically on startup via SQLAlchemy
 
 ## Development Commands
 
-### Backend Development
+### Prerequisites
 
-The backend uses `uv` package manager (not pip or poetry).
+- Python 3.11+
+- ffmpeg installed (`brew install ffmpeg` on macOS)
+- `uv` package manager (`brew install uv` on macOS)
+
+### Running the Application
 
 ```bash
-cd backend
-
-# Create virtual environment
-uv venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
-
 # Install dependencies
 uv sync
 
-# Run development server with AUTOMATIC PORT SELECTION (Recommended)
+# Run the application
 python -m src.main
-# OR if using uv:
-uv run run-dev
-
-# WARNING: Running uvicorn directly bypasses the port selector!
-# uvicorn src.main:app --reload --port 8000
 ```
 
-**Prerequisites:**
-- Python 3.11+
-- ffmpeg installed (`brew install ffmpeg` on macOS)
-- `uv` package manager
+The app runs at **http://localhost:8008** (UI + API in one process).
+API docs (Swagger) are available at http://localhost:8008/docs.
 
-**Environment variables (backend/.env):**
+There is no separate frontend server. There are no npm commands.
+
+### Testing
+
+```bash
+uv run pytest tests/
+```
+
+### Quality Gate
+
+```bash
+./checkpython.sh
+```
+
+This must report zero errors and 100% passing tests before any commit.
+
+### Environment Variables (.env file at project root)
 
 **Local LLM (Default - No API Key Required):**
-- `LOCAL_LLM_ENABLED` - Enable local LLM (default: true)
-- `LOCAL_LLM_BASE_URL` - Local LLM endpoint (default: http://localhost:6969/v1)
-- `LOCAL_LLM_MODEL` - Model name for local LLM (default: local-model)
-
-**Cloud LLM (Optional Fallback):**
-- `LLM_MODEL` - AI model identifier (e.g., "groq:meta-llama/llama-4-scout-17b-16e-instruct", "openai:gpt-4", "anthropic:claude-3-5-sonnet")
-- `GROQ_API_KEY` - Groq API key (if using Groq models - recommended for speed and cost)
-- `OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY` - Depending on LLM choice
-
-**Other Configuration:**
-- `DATABASE_URL` - SQLite connection string (default: sqlite+aiosqlite:///./supoclip.db)
-- `TEMP_DIR` - Directory for temporary files (defaults to ./temp)
-
-### Frontend Development
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Run development server with Turbopack
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Lint
-npm run lint
+```
+LOCAL_LLM_ENABLED=true
+LOCAL_LLM_BASE_URL=http://localhost:6969/v1
+LOCAL_LLM_MODEL=local-model
 ```
 
-### Waitlist Development
-
-Same commands as frontend:
-
-```bash
-cd waitlist
-npm install
-npm run dev
+**Cloud LLM (Optional):**
+```
+LLM_MODEL=groq:meta-llama/llama-4-scout-17b-16e-instruct
+GROQ_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+ANTHROPIC_API_KEY=...
 ```
 
-Services:
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000 (API docs at /docs)
-- SQLite: ./backend/supoclip.db (local file database)
+**Storage:**
+```
+DATABASE_URL=sqlite+aiosqlite:///./supoclip.db
+TEMP_DIR=./temp
+```
 
 ## Key Architecture Patterns
 
+### NiceGUI Pages
+
+The UI lives in `src/pages/`. NiceGUI IS FastAPI - same process, same event loop. Pages use the `@ui.page` decorator. Real-time progress feedback is delivered via WebSocket: the backend pushes updates directly to the UI without polling.
+
+Each page file registers its own route. `src/main.py` imports them to trigger registration.
+
 ### Video Processing Pipeline
 
-1. **Video Input** → YouTube URL (via yt-dlp) or uploaded file
-2. **Transcription** → parakeet-mlx generates word-level timestamps (offline)
-3. **AI Analysis** → Local LLM or cloud LLM analyzes transcript for viral segments (10-45s clips)
-4. **Clip Generation** → MoviePy creates 9:16 clips with:
-   - Smart face-centered cropping (MediaPipe + OpenCV fallbacks)
-   - parakeet-mlx-powered subtitles (word-level sync)
-   - Custom fonts (TTF files in backend/fonts/)
-   - Optional transition effects (videos in backend/transitions/)
-5. **Storage** → Clips saved to `{TEMP_DIR}/clips/` and metadata in SQLite
+1. **Video Input** - YouTube URL (yt-dlp) or uploaded file
+2. **Transcription** - parakeet-mlx generates word-level timestamps (offline, Apple Silicon)
+3. **AI Analysis** - `src/pipeline/analyze.py` selects 3-7 viral segments (10-45s each)
+4. **Clip Generation** - Single ffmpeg subprocess per clip: trim, crop to 9:16, burn subtitles, encode H.264
+5. **Storage** - Clips saved to `{TEMP_DIR}/clips/`, metadata in SQLite
 
-### Authentication Flow
+### ffmpeg Pipeline
 
-- Better Auth handles authentication with email/password
-- Frontend uses Prisma Client with Better Auth adapter
-- Backend receives `user_id` via request headers
-- Session management via SQLite session table
+All video operations happen in single ffmpeg subprocess calls. There is no MoviePy. The clip pipeline in `src/pipeline/clip.py` constructs an ffmpeg filtergraph that handles:
+- Trim to segment timestamps
+- Smart crop to 9:16 (face-centered or center fallback)
+- Subtitle burn-in via `-vf "ass=file.ass:fontsdir=fonts/"`
+- H.264 encoding with even dimensions
 
-### Database Access Patterns
+### Subtitle System
 
-**Frontend:**
-- Uses Prisma Client (`@prisma/client`)
-- Better Auth manages user/session tables
+`src/pipeline/subtitles.py` uses pysubs2 to generate `.ass` (Advanced SubStation Alpha) files with per-word timing from the parakeet-mlx transcript. ffmpeg burns them into the video via the `ass` filter with `fontsdir=fonts/` pointing at the project fonts directory.
 
-**Backend:**
-- Uses raw SQL via asyncpg for performance
-- SQLAlchemy models defined in `backend/src/models.py`
-- Async sessions via `AsyncSessionLocal` context manager
+Custom TTF fonts (including Google Fonts) are supported by dropping `.ttf` files into `fonts/`. The font name in the `.ass` file must match the font's internal family name.
 
-### API Endpoints
+Subtitles are positioned at 75% down the video (lower-middle, not bottom).
 
-Key backend endpoints (see `backend/src/main.py`):
+### AI Analysis
 
-- `POST /start` - Synchronous video processing (returns results immediately)
-- `POST /start-with-progress` - Async video processing (returns task_id for SSE tracking)
-- `GET /tasks/{task_id}` - Get task status and details
-- `GET /tasks/{task_id}/clips` - Get all clips for a task
-- `GET /fonts` - List available fonts
-- `GET /transitions` - List available transition effects
-- `POST /upload` - Upload video file
-- `GET /clips/{filename}` - Serve generated clips (static files)
+`src/pipeline/analyze.py` is the single unified AI module. It routes to Groq structured outputs or Pydantic AI based on the `LLM_MODEL` string prefix. There is no separate `ai_structured.py`.
 
-### Video Processing Customization
-
-Font customization is passed via `font_options` in request body:
-
-```json
-{
-  "source": {"url": "..."},
-  "font_options": {
-    "font_family": "TikTokSans-Regular",
-    "font_size": 24,
-    "font_color": "#FFFFFF"
-  }
-}
-```
-
-Backend stores font preferences in tasks table and applies during clip generation.
-
-## Code Organization
-
-### Backend Structure
-
-- `backend/src/main.py` - FastAPI app, endpoints, lifespan management
-- `backend/src/video_utils.py` - Video processing, cropping, subtitle generation (~820 lines)
-- `backend/src/ai.py` - Pydantic AI agents for transcript analysis
-- `backend/src/youtube_utils.py` - YouTube download and metadata
-- `backend/src/models.py` - SQLAlchemy models
-- `backend/src/database.py` - Database connection management
-- `backend/src/config.py` - Environment configuration
-- `backend/fonts/` - Custom TTF font files
-- `backend/transitions/` - Transition effect videos (.mp4)
-
-### Frontend Structure
-
-- `frontend/src/app/` - Next.js App Router pages
-- `frontend/src/app/page.tsx` - Main landing/dashboard
-- `frontend/src/app/tasks/[id]/page.tsx` - Task detail view
-- `frontend/src/app/api/auth/[...all]/route.ts` - Better Auth API route
-- `frontend/src/components/` - React components
-- `frontend/src/lib/auth.ts` - Better Auth server config
-- `frontend/src/lib/auth-client.ts` - Better Auth client
-
-## Important Considerations
-
-### Video Processing
-
-- All clips are converted to 9:16 aspect ratio (vertical format)
-- Face detection uses MediaPipe (primary), OpenCV DNN (fallback), Haar cascade (last resort)
-- Subtitles positioned at 75% down the video (lower-middle, not bottom)
-- H.264 encoding with even dimensions required (uses `round_to_even()`)
-- Transcript data cached as `.transcript_cache.json` alongside video files
-
-### AI Segment Selection
-
-The AI (via Pydantic AI) selects 3-7 segments based on:
+The AI selects segments based on:
 - Strong hooks and attention-grabbing moments
 - Valuable content (tips, insights, stories)
 - Emotional moments (excitement, humor, inspiration)
-- Complete thoughts that work standalone
+- Complete thoughts that stand alone
 - Duration: 10-45 seconds per clip
-- Critical validation: start_time ≠ end_time, minimum 5-10s duration
+- Validation: start_time != end_time, minimum 5-10s duration
 
-### Database Conventions
+To modify clip selection criteria, edit `src/pipeline/analyze.py`:
+- System prompt string
+- `TranscriptSegment` Pydantic model
+- Validation logic in the analysis function
 
-- Tasks/sources/clips use snake_case fields
-- Better Auth tables use camelCase (createdAt, updatedAt, userId, etc.)
-- UUIDs stored as VARCHAR(36), not native UUID type
-- Triggers auto-update `updated_at` and `updatedAt` columns
+### Face Detection
+
+`src/pipeline/face_detect.py` uses MediaPipe only. If no face is detected, the pipeline falls back to center crop. There are no OpenCV DNN or Haar cascade fallbacks.
+
+### Database Access
+
+- SQLAlchemy async models in `src/models.py`
+- Async sessions via `AsyncSessionLocal` context manager in `src/database.py`
+- No database access outside the database module
+- Schema created on startup; no migrations needed for local development
+
+### Pipeline Orchestration
+
+`src/services/video_service.py` owns the end-to-end pipeline. It calls each `src/pipeline/` module in sequence and pushes progress updates via NiceGUI's WebSocket mechanism. The FastAPI lifespan in `src/main.py` is kept orchestration-focused; core logic lives in services and pipeline modules.
+
+## Code Organization
+
+### Source Files
+
+- `src/main.py` - FastAPI + NiceGUI app, lifespan management, page registration
+- `src/config.py` - Pydantic BaseSettings, all configuration loaded from .env
+- `src/database.py` - SQLAlchemy engine, session factory, startup schema creation
+- `src/models.py` - SQLAlchemy ORM models: Task, GeneratedClip, UserPreferences
+- `src/pages/home.py` - Home page: URL input, file upload, processing start
+- `src/pages/task.py` - Task page: real-time progress, clip viewer, download
+- `src/pages/history.py` - History page: task list with status
+- `src/pages/settings.py` - Settings page: font selection, preferences
+- `src/pipeline/download.py` - yt-dlp wrapper for YouTube downloads
+- `src/pipeline/transcribe.py` - parakeet-mlx transcription, transcript cache
+- `src/pipeline/analyze.py` - Unified LLM analysis, segment selection, validation
+- `src/pipeline/clip.py` - ffmpeg clip generation, filtergraph construction
+- `src/pipeline/subtitles.py` - pysubs2 ASS file generation with word timing
+- `src/pipeline/face_detect.py` - MediaPipe face detection, crop box calculation
+- `src/services/video_service.py` - Pipeline orchestration, progress reporting
+
+### File Conventions
+
+- All source files must begin with a file path comment: `# start src/example/file.py`
+- Absolute imports from project root only (no relative imports)
+- `python -m src.main` is the standard invocation
 
 ### File Storage
 
 - Uploaded videos: `{TEMP_DIR}/uploads/`
 - Downloaded videos: `{TEMP_DIR}/` (via yt-dlp)
 - Generated clips: `{TEMP_DIR}/clips/`
+- Transcript cache: `.transcript_cache.json` alongside the source video
 - Clips served via FastAPI static files at `/clips/{filename}`
+
+## Configuration Management
+
+**CORE RULE:** Configuration must be externalized and validated.
+
+- All settings defined in `src/config.py` using Pydantic `BaseSettings`
+- Values loaded from `.env` at startup
+- No hardcoded secrets, URLs, or magic numbers in source code
+- Sensitive credentials stay in `.env` (which is gitignored)
+- See `docs/spec.md` for full configuration reference
+
+## Logging
+
+This project uses structlog for structured logging. Log level is configurable via environment variable. Do not use emoji-based logging patterns from the old codebase. Do not use the Python `logging` module directly; use structlog.
+
+## Common Workflows
+
+### Running the App
+
+```bash
+uv sync
+python -m src.main
+# Open http://localhost:8008
+```
+
+### Adding a New Font
+
+1. Drop a `.ttf` file into `fonts/`
+2. The font is immediately available in the Settings page font selector
+3. ffmpeg uses `fontsdir=fonts/` so the font name must match its internal family name
+4. To find a font's internal name: `fc-query fonts/MyFont.ttf | grep family`
+
+### Adding Transition Effects
+
+1. Add a `.mp4` file to `transitions/`
+2. The transition is picked up automatically by the clip assembly pipeline
+3. Transitions are applied in round-robin fashion across generated clips
+
+### Modifying AI Clip Selection
+
+Edit `src/pipeline/analyze.py`:
+- System prompt string - criteria for what makes a good clip
+- `TranscriptSegment` Pydantic model - fields returned by the LLM
+- Validation logic - minimum duration, start != end guards
+
+### Configuring the LLM
+
+Set `LLM_MODEL` in `.env`. The string prefix determines the provider:
+
+```
+# Local (default, no API key)
+LOCAL_LLM_ENABLED=true
+
+# Groq (fast, cheap)
+LLM_MODEL=groq:meta-llama/llama-4-scout-17b-16e-instruct
+GROQ_API_KEY=gsk_...
+
+# OpenAI
+LLM_MODEL=openai:gpt-4o
+OPENAI_API_KEY=sk-...
+
+# Anthropic
+LLM_MODEL=anthropic:claude-3-5-sonnet-20241022
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
 ## Development Standards and Best Practices
 
-This project adheres to strict coding standards documented in `docs/standards.md`. These standards ensure code quality, maintainability, and consistency across the codebase.
+Full coding standards are documented in `docs/rules-python.md`. The summary below covers the most critical rules.
 
 ### Python 3.11+ Requirements
 
-**Mandatory:**
 - Type hints required on all functions and class methods
-- PEP 8 compliance enforced via Ruff and Black
+- PEP 8 compliance via Ruff
 - Google-style docstrings (PEP 257)
-- Python 3.11+ specific features: structural pattern matching (`match-case`), exception groups (`except*`), TOML parsing
-- Asyncio best practices: `TaskGroup`, explicit timeouts, exception handling
-- `dataclass(slots=True)` for memory-efficient structures
+- Python 3.11+ features: structural pattern matching (`match-case`), exception groups (`except*`)
+- Asyncio best practices: `TaskGroup`, explicit timeouts, proper exception handling
+- `@dataclass(slots=True)` for memory-efficient data structures
 
 **Anti-Patterns to Avoid:**
 - Mutable defaults in function signatures
@@ -266,265 +314,136 @@ This project adheres to strict coding standards documented in `docs/standards.md
 - Circular imports
 - Global variable overuse
 - Hardcoded secrets or magic numbers
-- Spaghetti code (max 2 levels of nesting)
-
-### Project Structure
-
-**File Conventions:**
-- All source files must start and end with a file path comment: `# start src/example/file.py`
-- Use absolute imports from project root only (no relative imports)
-- Maximum radon/xenon grade of A or B - C and below MUST be refactored
-- Standard invocation: `python -m src.main`
-- Keep main.py orchestration-focused; move core logic to modules
-
-**Required Project Files:**
-- `docs/prd.md` - Product requirements
-- `docs/workplan.md` - Development plan
-- `docs/polish.md` - Refinement checklist
-- `checkpython.sh` - Automated quality checks (never modify)
-- `.pre-commit-config.yaml` - Pre-commit framework configuration
-
-**Project-Specific Note:** This project uses `uv` for dependency management instead of Poetry. Environment variables are stored in `.env` files for local development.
-
-### Configuration Management
-
-**CORE RULE:** Configuration must be externalized and validated.
-- Environment-specific settings go in `.env` files (for local development)
-- Sensitive credentials must be kept in `.env` (and added to `.gitignore`)
-- Configuration should be validated with Pydantic at application startup
-- Never hardcode configuration values or secrets in source code
-- All configuration loading should use Pydantic models for type safety and validation
+- Deeply nested logic (maximum 2 levels)
 
 ### Code Quality Principles
 
-**Design Principles:**
 - DRY (Don't Repeat Yourself)
 - SPOT (Single Point of Truth)
 - SOLID principles
-- GRASP (General Responsibility Assignment)
 - YAGNI (You Aren't Gonna Need It)
-
-**Implementation Rules:**
-- Functions and methods must have a single responsibility
-- Inline code comments must not exceed 2 lines (prefer clear naming)
-- Avoid deeply nested logic (maximum 2 levels)
-- Use clear, descriptive, unambiguous names
-- Resource safety: always use `with` statements and `finally` blocks
+- Functions must have a single responsibility
+- Maximum radon/xenon complexity grade of A or B; C and below must be refactored
 - Prefer explicit over implicit behavior
-
-### Database Access
-
-**Backend Database Patterns:**
-- Uses SQLite via aiosqlite for async database access
-- SQLAlchemy models in `backend/src/models.py` for type safety
-- Async sessions via `AsyncSessionLocal` context manager
-- No direct database connection calls outside database module
-- Schema managed via Prisma for frontend and SQLAlchemy for backend
-
-**Frontend Database Access:**
-- Prisma Client via Better Auth adapter
-- All queries type-safe and generated
-- Session management automatic via Better Auth
-
-### API Communication
-
-**External HTTP Requests:**
-- Use HTTPX for all external API calls (both sync and async)
-- Strict timeouts required
-- Connection pooling and reuse
-- Exponential backoff for retries where appropriate
-- No bare requests; all requests explicitly configured
-
-### Logging Standards
-
-**Logging Configuration:**
-- Use Python logging module exclusively
-- Log to timestamped files in `logs/` directory and console simultaneously
-- Emoji indicators for log levels:
-  - 🟢 INFO
-  - 🟡 WARN
-  - 🛑 ERROR
-- Log level must be configurable (currently via environment variables)
-- Avoid logging sensitive information (credentials, tokens, etc.)
-
-**Current Pattern:**
-Backend uses emoji-based logging: 🚀 (startup), 📝 (info), ✅ (success), ❌ (error), 🎬 (video ops), 🤖 (AI), ⬇️ (download), 📊 (stats)
 
 ### Testing Requirements
 
-**Test Coverage:**
 - Use pytest for all unit tests
-- Tests must cover:
-  - Pydantic model validation
-  - Database logic (using test database or fixtures)
-  - API interactions (using pytest-httpx mocking)
-  - Configuration loading
+- Tests must cover: Pydantic model validation, database logic, pipeline logic, configuration loading
 - Update tests whenever code changes
-- All tests must pass before committing (`pytest` shows 100% passing)
+- 100% passing tests required before commit
+- Run `./checkpython.sh` before every commit
 
-**Quality Checks:**
-- Run `./checkpython.sh` before committing (must report zero errors)
-- Pre-commit hooks enforce these checks automatically
-- Tools used:
-  - Ruff (linting and formatting)
-  - mypy (type checking)
-  - Bandit (security scanning)
-  - pytest (testing)
+### Quality Gate Tools
 
-### Debugging Methodology: Verifiable Units of Work (VUWs)
+`./checkpython.sh` runs:
+- Ruff (linting and formatting)
+- mypy (type checking)
+- pyright (type checking)
+- Bandit (security scanning)
+- radon/xenon (complexity)
+- grimp (import graph)
+- pytest (tests)
 
-For complex changes and bug fixes, work is organized into **Verifiable Units of Work (VUWs)** - small, isolated tasks with mandatory verification checklists.
+### External HTTP Requests
 
-**VUW Principles:**
-1. **Extreme Granularity** - Each VUW targets a single file or specific error across a few files
-2. **Verification is Done** - Every VUW has a mandatory verification checklist that must pass
-3. **Sequential Execution** - One VUW at a time; cannot start next until previous passes
-4. **Mandatory Checkpoints** - Git checkpoint before and after each VUW
+- Use HTTPX for all external API calls (sync and async)
+- Strict timeouts required on all requests
+- No bare `requests` calls
 
-**VUW Verification Checklist:**
-- `[ ]` **Run `./checkpython.sh`:** Must report **zero errors** with **100% passing tests**
-- `[ ]` **Self-attestation:** Confirm `checkpython.sh` passed and tests succeeded
+### Project-Specific Configuration
 
-**Campaign Organization:**
-- **Campaign 1:** Application Stability (blockers that prevent running)
-- **Campaign 2:** Type Safety (zero `mypy` errors)
-- **Campaign 3:** Code Quality (zero `ruff` errors)
-- Work from highest-priority issues to lowest
+| Standard | This Project | Notes |
+|----------|--------------|-------|
+| Dependency manager | `uv` | Faster than pip/poetry |
+| Configuration | `.env` + Pydantic BaseSettings | Validated at startup |
+| Database | SQLite | Local file, no server needed |
+| UI framework | NiceGUI | Python-native, same process as API |
+| Video processing | ffmpeg subprocess | No MoviePy |
+| Logging | structlog | Structured, not emoji-based |
 
-### Performance and Progress Monitoring
+## Development Tips
 
-**Progress Feedback:**
-- Use `tqdm` for loops expected to have >5 steps or take >10 seconds
-- Provides clear user feedback during long operations
-- Counts iterations and time elapsed
-
-**Performance Optimization:**
-- Profile with cProfile and line_profiler before optimizing
-- Cache connections with `lru_cache`
-- Use memory-efficient structures (dataclass slots, generators)
-- Leverage Python 3.11's faster CPython with adaptive interpreter
-
-### Project-Specific Deviations
-
-This project deviates from some docs/standards.md recommendations:
-
-| Standard | Project Current | Notes |
-|----------|-----------------|-------|
-| Dependency Manager | Uses `uv` | Preferred for this project (faster than Poetry) |
-| Configuration | Uses `.env` files | Simple and effective for local dev |
-| Database | SQLite | Local file-based database (no server needed) |
-| Job Queue | Local asyncio queue | No external dependencies required |
-
-## Testing and Development Tips
-
-- Backend API docs available at http://localhost:8000/docs (Swagger UI)
-- Check backend logs for detailed processing steps (uses emoji logging 🚀📝✅❌)
-- Frontend uses React 19 and Next.js 15 - be aware of breaking changes
-- SQLite database created automatically on first backend start
-
-## Common Workflows
-
-### Adding a New Font
-
-1. Add `.ttf` file to `backend/fonts/`
-2. Font becomes available via `GET /fonts` endpoint
-3. Reference by filename (without extension) in `font_family` parameter
-
-### Adding Transition Effects
-
-1. Add `.mp4` file to `backend/transitions/`
-2. Transition becomes available via `GET /transitions` endpoint
-3. Automatically used by `create_clips_with_transitions()` in round-robin fashion
-
-### Modifying AI Clip Selection
-
-Edit `backend/src/ai.py`:
-- `simplified_system_prompt` - AI instructions for segment selection
-- `TranscriptSegment` - Pydantic model for segment structure
-- `get_most_relevant_parts_by_transcript()` - Main analysis function with validation logic
-
-# DEBUGGING STANDARDS : THE VUW
-
-## How to Debug: "Verifiable Units of Work"
-
-We will no longer provide large, multi-step "plans." Instead, we will provide a sequence of small, isolated **"Verifiable Units of Work" (VUWs)**. Each VUW_ is a micro-plan for a single, contained task to break work down into small, bite-sized chunks. Our developer is inexperienced and unskilled, so we must provide tiny work units and frequent validation.
-
-The core principles of this approach are:
-
-1.  **Extreme Granularity:** Each VUW_will target a single file or a single, specific error across a few files. This minimizes cognitive load and prevents the "tunnel-vision" refactoring problem. No VUW should ever have a diff longer than a single function or class.
-2.  **Verification is the Definition of "Done":** Every VUW_ will have a mandatory, non-negotiable **Verification Checklist**. The task is not complete until that checklist is passed. This moves verification from an assumed skill to an explicit task requirement.
-3.  **Sequential, Not Parallel:** The developer will be given **one VUW_ at a time**. They cannot start the next one until the previous one is submitted and passes a QA check. This prevents them from getting lost or working on unverified code.
-4.  **Repetition Builds Discipline:** The constant repetition of the Verification Checklist on every single task is designed to build the muscle memory of a disciplined workflow.
-5.  **Clarity over Conciseness:** The instructions will be painfully literal, assuming nothing. If an import is needed, the plan will state, "Add this exact import statement to the top of the file." We will use git diffs to show exact changes needed so the developer knows exactly what to type.
+- API docs (Swagger UI): http://localhost:8008/docs
+- SQLite database created automatically on first run at `./supoclip.db`
+- Transcript results are cached as `.transcript_cache.json` next to the video file; delete this file to force re-transcription
+- NiceGUI dev mode provides hot reload; pass `reload=True` to `ui.run()` during development
 
 ---
 
-### The Structure of a "Verifiable Unit of Work" (VUW_)
+# DEBUGGING STANDARDS: THE VUW
 
-Every work plan will now follow this exact template:
+## How to Debug: "Verifiable Units of Work"
+
+We will no longer provide large, multi-step "plans." Instead, we will provide a sequence of small, isolated **"Verifiable Units of Work" (VUWs)**. Each VUW is a micro-plan for a single, contained task to break work down into small, bite-sized chunks.
+
+The core principles of this approach are:
+
+1. **Extreme Granularity:** Each VUW targets a single file or a single, specific error across a few files. This minimizes cognitive load and prevents the "tunnel-vision" refactoring problem. No VUW should ever have a diff longer than a single function or class.
+2. **Verification is the Definition of "Done":** Every VUW has a mandatory, non-negotiable **Verification Checklist**. The task is not complete until that checklist passes.
+3. **Sequential, Not Parallel:** One VUW at a time. The next VUW cannot start until the previous one passes the QA check.
+4. **Repetition Builds Discipline:** The constant repetition of the Verification Checklist builds the muscle memory of a disciplined workflow.
+5. **Clarity over Conciseness:** Instructions are painfully literal. If an import is needed, the plan states, "Add this exact import statement to the top of the file." Changes are shown as git diffs.
+
+---
+
+### The Structure of a "Verifiable Unit of Work" (VUW)
+
+Every work plan follows this exact template:
 
 ---
 **VUW_ID:** [A unique identifier, e.g., `BUGFIX-001`]
 
 **Objective:** [A one-sentence explanation of *why* this task is important.]
-*   *Example: "To fix the fatal `ModuleNotFoundError` that prevents the application from starting."*
+- *Example: "To fix the fatal `ModuleNotFoundError` that prevents the application from starting."*
 
 **Files to Modify:**
-*   `[List of file paths]`
+- `[List of file paths]`
 
-***Mandatory Pre-Work Checkpoint:***
+**Mandatory Pre-Work Checkpoint:**
 
-Use git to make a checkpoint in advance of making ANY changes to a file. This is for backup and rollback, and must not be skipped. If you cannot make a checkpoint, stop.
+Use git to make a checkpoint before making ANY changes. This is for backup and rollback and must not be skipped. If you cannot make a checkpoint, stop.
 
 **Step-by-Step Instructions:**
 
-You are not done with this task until you run these commands and they succeed. Check the box only when the command passes.
-
-1.  **[Literal instruction 1]**: *Example: "Open the file `src/crawler/extractor.py`."*
-2.  **[Literal instruction 2]**: *Example: "Find the line: `import pdfplumber.errors`."*
-3.  **[Literal instruction 3]**: *Example: "Delete that line and replace it with: `from pdfplumber.exceptions import PDFSyntaxError`."*
-4.  **[Literal instruction 4]**: *Example: "In the `_extract_from_pdf` method, find the `except` block and change `except (pdfplumber.errors.PDFSyntaxError, ...)` to `except (PDFSyntaxError, ...)`."* - show this as a git diff exactly.
+1. **[Literal instruction 1]**: *Example: "Open the file `src/pipeline/clip.py`."*
+2. **[Literal instruction 2]**: *Example: "Find the line: `import pdfplumber.errors`."*
+3. **[Literal instruction 3]**: *Example: "Delete that line and replace it with: `from pdfplumber.exceptions import PDFSyntaxError`."*
+4. **[Literal instruction 4]**: Show as a git diff exactly.
 
 **Mandatory Verification Checklist:**
 
-You are not done with this task until you run these commands and they succeed. Check the box only when the command passes.
+You are not done until these commands succeed. Check the box only when the command passes.
 
-*   `[ ]` **Run `./checkpython.sh`**: Must report **zero errors** for tests  **"Success: no issues found"**, **100% passing tests**.
+- `[ ]` **Run `./checkpython.sh`**: Must report **zero errors** and **100% passing tests**.
 
 **Self-Attestation:**
 
-*   `[ ]` I attest that I have run checkpython.sh and tests have all passed.
+- `[ ]` I attest that I have run `./checkpython.sh` and all tests have passed.
 
-***Mandatory Post-Work Checkpoint:***
+**Mandatory Post-Work Checkpoint:**
 
-Use git to make a checkpoint after a VUW passes all tests. This is for backup and rollback, and must not be skipped. If you cannot make a checkpoint, stop.
+Use git to make a checkpoint after the VUW passes all tests. This is for backup and rollback and must not be skipped. If you cannot make a checkpoint, stop.
 
 ---
 
 ### The Grand Strategy: Sequencing the VUWs
 
-We will organize the overall repair effort into a series of "Campaigns," where each campaign is a sequence of related VUWs.
+Organize the overall repair effort into "Campaigns," where each campaign is a sequence of related VUWs.
 
 **Campaign 1: Application Stability (The Blockers)**
-*   **Goal:** Make the application runnable and the tests executable.
-*   **Sequence of VUWs:**
-    1.  **VUW_BUGFIX-001:** {explanation}
-    2.  **VUW_BUGFIX-002:**  {explanation}
-    3.  ... and so on for every error that prevents `pytest` from running successfully.
+- **Goal:** Make the application runnable and the tests executable.
+- **Sequence:** One VUW per error that prevents `pytest` from running successfully.
 
 **Campaign 2: Type Safety (`mypy` Errors)**
-*   **Goal:** Achieve zero `mypy` errors project-wide.
-*   **Sequence of VUWs:**
-    1.  **VUW_MYPY-001:** {explanation}
-    2.  **VUW_MYPY-002:** {explanation}
-    3.  ... one VUW_for each of the remaining `mypy` errors.
+- **Goal:** Achieve zero `mypy` errors project-wide.
+- **Sequence:** One VUW per `mypy` error.
 
 **Campaign 3: Code Quality (`ruff` Errors)**
-*   **Goal:** Achieve zero `ruff` errors project-wide.
-*   **Sequence of VUWs:**
-    *   This will be the longest campaign, with one VUW_for each file that has `ruff` errors, starting with the files that have the most severe violations (like `BLE001` blind exceptions).
+- **Goal:** Achieve zero `ruff` errors project-wide.
+- **Sequence:** One VUW per file, starting with files that have the most severe violations (e.g., `BLE001` blind exceptions).
 
-By breaking the work down this way, we are building a rigid "scaffolding" of process around the developer. We are not just giving them a map; we are giving them turn-by-turn directions with mandatory checkpoints. This approach directly targets their specific weaknesses—lack of verification, incomplete changes, and getting lost—and forces the adoption of a more disciplined, robust, and successful development workflow.
+By breaking the work down this way, we build rigid scaffolding around the developer: not just a map, but turn-by-turn directions with mandatory checkpoints. This approach directly targets the specific failure modes of lack of verification, incomplete changes, and getting lost.
 
 Build VUW Campaign Workplans with the individual VUWs. Arrange the work plan in order of importance, most important to least important.
 

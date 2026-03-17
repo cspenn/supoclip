@@ -1,0 +1,165 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Better Auth User model with backend compatibility
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Additional fields for backend compatibility
+  first_name    String?
+  last_name     String?
+  password_hash String?
+
+  // Default font preferences
+  default_font_family String? @default("TikTokSans-Regular")
+  default_font_size   Int?    @default(24)
+  default_font_color  String? @default("#FFFFFF")
+
+  // Clip length preferences
+  default_clip_min_length    Int? @default(10)
+  default_clip_target_length Int? @default(30)
+  default_clip_max_length    Int? @default(45)
+
+  // Custom AI prompt
+  custom_ai_prompt String?
+
+  // Logo branding preferences
+  logo_file_path       String?
+  logo_corner_position String? @default("top-right")
+  output_resolution    String? @default("720p")
+
+  // Relationships
+  tasks    Task[]
+  sessions Session[]
+  accounts Account[]
+
+  @@map("users")
+}
+
+model Task {
+  id                  String  @id @default(cuid())
+  user_id             String
+  source_id           String?
+  generated_clips_ids String? // JSON array stored as TEXT
+  status              String  @default("pending")
+
+  // Font customization fields
+  font_family String? @default("TikTokSans-Regular")
+  font_size   Int?    @default(24)
+  font_color  String? @default("#FFFFFF")
+
+  // Progress tracking
+  progress          Int     @default(0)
+  progress_message  String?
+  output_resolution String? @default("720p")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  // Relationships
+  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  source Source? @relation(fields: [source_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([source_id])
+  @@index([created_at])
+  @@index([status])
+  @@map("tasks")
+}
+
+model Source {
+  id         String   @id @default(cuid())
+  type       String
+  title      String
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  // Relationships
+  tasks Task[]
+
+  @@index([created_at])
+  @@map("sources")
+}
+
+model SystemFont {
+  id                 String   @id
+  name               String   @unique
+  family             String
+  style              String?
+  weight             Int?
+  filePath           String?  @map("file_path")
+  fileHash           String?  @map("file_hash")
+  isValid            Boolean  @default(true) @map("is_valid")
+  detectionTimestamp String?  @map("detection_timestamp")
+  metadataJson       Json?    @map("metadata_json")
+  source             String // 'bundled' or 'system'
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("system_fonts")
+}
+
+// Better Auth Session management
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}

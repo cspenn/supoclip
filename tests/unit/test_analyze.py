@@ -270,7 +270,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
-            mock_cfg.llm = ""
+            mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(
@@ -296,7 +296,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = False
-            mock_cfg.llm = "groq:meta-llama/llama-4-scout-17b"
+            mock_cfg.llm_model = "groq:meta-llama/llama-4-scout-17b"
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(
@@ -322,7 +322,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
-            mock_cfg.llm = ""
+            mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(
@@ -340,7 +340,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
-            mock_cfg.llm = ""
+            mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(
@@ -356,7 +356,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
-            mock_cfg.llm = ""
+            mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(
@@ -377,7 +377,7 @@ class TestAnalyzeTranscript:
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
-            mock_cfg.llm = ""
+            mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
             with patch(

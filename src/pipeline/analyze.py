@@ -525,7 +525,7 @@ async def analyze_transcript(
     )
 
     cfg = Config()
-    model_string = cfg.llm if not cfg.local_llm_enabled else ""
+    model_string = cfg.llm_model if not cfg.local_llm_enabled else ""
 
     system_prompt = build_system_prompt(min_length_s, max_length_s, custom_prompt)
     user_prompt = _build_user_prompt(transcript_text, min_length_s, max_length_s)

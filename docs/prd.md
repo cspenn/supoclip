@@ -35,43 +35,63 @@ Content creators need to repurpose long-form videos (podcasts, interviews, tutor
 ### 4. Video Generation
 - **Format**: 9:16 vertical (short-form standard)
 - **Smart cropping**: Face-centered using MediaPipe (primary), OpenCV DNN (fallback), Haar cascade (last resort)
-- **Subtitles**: Word-level synchronized, customizable font/size/color
+- **Subtitles**: Word-level synchronized via pysubs2 + ffmpeg ASS filter; customizable font/size/color/stroke/shadow/position
 - **Transitions**: Optional intro/outro effects from MP4 templates
-- **Encoding**: H.264, even dimensions enforced
+- **Encoding**: H.264 via ffmpeg, even dimensions enforced
 
 ### 5. Real-Time Progress
-- Server-Sent Events (SSE) for live progress updates during processing
-- Task-based tracking with unique task IDs
+- Live progress display during transcription, analysis, and clip generation
+- Task-based tracking with persistent task history
 
 ### 6. Font and Style Customization
-- Custom TTF fonts placed in `backend/fonts/`
-- Configurable font family, size, and color per request
+- Custom TTF fonts (including Google Fonts) placed in `fonts/`
+- Configurable font family, size, color, stroke, shadow, and subtitle position per request
 - System font discovery
+
+### 7. Settings Persistence
+- User preferences (fonts, clip lengths, AI prompt, logo, resolution) persisted across sessions
+
+### 8. Task History and Clip Management
+- View past processing jobs and their generated clips
+- Download or delete individual clips
 
 ## Non-Functional Requirements
 
 | Requirement | Target |
 |-------------|--------|
 | Deployment | Self-hosted, single machine |
+| Processes | Single Python process |
 | Database | SQLite (no external DB server) |
 | Job queue | Local asyncio (no Redis/external queue) |
-| Package manager | uv (backend), npm (frontend) |
-| Python version | 3.11+ |
+| Package manager | uv only |
+| Python version | 3.12 |
+| Frontend | NiceGUI 3.0+ (Python, built on FastAPI) |
+| Authentication | None (single-user local app) |
+| Start command | `python -m src.main` |
 | System dependency | ffmpeg |
 
 ## Architecture
 
+SupoClip is a single all-Python application. NiceGUI provides the web interface as part of the same process as the backend, eliminating the need for a separate Node.js server.
+
 ```
 supoclip/
-├── backend/       Python FastAPI API + video processing
-├── frontend/      Next.js 15 web interface
-└── waitlist/      Next.js 15 landing page (hosted version)
+├── src/           Python application (NiceGUI UI + FastAPI API + video processing)
+├── fonts/         Custom TTF font files
+└── transitions/   Transition effect MP4 templates
 ```
 
-## Out of Scope (Current Phase)
+## Architecture Migration
+
+SupoClip was originally built as a two-process split application: a Python/FastAPI backend and a React/Next.js frontend. While functional, this architecture required two package managers (uv and npm), two servers, and significant coordination overhead for a fundamentally single-user local tool.
+
+The approved redesign consolidates everything into a single Python process using NiceGUI, which is built on top of FastAPI and provides a reactive web UI authored entirely in Python. Subtitle rendering migrates from Playwright-based browser rendering to pysubs2 + ffmpeg ASS filter (faster, no browser dependency), and video processing moves from MoviePy to direct ffmpeg calls. Authentication is removed entirely, as it was only bypassed locally anyway. The waitlist (hosted/SaaS landing page) is deleted from scope as the project focuses exclusively on the self-hosted use case.
+
+## Out of Scope
 
 - Multi-user SaaS deployment
 - Cloud-based video processing
 - Mobile native apps
 - Real-time collaborative editing
 - Billing and payment integration
+- Hosted/waitlist version
