@@ -12,17 +12,35 @@ class TestConfigDefaults:
 
     def test_loads_with_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config() initializes successfully with all defaults."""
+        # Clear env vars that .env file may have set to test Pydantic defaults
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        config = Config()
-        assert config.app_port == 8008
-        assert config.log_level == "INFO"
-        assert config.database_url == "sqlite+aiosqlite:///./supoclip.db"
-        assert config.local_llm_enabled is True
-        assert config.local_llm_base_url == "http://localhost:6969/v1"
-        assert config.local_llm_model == "local-model"
-        assert config.llm_model == ""
-        assert config.default_min_clip_length == 15
-        assert config.default_max_clip_length == 45
+        monkeypatch.delenv("BACKEND_PORT", raising=False)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.delenv("LOCAL_LLM_ENABLED", raising=False)
+        monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LOCAL_LLM_MODEL", raising=False)
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+        monkeypatch.delenv("DEFAULT_MIN_CLIP_LENGTH", raising=False)
+        monkeypatch.delenv("DEFAULT_MAX_CLIP_LENGTH", raising=False)
+        # Temporarily point to non-existent .env file
+        monkeypatch.setenv("HOME", str(Path.home()))
+        # Create a temporary config using explicit SettingsConfigDict with no env_file
+        from pydantic_settings import SettingsConfigDict
+        original_config = Config.model_config
+        Config.model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+        try:
+            config = Config()
+            assert config.app_port == 8008
+            assert config.log_level == "INFO"
+            assert config.database_url == "sqlite+aiosqlite:///./supoclip.db"
+            assert config.local_llm_enabled is True
+            assert config.local_llm_base_url == "http://localhost:6969/v1"
+            assert config.local_llm_model == "local-model"
+            assert config.llm_model == ""
+            assert config.default_min_clip_length == 15
+            assert config.default_max_clip_length == 45
+        finally:
+            Config.model_config = original_config
 
     def test_class_vars(self) -> None:
         """ClassVar constants are set correctly."""
