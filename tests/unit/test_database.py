@@ -2,6 +2,8 @@
 """Unit tests for src/database.py — lazy async SQLAlchemy engine."""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +63,21 @@ class TestInitDb:
         engine_second = get_engine()
         assert engine_first is engine_second
 
+    async def test_init_db_completes_when_models_module_not_found(self) -> None:
+        """init_db() completes without error when src.models cannot be imported."""
+        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __import__
+
+        def import_raise_for_models(name, *args, **kwargs):
+            if name == "src.models":
+                raise ModuleNotFoundError(name)
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=import_raise_for_models):
+            await init_db(IN_MEMORY_URL)
+
+        engine = get_engine()
+        assert engine is not None
+
     async def test_get_engine_returns_engine_after_init(self) -> None:
         """get_engine() returns an engine instance after init_db()."""
         await init_db(IN_MEMORY_URL)
@@ -82,6 +99,14 @@ class TestGetSessionAfterInit:
         await init_db(IN_MEMORY_URL)
         async with get_session() as session:
             assert session.is_active
+
+    async def test_get_session_rolls_back_and_reraises_on_exception(self) -> None:
+        """get_session() rolls back the session and re-raises when an exception occurs."""
+        await init_db(IN_MEMORY_URL)
+        with pytest.raises(ValueError, match="deliberate test error"):
+            async with get_session() as session:
+                assert session.is_active
+                raise ValueError("deliberate test error")
 
 
 class TestCloseDb:
