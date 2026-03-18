@@ -8,6 +8,14 @@ import pytest
 from src.pipeline.analyze import (
     AnalysisError,
     TranscriptSegment,
+    _RawAnalysis,
+    _RawSegment,
+    _analyze_with_groq_structured,
+    _analyze_with_pydantic_ai,
+    _build_user_prompt,
+    _parse_timestamp,
+    _raw_segment_to_float_times,
+    _raw_segments_to_transcript_segments,
     _should_use_structured_output,
     analyze_transcript,
     build_system_prompt,
@@ -391,6 +399,370 @@ class TestAnalyzeTranscript:
 
         assert result[0].score == 0.95
         assert result[1].score == 0.5
+
+
+# ---------------------------------------------------------------------------
+# _parse_timestamp — lines 107-113
+# ---------------------------------------------------------------------------
+
+
+class TestParseTimestamp:
+    """Tests for _parse_timestamp() helper."""
+
+    def test_mm_ss_format(self):
+        """Parses MM:SS format correctly."""
+        assert _parse_timestamp("02:35") == pytest.approx(155.0)
+
+    def test_mm_ss_mmm_format(self):
+        """Parses MM:SS.mmm format correctly."""
+        assert _parse_timestamp("01:30.500") == pytest.approx(90.5)
+
+    def test_zero_timestamp(self):
+        """Parses 00:00 as 0.0."""
+        assert _parse_timestamp("00:00") == pytest.approx(0.0)
+
+    def test_leading_trailing_whitespace_stripped(self):
+        """Whitespace around timestamp is handled."""
+        assert _parse_timestamp("  01:00  ") == pytest.approx(60.0)
+
+    def test_invalid_format_no_colon_raises(self):
+        """Missing colon raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot parse timestamp"):
+            _parse_timestamp("0135")
+
+    def test_invalid_format_too_many_colons_raises(self):
+        """Three-part timestamp raises ValueError (expected MM:SS)."""
+        with pytest.raises(ValueError, match="Expected MM:SS format"):
+            _parse_timestamp("01:02:03")
+
+    def test_non_numeric_raises(self):
+        """Non-numeric content raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot parse timestamp"):
+            _parse_timestamp("ab:cd")
+
+
+# ---------------------------------------------------------------------------
+# _raw_segment_to_float_times — lines 128-130
+# ---------------------------------------------------------------------------
+
+
+class TestRawSegmentToFloatTimes:
+    """Tests for _raw_segment_to_float_times()."""
+
+    def test_valid_timestamps_returns_tuple(self):
+        """Returns (start_seconds, end_seconds) for valid timestamps."""
+        raw = _RawSegment(start_time="01:00", end_time="01:30", text="Hello world.")
+        start, end = _raw_segment_to_float_times(raw)
+        assert start == pytest.approx(60.0)
+        assert end == pytest.approx(90.0)
+
+    def test_millisecond_precision_preserved(self):
+        """Millisecond precision is preserved through conversion."""
+        raw = _RawSegment(start_time="00:10.250", end_time="00:40.750", text="Content.")
+        start, end = _raw_segment_to_float_times(raw)
+        assert start == pytest.approx(10.25)
+        assert end == pytest.approx(40.75)
+
+    def test_invalid_start_raises(self):
+        """Invalid start timestamp raises ValueError."""
+        raw = _RawSegment(start_time="bad", end_time="01:00", text="Content.")
+        with pytest.raises(ValueError):
+            _raw_segment_to_float_times(raw)
+
+    def test_invalid_end_raises(self):
+        """Invalid end timestamp raises ValueError."""
+        raw = _RawSegment(start_time="00:10", end_time="bad", text="Content.")
+        with pytest.raises(ValueError):
+            _raw_segment_to_float_times(raw)
+
+
+# ---------------------------------------------------------------------------
+# _build_user_prompt — line 234
+# ---------------------------------------------------------------------------
+
+
+class TestBuildUserPrompt:
+    """Tests for _build_user_prompt()."""
+
+    def test_contains_transcript_text(self):
+        """Transcript text appears in output."""
+        result = _build_user_prompt("My transcript content.", 15.0, 45.0)
+        assert "My transcript content." in result
+
+    def test_contains_min_max_lengths(self):
+        """Min and max lengths appear in output."""
+        result = _build_user_prompt("Transcript.", 10.0, 60.0)
+        assert "10" in result
+        assert "60" in result
+
+    def test_no_custom_prompt_no_additional_instructions(self):
+        """Without custom_prompt, no 'ADDITIONAL INSTRUCTIONS' appears."""
+        result = _build_user_prompt("Some text.", 15.0, 45.0)
+        assert "ADDITIONAL INSTRUCTIONS" not in result
+
+    def test_custom_prompt_appended(self):
+        """Custom prompt text is included when provided (line 234)."""
+        result = _build_user_prompt("Transcript.", 15.0, 45.0, custom_prompt="Focus on humor.")
+        assert "Focus on humor." in result
+        assert "ADDITIONAL INSTRUCTIONS" in result
+
+
+# ---------------------------------------------------------------------------
+# _raw_segments_to_transcript_segments — lines 456-475
+# ---------------------------------------------------------------------------
+
+
+class TestRawSegmentsToTranscriptSegments:
+    """Tests for _raw_segments_to_transcript_segments()."""
+
+    def test_valid_segments_converted(self):
+        """All valid segments are converted to TranscriptSegment objects."""
+        raws = [
+            _RawSegment(start_time="00:10", end_time="00:40", text="Content one.", relevance_score=0.9, title="Title 1"),
+            _RawSegment(start_time="01:00", end_time="01:30", text="Content two.", relevance_score=0.7, title="Title 2"),
+        ]
+        result = _raw_segments_to_transcript_segments(raws)
+        assert len(result) == 2
+        assert result[0].start_time == pytest.approx(10.0)
+        assert result[0].end_time == pytest.approx(40.0)
+        assert result[0].text == "Content one."
+        assert result[0].score == pytest.approx(0.9)
+        assert result[0].title == "Title 1"
+
+    def test_invalid_timestamp_segment_skipped(self):
+        """Segment with unparseable timestamps is skipped with a warning."""
+        raws = [
+            _RawSegment(start_time="bad", end_time="01:00", text="Bad start.", relevance_score=0.8),
+            _RawSegment(start_time="01:00", end_time="01:30", text="Good content.", relevance_score=0.9),
+        ]
+        result = _raw_segments_to_transcript_segments(raws)
+        assert len(result) == 1
+        assert result[0].text == "Good content."
+
+    def test_empty_input_returns_empty(self):
+        """Empty input returns empty list."""
+        result = _raw_segments_to_transcript_segments([])
+        assert result == []
+
+    def test_all_invalid_returns_empty(self):
+        """All invalid segments results in empty list."""
+        raws = [
+            _RawSegment(start_time="xx:yy", end_time="zz:ww", text="Garbage."),
+        ]
+        result = _raw_segments_to_transcript_segments(raws)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# _analyze_with_groq_structured — lines 362-406
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeWithGroqStructured:
+    """Tests for _analyze_with_groq_structured() with mocked AsyncGroq client."""
+
+    @pytest.mark.asyncio
+    async def test_missing_api_key_raises_analysis_error(self):
+        """AnalysisError raised when groq_api_key is not configured."""
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.groq_api_key = None
+            mock_cfg_cls.return_value = mock_cfg
+
+            with pytest.raises(AnalysisError, match="GROQ_API_KEY not configured"):
+                await _analyze_with_groq_structured("user prompt", "system prompt", "groq:meta-llama/llama-4-scout")
+
+    @pytest.mark.asyncio
+    async def test_successful_response_returns_segments(self):
+        """Valid Groq response is parsed and returned as TranscriptSegments."""
+        raw_json = """{
+            "most_relevant_segments": [
+                {
+                    "start_time": "00:10",
+                    "end_time": "00:40",
+                    "text": "This is an engaging segment.",
+                    "relevance_score": 0.9,
+                    "reasoning": "Strong hook",
+                    "title": "Great Moment"
+                }
+            ],
+            "summary": "A video summary.",
+            "key_topics": ["topic1"]
+        }"""
+
+        mock_message = MagicMock()
+        mock_message.content = raw_json
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.groq_api_key = "test-key"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
+                result = await _analyze_with_groq_structured(
+                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                )
+
+        assert len(result) == 1
+        assert result[0].start_time == pytest.approx(10.0)
+        assert result[0].end_time == pytest.approx(40.0)
+        assert result[0].text == "This is an engaging segment."
+
+    @pytest.mark.asyncio
+    async def test_empty_response_raises_analysis_error(self):
+        """Empty content in Groq response raises AnalysisError."""
+        mock_message = MagicMock()
+        mock_message.content = ""
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.groq_api_key = "test-key"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
+                with pytest.raises(AnalysisError, match="Empty response from Groq API"):
+                    await _analyze_with_groq_structured(
+                        "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_raises_analysis_error(self):
+        """Invalid JSON response raises AnalysisError."""
+        mock_message = MagicMock()
+        mock_message.content = "not valid json {{{"
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.groq_api_key = "test-key"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
+                with pytest.raises(AnalysisError, match="Invalid JSON response from Groq"):
+                    await _analyze_with_groq_structured(
+                        "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_bare_model_name_strips_groq_prefix(self):
+        """The 'groq:' prefix is stripped before calling the API."""
+        raw_json = """{
+            "most_relevant_segments": [],
+            "summary": "",
+            "key_topics": []
+        }"""
+        mock_message = MagicMock()
+        mock_message.content = raw_json
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.groq_api_key = "test-key"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
+                await _analyze_with_groq_structured(
+                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                )
+
+        call_kwargs = mock_client.chat.completions.create.call_args
+        assert call_kwargs.kwargs["model"] == "meta-llama/llama-4-scout"
+
+
+# ---------------------------------------------------------------------------
+# _analyze_with_pydantic_ai — lines 425-441
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeWithPydanticAI:
+    """Tests for _analyze_with_pydantic_ai() with mocked Agent."""
+
+    @pytest.mark.asyncio
+    async def test_successful_response_returns_segments(self):
+        """Valid Pydantic AI agent response returns TranscriptSegments."""
+        raw_analysis = _RawAnalysis(
+            most_relevant_segments=[
+                _RawSegment(
+                    start_time="00:15",
+                    end_time="00:45",
+                    text="This is fascinating content.",
+                    relevance_score=0.88,
+                    title="Key Insight",
+                )
+            ],
+            summary="A great video.",
+            key_topics=["insight"],
+        )
+
+        mock_result = MagicMock()
+        mock_result.data = raw_analysis
+
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.get_llm_model.return_value = "local-model"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.Agent", return_value=mock_agent):
+                result = await _analyze_with_pydantic_ai("user prompt", "system prompt")
+
+        assert len(result) == 1
+        assert result[0].start_time == pytest.approx(15.0)
+        assert result[0].end_time == pytest.approx(45.0)
+        assert result[0].text == "This is fascinating content."
+
+    @pytest.mark.asyncio
+    async def test_empty_segments_returns_empty_list(self):
+        """Agent returning no segments results in an empty list."""
+        raw_analysis = _RawAnalysis(
+            most_relevant_segments=[],
+            summary="Empty video.",
+            key_topics=[],
+        )
+
+        mock_result = MagicMock()
+        mock_result.data = raw_analysis
+
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.get_llm_model.return_value = "local-model"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.Agent", return_value=mock_agent):
+                result = await _analyze_with_pydantic_ai("user prompt", "system prompt")
+
+        assert result == []
 
 
 # end tests/unit/test_analyze.py
