@@ -10,6 +10,7 @@ import pytest
 from src.pipeline.transcribe import (
     _CACHE_VERSION,
     TranscriptionError,
+    _tokens_from_result,
     format_transcript_text,
     load_cached_transcript,
     merge_bpe_tokens,
@@ -320,6 +321,320 @@ class TestTranscribeVideo:
             result = transcribe_video(video)
 
         assert result == expected_words
+
+    def test_raises_transcription_error_on_parakeet_exception(
+        self, tmp_path: Path
+    ) -> None:
+        """TranscriptionError is raised when parakeet raises during transcription.
+
+        Covers lines 289-290: the ``except Exception`` handler inside
+        transcribe_video that wraps parakeet errors.
+        """
+        import sys
+        import types
+
+        video = tmp_path / "test.mp4"
+        video.touch()
+
+        mock_model = MagicMock()
+        mock_model.transcribe.side_effect = RuntimeError("GPU OOM")
+
+        fake_parakeet_utils = types.ModuleType("parakeet_mlx.utils")
+        fake_parakeet_utils.from_pretrained = MagicMock(return_value=mock_model)  # type: ignore[attr-defined]
+
+        fake_mlx_core = types.ModuleType("mlx.core")
+        fake_mlx_core.bfloat16 = MagicMock()  # type: ignore[attr-defined]
+
+        with (
+            patch("src.pipeline.transcribe.PARAKEET_AVAILABLE", True),
+            patch.dict(
+                sys.modules,
+                {
+                    "parakeet_mlx": types.ModuleType("parakeet_mlx"),
+                    "parakeet_mlx.utils": fake_parakeet_utils,
+                    "mlx": types.ModuleType("mlx"),
+                    "mlx.core": fake_mlx_core,
+                },
+            ),
+            pytest.raises(TranscriptionError, match="parakeet-mlx transcription failed"),
+        ):
+            transcribe_video(video)
+
+
+# ---------------------------------------------------------------------------
+# load_cached_transcript — words-not-a-list branch
+# ---------------------------------------------------------------------------
+
+
+class TestLoadCachedTranscriptWordsNotList:
+    """Additional tests for load_cached_transcript edge cases."""
+
+    def test_returns_none_when_words_is_not_a_list(self, tmp_path: Path) -> None:
+        """Returns None when cache 'words' value is not a list (line 159).
+
+        This covers the ``if not isinstance(words, list): return None`` guard.
+        """
+        video = tmp_path / "video.mp4"
+        cache = tmp_path / "video.transcript_cache.json"
+        cache.write_text(
+            json.dumps(
+                {
+                    "version": _CACHE_VERSION,
+                    "video_path": str(video),
+                    "words": "not-a-list",
+                }
+            )
+        )
+        result = load_cached_transcript(video)
+        assert result is None
+
+    def test_returns_none_when_words_key_missing(self, tmp_path: Path) -> None:
+        """Returns None when 'words' key is absent (also hits line 159)."""
+        video = tmp_path / "video.mp4"
+        cache = tmp_path / "video.transcript_cache.json"
+        cache.write_text(
+            json.dumps(
+                {
+                    "version": _CACHE_VERSION,
+                    "video_path": str(video),
+                }
+            )
+        )
+        result = load_cached_transcript(video)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# save_transcript_cache — exception handling
+# ---------------------------------------------------------------------------
+
+
+class TestSaveTranscriptCacheException:
+    """Tests for save_transcript_cache exception path (lines 186-187)."""
+
+    def test_logs_warning_on_write_failure(self, tmp_path: Path) -> None:
+        """save_transcript_cache silently logs a warning when the write fails.
+
+        Covers lines 186-187: the ``except Exception`` handler that catches
+        IOError and similar failures without re-raising.
+        """
+        video = tmp_path / "video.mp4"
+        words = [{"text": "Hi", "start_ms": 0, "end_ms": 200}]
+
+        # Patch json.dump to raise so the exception handler (lines 186-187) runs.
+        with patch("src.pipeline.transcribe.json.dump", side_effect=OSError("disk full")):
+            # Should NOT raise — the exception is caught and logged.
+            save_transcript_cache(video, words)
+
+
+# ---------------------------------------------------------------------------
+# _tokens_from_result
+# ---------------------------------------------------------------------------
+
+
+class TestTokensFromResult:
+    """Tests for _tokens_from_result (lines 207-238)."""
+
+    def _make_token(self, text: str, start: float, end: float) -> MagicMock:
+        """Build a mock token object with text/start/end attributes."""
+        token = MagicMock()
+        token.text = text
+        token.start = start
+        token.end = end
+        return token
+
+    def _make_sentence(self, tokens: list) -> MagicMock:
+        """Build a mock sentence object with a tokens attribute."""
+        sentence = MagicMock()
+        sentence.tokens = tokens
+        return sentence
+
+    def test_returns_empty_for_result_with_no_sentences_no_tokens(self) -> None:
+        """Returns empty list when result has no sentences and no tokens."""
+        result = MagicMock()
+        result.sentences = None
+        result.tokens = None
+        assert _tokens_from_result(result) == []
+
+    def test_extracts_tokens_from_sentences(self) -> None:
+        """Sentence-level tokens are preferred and extracted correctly."""
+        token_a = self._make_token(" Hello", 0.0, 0.4)
+        token_b = self._make_token(" world", 0.5, 0.9)
+        sentence = self._make_sentence([token_a, token_b])
+
+        result = MagicMock()
+        result.sentences = [sentence]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 2
+        assert raw[0] == {"text": " Hello", "start": 0.0, "end": 0.4}
+        assert raw[1] == {"text": " world", "start": 0.5, "end": 0.9}
+
+    def test_skips_sentence_tokens_with_zero_duration(self) -> None:
+        """Tokens where start >= end are dropped (lines 220-221)."""
+        good = self._make_token(" Hi", 0.0, 0.3)
+        bad = self._make_token(" glitch", 1.0, 1.0)  # start == end
+        sentence = self._make_sentence([good, bad])
+
+        result = MagicMock()
+        result.sentences = [sentence]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " Hi"
+
+    def test_skips_sentence_tokens_with_empty_text(self) -> None:
+        """Tokens with empty or whitespace-only text are dropped."""
+        empty = self._make_token("   ", 0.0, 0.5)
+        good = self._make_token(" ok", 0.5, 0.9)
+        sentence = self._make_sentence([empty, good])
+
+        result = MagicMock()
+        result.sentences = [sentence]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " ok"
+
+    def test_falls_back_to_top_level_tokens_when_sentences_empty(self) -> None:
+        """Falls back to result.tokens when sentences list is empty/falsy.
+
+        Covers lines 226-236 — the fallback BPE token extraction path.
+        """
+        token_a = self._make_token(" foo", 0.1, 0.4)
+        token_b = self._make_token("bar", 0.4, 0.7)
+
+        result = MagicMock()
+        result.sentences = []  # falsy — triggers fallback
+        result.tokens = [token_a, token_b]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 2
+        assert raw[0]["text"] == " foo"
+        assert raw[1]["text"] == "bar"
+
+    def test_falls_back_to_top_level_tokens_when_sentences_none(self) -> None:
+        """Falls back to result.tokens when sentences is None."""
+        token = self._make_token(" only", 0.0, 0.5)
+
+        result = MagicMock()
+        result.sentences = None
+        result.tokens = [token]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " only"
+
+    def test_falls_back_skips_zero_duration_top_level_tokens(self) -> None:
+        """Zero-duration tokens in the fallback path are also dropped (lines 233-234)."""
+        good = self._make_token(" good", 0.0, 0.3)
+        bad = self._make_token(" bad", 0.5, 0.5)  # start == end
+
+        result = MagicMock()
+        result.sentences = []
+        result.tokens = [good, bad]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " good"
+
+    def test_falls_back_skips_whitespace_only_top_level_tokens(self) -> None:
+        """Whitespace-only tokens in the fallback path are dropped (line 231)."""
+        whitespace = self._make_token("   ", 0.0, 0.3)  # whitespace-only
+        good = self._make_token(" real", 0.5, 0.9)
+
+        result = MagicMock()
+        result.sentences = []  # force fallback path
+        result.tokens = [whitespace, good]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " real"
+
+    def test_sentences_yield_no_tokens_falls_back_to_top_level(self) -> None:
+        """When sentences exist but all tokens are filtered, falls back to top-level.
+
+        Covers the ``if raw: return raw`` guard (line 223-224) NOT being hit
+        when all sentence tokens are invalid, then the fallback path executes.
+        """
+        bad_token = self._make_token("", 0.0, 0.0)  # empty text + zero duration
+        sentence = self._make_sentence([bad_token])
+
+        top_token = self._make_token(" fallback", 0.1, 0.5)
+
+        result = MagicMock()
+        result.sentences = [sentence]
+        result.tokens = [top_token]
+
+        raw = _tokens_from_result(result)
+        assert len(raw) == 1
+        assert raw[0]["text"] == " fallback"
+
+
+# ---------------------------------------------------------------------------
+# PARAKEET_AVAILABLE = False branch (module-level import guard, lines 30-31)
+# ---------------------------------------------------------------------------
+
+
+class TestParakeetAvailableFlag:
+    """Tests for the PARAKEET_AVAILABLE module-level flag."""
+
+    def test_parakeet_available_is_bool(self) -> None:
+        """PARAKEET_AVAILABLE is always a bool regardless of whether parakeet is installed."""
+        import src.pipeline.transcribe as transcribe_mod
+
+        assert isinstance(transcribe_mod.PARAKEET_AVAILABLE, bool)
+
+    def test_parakeet_unavailable_set_to_false_on_import_error(self) -> None:
+        """Simulates the ImportError branch by reloading with parakeet blocked.
+
+        This test reimports the module after removing parakeet_mlx from
+        sys.modules and replacing it with a stub that raises ImportError,
+        verifying that PARAKEET_AVAILABLE becomes False (lines 30-31).
+        """
+        import importlib
+        import sys
+
+        # Remove the already-imported module so we get a fresh import.
+        mod_key = "src.pipeline.transcribe"
+        original = sys.modules.pop(mod_key, None)
+        # Also remove parakeet_mlx so the try-block actually runs the except.
+        original_parakeet = sys.modules.pop("parakeet_mlx", None)
+
+        try:
+            # Insert a stub that raises ImportError on access.
+            import types
+
+            broken = types.ModuleType("parakeet_mlx")
+
+            class _FailImport:
+                def __getattr__(self, name: str) -> object:
+                    raise ImportError("parakeet_mlx not installed")
+
+            # Make the import itself fail by using a finder that raises.
+            import builtins
+
+            real_import = builtins.__import__
+
+            def mock_import(name: str, *args: object, **kwargs: object) -> object:
+                if name == "parakeet_mlx":
+                    raise ImportError("parakeet_mlx not installed")
+                return real_import(name, *args, **kwargs)
+
+            builtins.__import__ = mock_import  # type: ignore[assignment]
+            try:
+                fresh_mod = importlib.import_module(mod_key)
+                assert fresh_mod.PARAKEET_AVAILABLE is False  # type: ignore[attr-defined]
+            finally:
+                builtins.__import__ = real_import  # type: ignore[assignment]
+        finally:
+            # Restore original module state.
+            if original is not None:
+                sys.modules[mod_key] = original
+            else:
+                sys.modules.pop(mod_key, None)
+            if original_parakeet is not None:
+                sys.modules["parakeet_mlx"] = original_parakeet
 
 
 # end tests/unit/test_transcribe.py
