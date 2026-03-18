@@ -235,6 +235,18 @@ class TestDetectFaceCenter:
         # High-confidence face is at x=0.5*500=250, width=0.2*500=100 → cx=300
         assert abs(cx - 300) <= 2
 
+    def test_face_outside_relative_area_bounds_ignored(self) -> None:
+        """A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out."""
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        # Face is 0.8 * 200 = 160 px wide/tall (> 30 px threshold) but
+        # relative_area = 0.8 * 0.8 = 0.64, which exceeds _MAX_RELATIVE_AREA (0.3).
+        detection = self._make_detection(0.1, 0.1, 0.8, 0.8, 0.99)
+        mp_mock = self._mock_mediapipe([detection])
+
+        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
+            result = detect_face_center(frame)
+        assert result is None
+
     def test_detection_exception_returns_none(self) -> None:
         """If MediaPipe raises an exception, return None gracefully."""
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
