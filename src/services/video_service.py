@@ -67,7 +67,7 @@ class ProcessingRequest:
     min_clip_length: int = 15
     max_clip_length: int = 45
     output_resolution: str = "1080p"
-    subtitle_style: "SubtitleStyle | None" = None
+    subtitle_style: SubtitleStyle | None = None
     logo_path: Path | None = None
     custom_prompt: str | None = None
 
