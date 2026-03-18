@@ -10,13 +10,16 @@ Covers:
 """
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+import yt_dlp  # type: ignore
 
 from src.pipeline.download import (
     DownloadError,
     _extract_video_id,
+    _run_ydl_download,
+    _run_ydl_info,
     find_downloaded_file,
     validate_youtube_url,
 )
@@ -290,6 +293,110 @@ class TestDownloadError:
         """DownloadError preserves the message string."""
         err = DownloadError("something went wrong")
         assert str(err) == "something went wrong"
+
+
+# ---------------------------------------------------------------------------
+# _extract_video_id — urlparse fallback path (lines 119-122)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractVideoIdUrlparseFallback:
+    """Tests for the urlparse ?v= fallback in _extract_video_id."""
+
+    def test_extracts_id_via_urlparse_fallback(self) -> None:
+        """Returns ID from ?v= param when none of the regex patterns match.
+
+        A URL with no path (only a bare domain and ?v= query) bypasses all
+        compiled regex patterns and executes the urlparse fallback (lines 114-122).
+        """
+        # No path component means pattern 0's `.*v=` path group cannot match
+        # (requires `youtube.com/<path>` before `v=`), and other patterns also
+        # require a specific path prefix.
+        url = "https://youtube.com?v=dQw4w9WgXcQ"
+        result = _extract_video_id(url)
+        assert result == "dQw4w9WgXcQ"
+
+    def test_urlparse_fallback_returns_none_when_v_too_short(self) -> None:
+        """Returns None when ?v= param exists but is shorter than 11 chars."""
+        url = "https://youtube.com?v=short"
+        result = _extract_video_id(url)
+        assert result is None
+
+    def test_urlparse_exception_logs_warning_and_returns_none(self) -> None:
+        """Returns None and logs a warning when parse_qs raises an unexpected error.
+
+        Uses a URL that reaches the urlparse fallback (no regex match) and then
+        triggers the except branch by making parse_qs raise.
+        """
+        with patch("src.pipeline.download.parse_qs", side_effect=ValueError("boom")):
+            # URL with no path bypasses all compiled regexes, falls through to
+            # the urlparse block, where parse_qs will raise.
+            result = _extract_video_id("https://youtube.com?v=dQw4w9WgXcQ")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _run_ydl_download — internal sync wrapper (lines 184-188)
+# ---------------------------------------------------------------------------
+
+
+class TestRunYdlDownload:
+    """Tests for _run_ydl_download, the synchronous yt-dlp download wrapper."""
+
+    def test_raises_download_error_on_yt_dlp_download_error(self) -> None:
+        """Converts yt_dlp.utils.DownloadError into DownloadError (lines 184-188)."""
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.download.side_effect = yt_dlp.utils.DownloadError("403 Forbidden")
+
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
+            with pytest.raises(DownloadError, match="403 Forbidden"):
+                _run_ydl_download("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+
+
+# ---------------------------------------------------------------------------
+# _run_ydl_info — internal sync wrapper (lines 204-211)
+# ---------------------------------------------------------------------------
+
+
+class TestRunYdlInfo:
+    """Tests for _run_ydl_info, the synchronous yt-dlp metadata wrapper."""
+
+    def test_raises_download_error_when_extract_info_returns_none(self) -> None:
+        """Raises DownloadError when extract_info returns None (line 207-208)."""
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.return_value = None
+
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
+            with pytest.raises(DownloadError, match="No metadata returned"):
+                _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+
+    def test_raises_download_error_on_yt_dlp_download_error(self) -> None:
+        """Converts yt_dlp.utils.DownloadError into DownloadError (lines 210-211)."""
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("private video")
+
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
+            with pytest.raises(DownloadError, match="private video"):
+                _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+
+    def test_returns_dict_on_success(self) -> None:
+        """Returns a dict when extract_info returns valid data (lines 204-209)."""
+        fake_info = {"id": "dQw4w9WgXcQ", "title": "Test Video"}
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.return_value = fake_info
+
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
+            result = _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+
+        assert result == fake_info
 
 
 # end tests/unit/test_download.py

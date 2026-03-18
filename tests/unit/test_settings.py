@@ -12,6 +12,8 @@ Covers:
 - render: loads existing preferences without error (mocked DB + NiceGUI)
 - render: uses defaults when no existing preferences exist (mocked DB + NiceGUI)
 - Logo upload handler: writes file and updates logo_state
+- Handler callbacks: save() max<min error, invalid font color, invalid stroke color,
+  success path; reset(); clear_logo(); handle_logo_upload None-content path.
 """
 from __future__ import annotations
 
@@ -91,7 +93,7 @@ class TestIsValidHexColor:
         assert is_valid_hex_color("#FFFFFFFF") is False
 
     def test_invalid_non_hex_chars(self) -> None:
-        """#XXYYZZ contains non-hex characters — invalid."""
+        """#XXYYZZ contains non-hex characters - invalid."""
         assert is_valid_hex_color("#XXYYZZ") is False
 
     def test_empty_string(self) -> None:
@@ -124,10 +126,6 @@ class TestLoadPrefs:
         )
         session.add(prefs)
         await session.commit()
-
-        # Patch get_session to return our test session
-        async def _fake_session():  # type: ignore[return]
-            yield session
 
         with patch(
             "src.pages.settings.get_session",
@@ -374,7 +372,7 @@ class TestRender:
 
 
 # ---------------------------------------------------------------------------
-# Logo upload handler
+# Logo upload handler (simulated inline)
 # ---------------------------------------------------------------------------
 
 
@@ -395,7 +393,6 @@ class TestLogoUpload:
 
         captured_state: dict[str, str | None] = {"path": None}
 
-        # Simulate what render() does: extract the handler and call it directly
         def make_handler(
             state: dict[str, str | None], cfg: object
         ):  # type: ignore[return]
@@ -404,7 +401,6 @@ class TestLogoUpload:
                 content = getattr(e, "content", None)
                 if content is None:
                     return
-
 
                 logo_dir = cfg.temp_dir / "logo"
                 logo_dir.mkdir(parents=True, exist_ok=True)
@@ -421,6 +417,396 @@ class TestLogoUpload:
         assert expected.exists()
         assert expected.read_bytes() == file_content
         assert captured_state["path"] == str(expected)
+
+
+# ---------------------------------------------------------------------------
+# Inner handler coverage via callback capture
+#
+# Design: each test builds a capturing UI mock, patches module globals, calls
+# render(), then -- WHILE STILL INSIDE the patch context -- invokes the
+# captured handler.  This ensures that when save()/reset()/etc. call
+# ui.notify, the patched mock_ui is still installed at src.pages.settings.ui.
+# ---------------------------------------------------------------------------
+
+
+def _make_elem(*_args: object, **kwargs: object) -> MagicMock:
+    """Return a MagicMock element with fluent API and settable .value / .text.
+
+    Args:
+        *_args: Positional arguments (ignored; NiceGUI passes label as first arg).
+        **kwargs: Optional ``value`` keyword forwarded to elem.value and elem.text.
+
+    Returns:
+        A pre-configured MagicMock suitable for NiceGUI widget use.
+    """
+    elem = MagicMock()
+    elem.__enter__ = MagicMock(return_value=elem)
+    elem.__exit__ = MagicMock(return_value=False)
+    elem.classes = MagicMock(return_value=elem)
+    elem.props = MagicMock(return_value=elem)
+    elem.value = kwargs.get("value", "")
+    elem.text = kwargs.get("value", "")
+    return elem
+
+
+def _build_capturing_ui_mock(
+    notify_calls: list[tuple] | None = None,
+    slider_values: dict[int, object] | None = None,
+    color_overrides: dict[str, str] | None = None,
+) -> tuple[MagicMock, dict[str, object]]:
+    """Build a UI mock that captures button on_click and upload on_upload callbacks.
+
+    Sliders are created in render() in this order:
+    1=font_size, 2=stroke_width, 3=shadow_offset, 4=subtitle_y,
+    5=min_clip, 6=max_clip.
+
+    Args:
+        notify_calls: List that receives (args, kwargs) tuples from ui.notify calls.
+        slider_values: {1-based call index: value} overrides for slider widgets.
+        color_overrides: {label_substring: forced_value} overrides for color_input.
+
+    Returns:
+        A (mock_ui, captured) tuple.  Keys in captured:
+        "button_N_<label>" per button with on_click,
+        "on_upload" for the upload widget.
+    """
+    captured: dict[str, object] = {}
+    call_order: list[str] = []
+    slider_call_count = 0
+
+    def _slider(*_args: object, **kwargs: object) -> MagicMock:
+        nonlocal slider_call_count
+        slider_call_count += 1
+        elem = _make_elem(**kwargs)
+        if slider_values and slider_call_count in slider_values:
+            elem.value = slider_values[slider_call_count]
+        return elem
+
+    def _color_input(*_args: object, **kwargs: object) -> MagicMock:
+        elem = _make_elem(**kwargs)
+        if color_overrides:
+            label = str(kwargs.get("label", ""))
+            for key, forced_val in color_overrides.items():
+                if key in label:
+                    elem.value = forced_val
+                    break
+        return elem
+
+    def _button(*_args: object, **kwargs: object) -> MagicMock:
+        elem = _make_elem(**kwargs)
+        label = _args[0] if _args else kwargs.get("label", "")
+        on_click = kwargs.get("on_click")
+        if on_click is not None:
+            call_order.append(str(label))
+            captured[f"button_{len(call_order)}_{label}"] = on_click
+        return elem
+
+    def _upload(*_args: object, **kwargs: object) -> MagicMock:
+        elem = _make_elem(**kwargs)
+        on_upload = kwargs.get("on_upload")
+        if on_upload is not None:
+            captured["on_upload"] = on_upload
+        return elem
+
+    def _notify(*args: object, **kwargs: object) -> MagicMock:
+        if notify_calls is not None:
+            notify_calls.append((args, kwargs))
+        return MagicMock()
+
+    mock_ui = MagicMock()
+    for name in ("column", "card", "row", "label", "input", "textarea", "select"):
+        getattr(mock_ui, name).side_effect = _make_elem
+
+    mock_ui.slider.side_effect = _slider
+    mock_ui.color_input.side_effect = _color_input
+    mock_ui.button.side_effect = _button
+    mock_ui.upload.side_effect = _upload
+    mock_ui.notify.side_effect = _notify
+
+    return mock_ui, captured
+
+
+def _make_default_prefs() -> UserPreferences:
+    """Return a default UserPreferences instance for use in handler tests."""
+    return UserPreferences(
+        id=1,
+        font_family="Arial",
+        font_size=24,
+        font_color="#FFFFFF",
+        font_stroke_color="#000000",
+        font_stroke_width=2.0,
+        font_shadow_offset=1,
+        subtitle_position_y=75,
+        min_clip_length=15,
+        max_clip_length=45,
+        output_resolution="1080p",
+        ai_prompt=None,
+        logo_path=None,
+    )
+
+
+class TestHandlerCallbacks:
+    """Tests that exercise inner closures in render() via captured callbacks."""
+
+    async def test_save_max_less_than_min_shows_error(
+        self, tmp_path: Path
+    ) -> None:
+        """save() notifies an error when max_clip < min_clip (lines 252-257).
+
+        Slider creation order: 1=font_size, 2=stroke_width, 3=shadow_offset,
+        4=subtitle_y, 5=min_clip, 6=max_clip.
+        """
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(
+            notify_calls=notify_calls,
+            slider_values={5: 45, 6: 10},
+        )
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            save_cb = next(
+                (v for k, v in captured.items() if "Save Settings" in k), None
+            )
+            assert save_cb is not None, f"Save callback missing; keys={list(captured)}"
+            await save_cb()  # type: ignore[operator]
+
+        assert any(
+            "max" in str(a).lower() for a, _kw in notify_calls
+        ), f"Expected max-clip error notify; got: {notify_calls}"
+
+    async def test_save_invalid_font_color_shows_error(
+        self, tmp_path: Path
+    ) -> None:
+        """save() notifies an error for an invalid font color hex (lines 262-267)."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(
+            notify_calls=notify_calls,
+            color_overrides={"Font Color": "NOTAHEX"},
+        )
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            save_cb = next(
+                (v for k, v in captured.items() if "Save Settings" in k), None
+            )
+            assert save_cb is not None
+            await save_cb()  # type: ignore[operator]
+
+        assert any(
+            "font color" in str(a).lower() for a, _kw in notify_calls
+        ), f"Expected font-color error notify; got: {notify_calls}"
+
+    async def test_save_invalid_stroke_color_shows_error(
+        self, tmp_path: Path
+    ) -> None:
+        """save() notifies an error for an invalid stroke color hex (lines 269-273)."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(
+            notify_calls=notify_calls,
+            color_overrides={"Stroke Color": "BADHEX"},
+        )
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            save_cb = next(
+                (v for k, v in captured.items() if "Save Settings" in k), None
+            )
+            assert save_cb is not None
+            await save_cb()  # type: ignore[operator]
+
+        assert any(
+            "stroke" in str(a).lower() for a, _kw in notify_calls
+        ), f"Expected stroke-color error notify; got: {notify_calls}"
+
+    async def test_save_success_calls_save_prefs_and_notifies(
+        self, tmp_path: Path
+    ) -> None:
+        """save() calls save_prefs and notifies success (lines 276-292)."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(notify_calls=notify_calls)
+        mock_save = AsyncMock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings.save_prefs", new=mock_save),
+        ):
+            await settings_mod.render()
+            save_cb = next(
+                (v for k, v in captured.items() if "Save Settings" in k), None
+            )
+            assert save_cb is not None
+            await save_cb()  # type: ignore[operator]
+
+        mock_save.assert_awaited_once()
+        assert any(
+            "saved" in str(a).lower() for a, _kw in notify_calls
+        ), f"Expected 'saved' notify; got: {notify_calls}"
+
+    async def test_reset_restores_defaults_and_notifies(
+        self, tmp_path: Path
+    ) -> None:
+        """reset() sets widget values back to defaults (lines 296-309)."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(notify_calls=notify_calls)
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            reset_cb = next(
+                (v for k, v in captured.items() if "Reset" in k), None
+            )
+            assert reset_cb is not None, (
+                f"Reset callback missing; keys={list(captured)}"
+            )
+            reset_cb()  # type: ignore[operator]
+
+        assert any(
+            "reset" in str(a).lower() or "default" in str(a).lower()
+            for a, _kw in notify_calls
+        ), f"Expected reset notify; got: {notify_calls}"
+
+    async def test_clear_logo_resets_state(self, tmp_path: Path) -> None:
+        """clear_logo() clears logo_state and updates logo_display (lines 235-237)."""
+        import src.pages.settings as settings_mod
+
+        prefs = _make_default_prefs()
+        prefs.logo_path = "/tmp/logo/brand.png"
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs", new=AsyncMock(return_value=prefs)
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            clear_cb = next(
+                (v for k, v in captured.items() if "Clear Logo" in k), None
+            )
+            assert clear_cb is not None, (
+                f"Clear Logo callback missing; keys={list(captured)}"
+            )
+            # Should execute without raising
+            clear_cb()  # type: ignore[operator]
+
+    async def test_handle_logo_upload_none_content_notifies(
+        self, tmp_path: Path
+    ) -> None:
+        """handle_logo_upload with None content calls ui.notify (lines 216-218)."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(notify_calls=notify_calls)
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            upload_cb = captured.get("on_upload")
+            assert upload_cb is not None, "on_upload callback was not captured"
+
+            bad_event = MagicMock()
+            bad_event.name = "broken.png"
+            bad_event.content = None
+            upload_cb(bad_event)  # type: ignore[operator]
+
+        assert any(
+            "failed" in str(a).lower() or "no content" in str(a).lower()
+            for a, _kw in notify_calls
+        ), f"Expected upload-failed notify; got: {notify_calls}"
+
+    async def test_handle_logo_upload_success_writes_file(
+        self, tmp_path: Path
+    ) -> None:
+        """handle_logo_upload writes bytes to temp_dir/logo/ (lines 220-226)."""
+        import src.pages.settings as settings_mod
+
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+        ):
+            await settings_mod.render()
+            upload_cb = captured.get("on_upload")
+            assert upload_cb is not None
+
+            good_event = MagicMock()
+            good_event.name = "logo.png"
+            good_event.content = BytesIO(b"fake-image-bytes")
+            upload_cb(good_event)  # type: ignore[operator]
+
+        expected = tmp_path / "logo" / "logo.png"
+        assert expected.exists()
+        assert expected.read_bytes() == b"fake-image-bytes"
 
 
 # ---------------------------------------------------------------------------
@@ -461,8 +847,8 @@ def _build_ui_mock() -> MagicMock:
     """Return a MagicMock that satisfies all NiceGUI ui.* calls in render().
 
     Every element returned by a builder call (column, card, row, input, etc.)
-    is itself a MagicMock whose ``.classes()``, ``.props()``, and
-    ``__enter__``/``__exit__`` context manager methods all return mocks so
+    is itself a MagicMock whose .classes(), .props(), and
+    __enter__/__exit__ context manager methods all return mocks so
     that ``with ui.column():`` blocks execute without error.
     """
     def _element(*_args: object, **_kwargs: object) -> MagicMock:
