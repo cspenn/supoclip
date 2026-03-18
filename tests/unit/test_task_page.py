@@ -511,4 +511,607 @@ class TestScoreColor:
 
         assert "red" in _score_color(0.5)
         assert "red" in _score_color(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for timer-callback tests
+# ---------------------------------------------------------------------------
+
+
+def _capture_timer_callback(ui_stub: MagicMock) -> list:
+    """Return the list that will hold captured timer callbacks.
+
+    The timer side-effect stores each callback in ``ui_stub._timer_instances``.
+    This helper just returns a reference to that list for use in assertions.
+
+    Args:
+        ui_stub: The NiceGUI stub returned by the ``ui_stub`` fixture.
+
+    Returns:
+        The ``_timer_instances`` list (populated after ``render()`` runs).
+    """
+    return ui_stub._timer_instances  # type: ignore[attr-defined]
+
+
+def _two_call_session(
+    first_task: MagicMock | None,
+    second_task: MagicMock | None,
+    clips: list[MagicMock] | None = None,
+) -> MagicMock:
+    """Build a get_session mock that returns different tasks on successive calls.
+
+    The first call (during ``render()``) returns *first_task*.
+    The second call (inside the ``_refresh`` callback) returns *second_task*.
+
+    Args:
+        first_task: Task returned during the initial ``render()`` DB fetch.
+        second_task: Task returned when ``_refresh()`` polls the DB.
+        clips: Clips returned by ``session.execute`` (used by ``_show_clips``).
+
+    Returns:
+        A context-manager MagicMock whose ``__aenter__`` alternates tasks.
+    """
+    clips = clips or []
+
+    scalars_mock = MagicMock()
+    scalars_mock.all.return_value = clips
+    execute_result = MagicMock()
+    execute_result.scalars.return_value = scalars_mock
+
+    call_count = {"n": 0}
+
+    async def _get(model: object, pk: str) -> MagicMock | None:  # noqa: ARG001
+        return second_task
+
+    session = AsyncMock()
+    session.get = AsyncMock(side_effect=_get)
+    session.execute = AsyncMock(return_value=execute_result)
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    # The render() function calls get_session() twice for a processing task:
+    # once for the initial load and once inside _refresh().  We use a counter
+    # to hand back the right task each time.
+    first_session = AsyncMock()
+    first_session.get = AsyncMock(return_value=first_task)
+    first_session.execute = AsyncMock(return_value=execute_result)
+
+    first_ctx = MagicMock()
+    first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+    first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    second_ctx = MagicMock()
+    second_ctx.__aenter__ = AsyncMock(return_value=session)
+    second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    contexts = iter([first_ctx, second_ctx, second_ctx, second_ctx])
+
+    def _factory() -> MagicMock:
+        call_count["n"] += 1
+        try:
+            return next(contexts)
+        except StopIteration:
+            return second_ctx
+
+    return _factory
+
+
+# ---------------------------------------------------------------------------
+# Tests: _refresh() timer callback
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshCallback:
+    """Tests that invoke the ``_refresh`` timer callback directly."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_completed_stops_timer(self, ui_stub: MagicMock) -> None:
+        """_refresh must deactivate the timer when the DB task reaches 'completed'.
+
+        Arrange: render() with a 'processing' task so a timer is created.
+        Act: invoke the captured ``_refresh`` callback with a second session
+             that returns a 'completed' task.
+        Assert: the timer's ``active`` attribute is set to ``False``.
+        """
+        processing_task = _make_task(status="processing", progress=50)
+        completed_task = _make_task(
+            status="completed",
+            progress=100,
+        )
+        clips = [_make_clip(processing_task.id, index=1)]
+
+        # Session sequence: render() uses first_session; _refresh() uses second.
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = clips
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=completed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        contexts: list[MagicMock] = [first_ctx, second_ctx, second_ctx]
+        ctx_iter = iter(contexts)
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return second_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        assert timer_instances, "Expected at least one timer to be created"
+
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+        assert callback is not None, "Timer callback must be stored"
+
+        # Invoke _refresh — it will use the second_ctx (completed task)
+        await callback()
+
+        assert poll_timer.active is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_failed_stops_timer_and_shows_error(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_refresh stops the timer and makes the error card visible on 'failed'.
+
+        Arrange: render() with 'processing' task; second DB call returns 'failed'.
+        Assert: timer.active is False after invoking the callback.
+        """
+        processing_task = _make_task(status="processing", progress=50)
+        failed_task = _make_task(
+            status="failed",
+            progress=50,
+            error_message="Encoding crashed",
+        )
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = []
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=failed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx])
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return second_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        assert poll_timer.active is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_failed_no_error_message_uses_default(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_refresh uses a default error message when error_message is None on failed task."""
+        processing_task = _make_task(status="processing", progress=50)
+        failed_task = _make_task(
+            status="failed",
+            progress=50,
+            error_message=None,
+        )
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = []
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=failed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx])
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return second_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        # Should complete without raising even with no error_message
+        await callback()
+
+        assert poll_timer.active is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_task_missing_stops_timer(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_refresh stops the timer if the task disappears from the DB mid-poll.
+
+        This exercises lines 235-239 of task.py (the ``if refreshed is None`` branch).
+        """
+        processing_task = _make_task(status="processing", progress=50)
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = []
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        # Second session returns None — task vanished
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=None)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx])
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return second_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        assert poll_timer.active is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_still_processing_keeps_timer_active(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_refresh leaves the timer active while the task is still processing.
+
+        This exercises the ``case _: pass`` branch (lines 259-260).
+        """
+        processing_task = _make_task(
+            status="processing",
+            progress=60,
+            progress_message="Encoding clip 2/3",
+        )
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = []
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=processing_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx])
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return second_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        # Timer must still be active — task is still running
+        assert poll_timer.active is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: _show_clips() inner function via _refresh 'completed' path
+# ---------------------------------------------------------------------------
+
+
+class TestShowClips:
+    """Tests that exercise ``_show_clips`` (lines 203-223) via the _refresh path."""
+
+    @pytest.mark.asyncio
+    async def test_show_clips_renders_correct_video_count(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_show_clips must call ui.video once per clip returned by the DB.
+
+        Arrange: render() with 'processing' task; _refresh callback gets a
+                 'completed' task plus two clips in the DB.
+        Assert: ui.video total call count equals the number of clips (2).
+        """
+        processing_task = _make_task(status="processing", progress=50)
+        completed_task = _make_task(status="completed", progress=100)
+        clips = [_make_clip(processing_task.id, index=i) for i in range(1, 3)]
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = clips
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=completed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        third_session = AsyncMock()
+        third_session.get = AsyncMock(return_value=completed_task)
+        third_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        third_ctx = MagicMock()
+        third_ctx.__aenter__ = AsyncMock(return_value=third_session)
+        third_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx, third_ctx])
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return third_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        # After _refresh → _show_clips, ui.video is called once per clip
+        assert ui_stub.video.call_count == len(clips)
+
+    @pytest.mark.asyncio
+    async def test_show_clips_updates_status_label_text(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_show_clips updates the status label with the clip count.
+
+        After _show_clips runs, the status_label text must contain the
+        word 'clip' and the count of clips fetched.
+        """
+        processing_task = _make_task(status="processing", progress=50)
+        completed_task = _make_task(status="completed", progress=100)
+        clips = [_make_clip(processing_task.id, index=1)]
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = clips
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=completed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        third_session = AsyncMock()
+        third_session.get = AsyncMock(return_value=completed_task)
+        third_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        third_ctx = MagicMock()
+        third_ctx.__aenter__ = AsyncMock(return_value=third_session)
+        third_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx, third_ctx])
+
+        # Collect label instances to inspect status_label.text after the callback
+        label_instances: list[MagicMock] = []
+        original_label_effect = ui_stub.label.side_effect
+
+        def _tracking_label(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+            m = original_label_effect(*args, **kwargs) if original_label_effect else MagicMock()
+            label_instances.append(m)
+            return m
+
+        ui_stub.label.side_effect = _tracking_label
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return third_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        # _show_clips sets status_label.text to e.g. "Done — 1 clip generated."
+        # status_label is the first label created in the progress section.
+        # We verify at least one label had its .text set to a "Done" string.
+        texts_assigned = [
+            m.text for m in label_instances if isinstance(m.text, str) and "clip" in m.text
+        ]
+        assert texts_assigned, (
+            f"Expected at least one label with 'clip' in text. "
+            f"All label texts: {[m.text for m in label_instances]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_show_clips_plural_for_multiple_clips(
+        self, ui_stub: MagicMock
+    ) -> None:
+        """_show_clips uses plural 'clips' when count != 1."""
+        processing_task = _make_task(status="processing", progress=50)
+        completed_task = _make_task(status="completed", progress=100)
+        clips = [_make_clip(processing_task.id, index=i) for i in range(1, 4)]
+
+        scalars_m = MagicMock()
+        scalars_m.all.return_value = clips
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_m
+
+        first_session = AsyncMock()
+        first_session.get = AsyncMock(return_value=processing_task)
+        first_session.execute = AsyncMock(return_value=exec_result)
+
+        second_session = AsyncMock()
+        second_session.get = AsyncMock(return_value=completed_task)
+        second_session.execute = AsyncMock(return_value=exec_result)
+
+        third_session = AsyncMock()
+        third_session.get = AsyncMock(return_value=completed_task)
+        third_session.execute = AsyncMock(return_value=exec_result)
+
+        first_ctx = MagicMock()
+        first_ctx.__aenter__ = AsyncMock(return_value=first_session)
+        first_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        second_ctx = MagicMock()
+        second_ctx.__aenter__ = AsyncMock(return_value=second_session)
+        second_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        third_ctx = MagicMock()
+        third_ctx.__aenter__ = AsyncMock(return_value=third_session)
+        third_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        ctx_iter = iter([first_ctx, second_ctx, third_ctx])
+
+        label_instances: list[MagicMock] = []
+        original_label_effect = ui_stub.label.side_effect
+
+        def _tracking_label(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+            m = original_label_effect(*args, **kwargs) if original_label_effect else MagicMock()
+            label_instances.append(m)
+            return m
+
+        ui_stub.label.side_effect = _tracking_label
+
+        def _get_session() -> MagicMock:
+            try:
+                return next(ctx_iter)
+            except StopIteration:
+                return third_ctx
+
+        with patch("src.pages.task.get_session", side_effect=_get_session):
+            from src.pages.task import render
+            await render(processing_task.id)
+
+        timer_instances = _capture_timer_callback(ui_stub)
+        poll_timer = timer_instances[0]
+        callback = poll_timer._callback
+
+        await callback()
+
+        texts_with_clips = [
+            m.text for m in label_instances if isinstance(m.text, str) and "clips" in m.text
+        ]
+        assert texts_with_clips, (
+            "Expected 'clips' (plural) in at least one label after _show_clips"
+        )
 # end tests/unit/test_task_page.py
