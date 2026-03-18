@@ -65,9 +65,12 @@ select = ["E", "W", "F", "B", "I", "UP", "SIM", "FURB"]
 
 [dependency-groups]
 dev = [
+    "mypy>=1.19.1",
+    "pyright>=1.1.408",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
+    "ruff>=0.15.6",
 ]
 
 [project.scripts]
