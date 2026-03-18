@@ -182,9 +182,9 @@ def _run_ydl_download(url: str, ydl_opts: dict[str, Any]) -> None:
         DownloadError: If yt-dlp reports a download failure.
     """
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
             ydl.download([url])
-    except yt_dlp.utils.DownloadError as exc:
+    except yt_dlp.utils.DownloadError as exc:  # type: ignore[reportAttributeAccessIssue]
         raise DownloadError(str(exc)) from exc
 
 
@@ -202,12 +202,12 @@ def _run_ydl_info(url: str, ydl_opts: dict[str, Any]) -> dict[str, Any]:
         DownloadError: If metadata extraction fails.
     """
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
             raw = ydl.extract_info(url, download=False)
             if raw is None:
                 raise DownloadError(f"No metadata returned for URL: {url}")
             return dict(raw)
-    except yt_dlp.utils.DownloadError as exc:
+    except yt_dlp.utils.DownloadError as exc:  # type: ignore[reportAttributeAccessIssue]
         raise DownloadError(str(exc)) from exc
 
 

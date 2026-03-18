@@ -124,7 +124,7 @@ def _render_task_row(task: Task, clip_count: int) -> None:
             ui.label(clip_label).classes("text-sm text-gray-600")
             ui.button(
                 icon="delete",
-                on_click=lambda t_id=task.id: delete_task(t_id),
+                on_click=lambda t_id=task.id: delete_task(t_id),  # type: ignore[reportArgumentType]
             ).props("flat dense color=negative").tooltip("Delete task")
 
 

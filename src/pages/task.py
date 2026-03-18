@@ -103,7 +103,7 @@ def _render_clip_card(clip: GeneratedClip) -> None:
             ui.button(
                 "Download",
                 icon="download",
-                on_click=lambda c=clip: ui.download(f"/clips/{c.filename}"),
+                on_click=lambda c=clip: ui.download(f"/clips/{c.filename}"),  # type: ignore[reportAttributeAccessIssue]
             ).classes("w-full mt-1").props("flat color=primary")
 
             # collapsible transcript

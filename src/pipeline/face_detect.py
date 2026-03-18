@@ -55,7 +55,7 @@ def detect_face_center(frame: np.ndarray) -> tuple[int, int] | None:
     frame_area = width * height
 
     try:
-        detector = mp.solutions.face_detection.FaceDetection(
+        detector = mp.solutions.face_detection.FaceDetection(  # type: ignore[reportAttributeAccessIssue]
             model_selection=0, min_detection_confidence=0.5
         )
         with detector:
