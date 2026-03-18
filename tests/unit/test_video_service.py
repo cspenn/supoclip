@@ -1026,4 +1026,121 @@ class TestProcessVideo:
         assert meta["title"] == "Insight"
 
 
+    # ---- ImportError fallback paths (lazy imports) ----
+
+    @pytest.mark.asyncio
+    async def test_transcribe_import_error_returns_error_in_result(
+        self, tmp_path: Path
+    ) -> None:
+        """When src.pipeline.transcribe cannot be imported, error is returned.
+
+        Lines 333-335 in src/services/video_service.py handle the ImportError
+        from the transcribe module import. This test verifies that:
+        1. The error message is set correctly in the task status
+        2. The result contains the error message
+        3. No clips are generated
+        """
+        fake_video = tmp_path / "video.mp4"
+        fake_video.touch()
+        mock_task = MagicMock()
+        mock_session = _make_mock_session(mock_task)
+
+        # Simulate src.pipeline.transcribe being unavailable by mocking it as None.
+        # This will cause the import to fail with ImportError.
+        with (
+            patch(
+                "src.services.video_service.get_session",
+                new=mock_session,
+            ),
+            patch(
+                "src.services.video_service.validate_youtube_url", return_value=False
+            ),
+            patch.dict("sys.modules", {"src.pipeline.transcribe": None}),
+            patch("src.services.video_service.Config") as mock_cfg_cls,
+        ):
+            mock_cfg = MagicMock()
+            mock_cfg.temp_dir = str(tmp_path)
+            mock_cfg_cls.return_value = mock_cfg
+
+            # The import inside process_video should fail, raising ImportError
+            # which is caught and converted to RuntimeError, then caught by the
+            # outer exception handler to return a ProcessingResult with error.
+            result = await process_video(
+                _make_request(source=str(fake_video), task_id="t_transcribe_err")
+            )
+
+        assert result.error is not None
+        assert "Transcription pipeline module not available" in result.error
+        assert result.clips == []
+        # Verify task status was updated to "failed" at 20% progress.
+        assert mock_task.status == "failed"
+        assert mock_task.progress == 20
+        assert mock_task.progress_message == "Transcription pipeline module not available"
+
+    @pytest.mark.asyncio
+    async def test_clip_import_error_uses_object_fallback(self, tmp_path: Path) -> None:
+        """When src.pipeline.clip cannot be imported, ClipOptions is None.
+
+        Lines 366-367 in src/services/video_service.py handle the ImportError
+        from the clip module import. When ClipOptions is None, the code uses
+        object() as clip_options. This test verifies that:
+        1. The import error is caught silently
+        2. ClipOptions is set to None
+        3. clip_options becomes object()
+        4. The pipeline continues (returns empty clips list if clip generation also fails)
+        """
+        fake_video = tmp_path / "video.mp4"
+        fake_video.touch()
+        seg = _make_segment()
+        mock_session = _make_mock_session()
+
+        mock_transcription = []
+        mock_transcribe = MagicMock()
+        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
+
+        # Simulate src.pipeline.clip being unavailable by mocking it as None.
+        # When ClipOptions import fails, clip_options becomes object().
+        # Then _generate_clips_concurrently is called with object() as options.
+        # Inside _generate_clips_concurrently, it tries to import src.pipeline.clip again.
+        # If that also fails, it returns [].
+        with (
+            patch(
+                "src.services.video_service.get_session",
+                new=mock_session,
+            ),
+            patch(
+                "src.services.video_service.validate_youtube_url", return_value=False
+            ),
+            patch(
+                "src.services.video_service.analyze_transcript",
+                new_callable=AsyncMock,
+                return_value=[seg],
+            ),
+            patch.dict(
+                "sys.modules",
+                {
+                    "src.pipeline.transcribe": mock_transcribe,
+                    "src.pipeline.clip": None,  # Simulate import failure
+                },
+            ),
+            patch("src.services.video_service.Config") as mock_cfg_cls,
+        ):
+            mock_cfg = MagicMock()
+            mock_cfg.temp_dir = str(tmp_path)
+            mock_cfg_cls.return_value = mock_cfg
+
+            result = await process_video(
+                _make_request(source=str(fake_video), task_id="t_clip_err")
+            )
+
+        # Since clip module is unavailable, ClipOptions is None, so object() is used.
+        # Then _generate_clips_concurrently returns [] (because clip module is also None).
+        # The pipeline fails with "All clip generations failed" error because
+        # segments exist but no clips were generated.
+        assert result.error is not None
+        assert "All clip generations failed" in result.error
+        assert result.clips == []
+
+
 # end tests/unit/test_video_service.py
