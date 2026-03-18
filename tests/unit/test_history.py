@@ -7,6 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.pages.history import (
     _format_date,
+    _load_tasks,
+    _render_empty_state,
+    _render_navigation,
+    _render_task_row,
     _truncate,
     delete_task,
     render,
@@ -342,4 +346,298 @@ class TestRenderErrorHandling:
         )
         mock_row.assert_not_called()
         mock_empty.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _load_tasks() direct tests (lines 61-75)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadTasks:
+    """Tests for _load_tasks() exercising the real DB query path."""
+
+    async def test_returns_tasks_and_clip_counts(self) -> None:
+        """_load_tasks() returns tasks list and clip_counts dict from the session."""
+        mock_task = _make_task("t1")
+
+        # task_result stub
+        task_scalars = MagicMock()
+        task_scalars.all.return_value = [mock_task]
+        task_result = MagicMock()
+        task_result.scalars.return_value = task_scalars
+
+        # count_result stub: returns iterable of (task_id, count) rows
+        count_result = MagicMock()
+        count_result.all.return_value = [("t1", 2)]
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[task_result, count_result])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("src.pages.history.get_session", return_value=mock_session):
+            tasks, clip_counts = await _load_tasks()
+
+        assert tasks == [mock_task]
+        assert clip_counts == {"t1": 2}
+
+    async def test_returns_empty_lists_when_no_tasks(self) -> None:
+        """_load_tasks() returns empty list and empty dict when the DB has no rows."""
+        task_scalars = MagicMock()
+        task_scalars.all.return_value = []
+        task_result = MagicMock()
+        task_result.scalars.return_value = task_scalars
+
+        count_result = MagicMock()
+        count_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[task_result, count_result])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("src.pages.history.get_session", return_value=mock_session):
+            tasks, clip_counts = await _load_tasks()
+
+        assert tasks == []
+        assert clip_counts == {}
+
+    async def test_executes_two_queries(self) -> None:
+        """_load_tasks() issues exactly two SQL queries: tasks then clip counts."""
+        task_scalars = MagicMock()
+        task_scalars.all.return_value = []
+        task_result = MagicMock()
+        task_result.scalars.return_value = task_scalars
+
+        count_result = MagicMock()
+        count_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[task_result, count_result])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("src.pages.history.get_session", return_value=mock_session):
+            await _load_tasks()
+
+        assert mock_session.execute.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _render_navigation() direct tests (lines 99-102)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderNavigation:
+    """Tests for _render_navigation() exercising the real UI widget path."""
+
+    def test_render_navigation_executes_without_error(self) -> None:
+        """_render_navigation() runs through all widget calls without raising."""
+        # The NiceGUI stub in conftest handles all ui.* calls — just call it.
+        _render_navigation()
+
+    def test_render_navigation_calls_ui_row(self) -> None:
+        """_render_navigation() creates a ui.row context manager."""
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+
+            _render_navigation()
+
+        mock_ui.row.assert_called_once()
+
+    def test_render_navigation_adds_home_and_settings_links(self) -> None:
+        """_render_navigation() creates link widgets for Home and Settings."""
+        link_targets: list[str] = []
+
+        def capture_link(label: str, target: str) -> MagicMock:
+            link_targets.append(target)
+            m = MagicMock()
+            m.classes.return_value = m
+            return m
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.row.return_value = cm
+            mock_ui.link.side_effect = capture_link
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+
+            _render_navigation()
+
+        assert "/" in link_targets
+        assert "/settings" in link_targets
+
+
+# ---------------------------------------------------------------------------
+# _render_task_row() direct tests (lines 112-125)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderTaskRow:
+    """Tests for _render_task_row() exercising the real UI widget path."""
+
+    def test_render_task_row_executes_without_error(self) -> None:
+        """_render_task_row() runs to completion without raising for a known status."""
+        task = _make_task("t1", status="completed")
+        # NiceGUI stub in conftest handles all ui.* calls
+        _render_task_row(task, clip_count=3)
+
+    def test_render_task_row_uses_status_color(self) -> None:
+        """_render_task_row() passes the correct color for a known status."""
+        task = _make_task("t1", status="failed")
+        badge_kwargs: list[dict] = []
+
+        def capture_badge(*args: object, **kwargs: object) -> MagicMock:
+            badge_kwargs.append({"args": args, "kwargs": kwargs})
+            return MagicMock()
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.card.return_value = cm
+            mock_ui.row.return_value = cm
+            mock_ui.badge.side_effect = capture_badge
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.button.return_value = MagicMock(
+                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
+            )
+
+            _render_task_row(task, clip_count=1)
+
+        assert badge_kwargs, "ui.badge should have been called"
+        assert badge_kwargs[0]["kwargs"].get("color") == "negative"
+
+    def test_render_task_row_unknown_status_uses_grey(self) -> None:
+        """_render_task_row() falls back to 'grey' for an unrecognised status."""
+        task = _make_task("t1", status="unknown_status")
+        badge_kwargs: list[dict] = []
+
+        def capture_badge(*args: object, **kwargs: object) -> MagicMock:
+            badge_kwargs.append({"args": args, "kwargs": kwargs})
+            return MagicMock()
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.card.return_value = cm
+            mock_ui.row.return_value = cm
+            mock_ui.badge.side_effect = capture_badge
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.button.return_value = MagicMock(
+                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
+            )
+
+            _render_task_row(task, clip_count=0)
+
+        assert badge_kwargs[0]["kwargs"].get("color") == "grey"
+
+    def test_render_task_row_singular_clip_label(self) -> None:
+        """_render_task_row() labels '1 clip' (not '1 clips') for a single clip."""
+        task = _make_task("t1", status="completed")
+        label_texts: list[str] = []
+
+        def capture_label(text: str) -> MagicMock:
+            label_texts.append(text)
+            return MagicMock(classes=MagicMock(return_value=MagicMock()))
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.card.return_value = cm
+            mock_ui.row.return_value = cm
+            mock_ui.badge.return_value = MagicMock()
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.side_effect = capture_label
+            mock_ui.button.return_value = MagicMock(
+                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
+            )
+
+            _render_task_row(task, clip_count=1)
+
+        assert any("1 clip" in t and "clips" not in t for t in label_texts)
+
+    def test_render_task_row_plural_clip_label(self) -> None:
+        """_render_task_row() labels '3 clips' for a count other than 1."""
+        task = _make_task("t1", status="completed")
+        label_texts: list[str] = []
+
+        def capture_label(text: str) -> MagicMock:
+            label_texts.append(text)
+            return MagicMock(classes=MagicMock(return_value=MagicMock()))
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.card.return_value = cm
+            mock_ui.row.return_value = cm
+            mock_ui.badge.return_value = MagicMock()
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.side_effect = capture_label
+            mock_ui.button.return_value = MagicMock(
+                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
+            )
+
+            _render_task_row(task, clip_count=3)
+
+        assert any("3 clips" in t for t in label_texts)
+
+
+# ---------------------------------------------------------------------------
+# _render_empty_state() direct tests (lines 133-138)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderEmptyStateDirect:
+    """Tests for _render_empty_state() exercising the real UI widget path."""
+
+    def test_render_empty_state_executes_without_error(self) -> None:
+        """_render_empty_state() runs through all widget calls without raising."""
+        # NiceGUI stub in conftest handles all ui.* calls
+        _render_empty_state()
+
+    def test_render_empty_state_creates_column(self) -> None:
+        """_render_empty_state() creates a ui.column context manager."""
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.column.return_value = cm
+            mock_ui.icon.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+
+            _render_empty_state()
+
+        mock_ui.column.assert_called_once()
+
+    def test_render_empty_state_links_to_home(self) -> None:
+        """_render_empty_state() includes a link to '/' for processing a new video."""
+        link_targets: list[str] = []
+
+        def capture_link(label: str, target: str) -> MagicMock:
+            link_targets.append(target)
+            return MagicMock(classes=MagicMock(return_value=MagicMock()))
+
+        with patch("src.pages.history.ui") as mock_ui:
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.column.return_value = cm
+            mock_ui.icon.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.link.side_effect = capture_link
+
+            _render_empty_state()
+
+        assert "/" in link_targets
 # end tests/unit/test_history.py
