@@ -2,6 +2,7 @@
 """Unit tests for src/pipeline/clip.py."""
 
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,9 @@ from src.pipeline.clip import (
     ClipGenerationError,
     ClipOptions,
     TranscriptSegment,
+    _find_fonts_dir,
+    _get_video_dimensions,
+    _run_ffmpeg,
     build_ffmpeg_command,
     filter_words_for_segment,
     generate_clip,
@@ -427,6 +431,141 @@ class TestTranscriptSegment:
         seg = TranscriptSegment(start_s=0.0, end_s=10.0)
         with pytest.raises(AttributeError):
             seg.new_field = "unexpected"  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# _run_ffmpeg — line 371
+# ---------------------------------------------------------------------------
+
+
+class TestRunFfmpeg:
+    """Tests for the _run_ffmpeg private helper."""
+
+    def test_calls_subprocess_run_and_returns_result(self) -> None:
+        """_run_ffmpeg delegates to subprocess.run and returns its result."""
+        fake_proc = MagicMock(spec=subprocess.CompletedProcess)
+        fake_proc.returncode = 0
+        fake_proc.stderr = b""
+
+        with patch("subprocess.run", return_value=fake_proc) as mock_run:
+            result = _run_ffmpeg(["ffmpeg", "-version"])
+
+        mock_run.assert_called_once_with(
+            ["ffmpeg", "-version"],
+            shell=False,
+            capture_output=True,
+            check=False,
+        )
+        assert result is fake_proc
+
+
+# ---------------------------------------------------------------------------
+# _get_video_dimensions — lines 392-410
+# ---------------------------------------------------------------------------
+
+
+class TestGetVideoDimensions:
+    """Tests for _get_video_dimensions private helper."""
+
+    def test_returns_fallback_when_cv2_not_installed(self, tmp_path: Path) -> None:
+        """Returns (1920, 1080) when cv2 cannot be imported."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        # Simulate cv2 not being importable
+        with patch.dict(sys.modules, {"cv2": None}):
+            result = _get_video_dimensions(video)
+
+        assert result == (1920, 1080)
+
+    def test_returns_dimensions_from_cv2_when_available(self, tmp_path: Path) -> None:
+        """Returns (width, height) from cv2.VideoCapture when cv2 is present."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        mock_cv2 = MagicMock()
+        mock_cap = MagicMock()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cap.get.side_effect = lambda prop: (
+            1280.0 if prop == mock_cv2.CAP_PROP_FRAME_WIDTH else 720.0
+        )
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            result = _get_video_dimensions(video)
+
+        assert result == (1280, 720)
+        mock_cap.release.assert_called_once()
+
+    def test_returns_fallback_when_cv2_returns_zero_dimensions(
+        self, tmp_path: Path
+    ) -> None:
+        """Returns (1920, 1080) when cv2 reports width=0 or height=0."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        mock_cv2 = MagicMock()
+        mock_cap = MagicMock()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cap.get.return_value = 0.0  # Both width and height are zero
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            result = _get_video_dimensions(video)
+
+        assert result == (1920, 1080)
+        mock_cap.release.assert_called_once()
+
+    def test_returns_fallback_on_cv2_exception(self, tmp_path: Path) -> None:
+        """Returns (1920, 1080) when cv2.VideoCapture.get raises an exception."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+
+        mock_cv2 = MagicMock()
+        mock_cap = MagicMock()
+        mock_cv2.VideoCapture.return_value = mock_cap
+        mock_cap.get.side_effect = RuntimeError("cv2 internal error")
+
+        with patch.dict(sys.modules, {"cv2": mock_cv2}):
+            result = _get_video_dimensions(video)
+
+        assert result == (1920, 1080)
+        mock_cap.release.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _find_fonts_dir — lines 423-429
+# ---------------------------------------------------------------------------
+
+
+class TestFindFontsDir:
+    """Tests for _find_fonts_dir private helper."""
+
+    def test_returns_none_when_no_fonts_dir_exists(self, tmp_path: Path) -> None:
+        """Returns None when no 'fonts' directory is found within 6 levels."""
+        # Use a deeply nested fake path with no fonts/ anywhere
+        fake_file = tmp_path / "a" / "b" / "c" / "clip.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+
+        with patch("src.pipeline.clip.__file__", str(fake_file)):
+            result = _find_fonts_dir()
+
+        assert result is None
+
+    def test_returns_fonts_dir_when_present(self, tmp_path: Path) -> None:
+        """Returns Path to fonts/ directory when found in the ancestor tree."""
+        # Create structure: tmp_path/src/pipeline/clip.py and tmp_path/fonts/
+        pipeline_dir = tmp_path / "src" / "pipeline"
+        pipeline_dir.mkdir(parents=True)
+        fake_file = pipeline_dir / "clip.py"
+        fake_file.touch()
+
+        fonts_dir = tmp_path / "fonts"
+        fonts_dir.mkdir()
+
+        with patch("src.pipeline.clip.__file__", str(fake_file)):
+            result = _find_fonts_dir()
+
+        assert result == fonts_dir
 
 
 # end tests/unit/test_clip.py
