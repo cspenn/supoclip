@@ -432,7 +432,7 @@ async def _analyze_with_pydantic_ai(
     )
 
     result = await agent.run(user_prompt)
-    raw_analysis: _RawAnalysis = result.data
+    raw_analysis: _RawAnalysis = result.output
     logger.info(
         "Pydantic AI agent found %d segments",
         len(raw_analysis.most_relevant_segments),

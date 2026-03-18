@@ -721,7 +721,7 @@ class TestAnalyzeWithPydanticAI:
         )
 
         mock_result = MagicMock()
-        mock_result.data = raw_analysis
+        mock_result.output = raw_analysis
 
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
@@ -749,7 +749,7 @@ class TestAnalyzeWithPydanticAI:
         )
 
         mock_result = MagicMock()
-        mock_result.data = raw_analysis
+        mock_result.output = raw_analysis
 
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)

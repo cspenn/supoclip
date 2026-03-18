@@ -8,13 +8,21 @@ Progress is reported via a plain callable so this module stays
 UI-agnostic (works with NiceGUI, SSE, WebSocket, or tests).
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.config import Config
+
+if TYPE_CHECKING:
+    from src.pipeline.clip import ClipOptions
+    from src.pipeline.subtitles import SubtitleStyle
+
 from src.database import get_session
 from src.models import GeneratedClip, Task
 from src.pipeline.analyze import AnalysisError, TranscriptSegment, analyze_transcript
@@ -59,7 +67,7 @@ class ProcessingRequest:
     min_clip_length: int = 15
     max_clip_length: int = 45
     output_resolution: str = "1080p"
-    subtitle_style: object | None = None  # SubtitleStyle once pipeline/subtitles exists
+    subtitle_style: "SubtitleStyle | None" = None
     logo_path: Path | None = None
     custom_prompt: str | None = None
 
@@ -166,7 +174,7 @@ async def _generate_clips_concurrently(
     segments: list[TranscriptSegment],
     words: list[dict],
     task_id: str,
-    clip_options: object,
+    clip_options: ClipOptions | None,
     clips_dir: Path,
     progress_callback: ProgressCallback | None = None,
 ) -> list[tuple[Path, TranscriptSegment]]:
@@ -191,6 +199,7 @@ async def _generate_clips_concurrently(
     # Import lazily so this module is importable even before pipeline/clip exists.
     try:
         from src.pipeline.clip import ClipGenerationError, generate_clip
+        from src.pipeline.clip import TranscriptSegment as ClipSegment
     except ImportError:
         logger.error("pipeline_clip_not_found: src.pipeline.clip is not available")
         return []
@@ -205,10 +214,16 @@ async def _generate_clips_concurrently(
     ) -> None:
         clip_filename = f"{task_id}_clip_{index + 1:02d}.mp4"
         clip_path = clips_dir / clip_filename
+        clip_segment = ClipSegment(
+            start_s=segment.start_time,
+            end_s=segment.end_time,
+            text=segment.text,
+            relevance_score=segment.score,
+        )
         try:
             await generate_clip(
                 source_video=source_video,
-                segment=segment,
+                segment=clip_segment,
                 words=words,
                 output_path=clip_path,
                 options=clip_options,
@@ -325,7 +340,7 @@ async def process_video(
         try:
             from src.pipeline.transcribe import format_transcript_text, transcribe_video
 
-            transcription = await transcribe_video(source_video)
+            transcription = await asyncio.to_thread(transcribe_video, source_video)
             transcript_text = format_transcript_text(transcription)
             words: list[dict] = transcription
         except ImportError:
@@ -373,7 +388,7 @@ async def process_video(
                 logo_path=request.logo_path,
             )
             if ClipOptions is not None
-            else object()
+            else None
         )
 
         generated = await _generate_clips_concurrently(

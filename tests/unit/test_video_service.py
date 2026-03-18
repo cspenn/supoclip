@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.pipeline.analyze import TranscriptSegment
+from src.pipeline.clip import TranscriptSegment as ClipTranscriptSegment
 from src.services.video_service import (
     ProcessingRequest,
     ProcessingResult,
@@ -283,6 +284,7 @@ class TestGenerateClipsConcurrently:
         mock_module = MagicMock()
         mock_module.generate_clip = fake_generate
         mock_module.ClipGenerationError = Exception
+        mock_module.TranscriptSegment = ClipTranscriptSegment
 
         with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
             result = await _generate_clips_concurrently(
@@ -290,7 +292,7 @@ class TestGenerateClipsConcurrently:
                 segments=[seg1, seg2],
                 words=[],
                 task_id="t1",
-                clip_options=object(),
+                clip_options=None,
                 clips_dir=tmp_path,
             )
 
@@ -309,13 +311,14 @@ class TestGenerateClipsConcurrently:
             pass
 
         async def partial_fail(source_video, segment, words, output_path, options):
-            if segment.start_time == 10.0:
+            if segment.start_s == 10.0:
                 raise _ClipErr("bad segment")
             output_path.touch()
 
         mock_module = MagicMock()
         mock_module.generate_clip = partial_fail
         mock_module.ClipGenerationError = _ClipErr
+        mock_module.TranscriptSegment = ClipTranscriptSegment
 
         with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
             result = await _generate_clips_concurrently(
@@ -323,7 +326,7 @@ class TestGenerateClipsConcurrently:
                 segments=[seg1, seg2],
                 words=[],
                 task_id="t1",
-                clip_options=object(),
+                clip_options=None,
                 clips_dir=tmp_path,
             )
 
@@ -342,6 +345,7 @@ class TestGenerateClipsConcurrently:
         mock_module = MagicMock()
         mock_module.generate_clip = fake_generate
         mock_module.ClipGenerationError = Exception
+        mock_module.TranscriptSegment = ClipTranscriptSegment
 
         def cb(pct: int, msg: str) -> None:
             progress_calls.append((pct, msg))
@@ -352,7 +356,7 @@ class TestGenerateClipsConcurrently:
                 segments=[seg],
                 words=[],
                 task_id="t1",
-                clip_options=object(),
+                clip_options=None,
                 clips_dir=tmp_path,
                 progress_callback=cb,
             )
@@ -375,6 +379,7 @@ class TestGenerateClipsConcurrently:
         mock_module = MagicMock()
         mock_module.generate_clip = always_raises
         mock_module.ClipGenerationError = ValueError  # different from OSError
+        mock_module.TranscriptSegment = ClipTranscriptSegment
 
         with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
             result = await _generate_clips_concurrently(
@@ -382,7 +387,7 @@ class TestGenerateClipsConcurrently:
                 segments=[seg],
                 words=[],
                 task_id="t1",
-                clip_options=object(),
+                clip_options=None,
                 clips_dir=tmp_path,
             )
 
@@ -414,11 +419,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -474,11 +480,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -533,11 +540,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         def cb(pct: int, msg: str) -> None:
@@ -658,7 +666,7 @@ class TestProcessVideo:
         mock_session = _make_mock_session()
 
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(
+        mock_transcribe.transcribe_video = MagicMock(
             side_effect=RuntimeError("parakeet OOM")
         )
         mock_transcribe.format_transcript_text = MagicMock(return_value="")
@@ -696,7 +704,7 @@ class TestProcessVideo:
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -743,11 +751,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = always_fail
         mock_clip_module.ClipGenerationError = _ClipErr
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -796,18 +805,19 @@ class TestProcessVideo:
             pass
 
         async def partial_fail(source_video, segment, words, output_path, options):
-            if segment.start_time == 10.0:
+            if segment.start_s == 10.0:
                 raise _ClipErr("bad segment")
             output_path.touch()
 
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = partial_fail
         mock_clip_module.ClipGenerationError = _ClipErr
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -861,11 +871,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -923,11 +934,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -980,11 +992,12 @@ class TestProcessVideo:
         mock_clip_module = MagicMock()
         mock_clip_module.generate_clip = fake_generate
         mock_clip_module.ClipGenerationError = Exception
-        mock_clip_module.ClipOptions = MagicMock(return_value=object())
+        mock_clip_module.ClipOptions = MagicMock(return_value=None)
+        mock_clip_module.TranscriptSegment = ClipTranscriptSegment
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         with (
@@ -1096,7 +1109,7 @@ class TestProcessVideo:
 
         mock_transcription = []
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = AsyncMock(return_value=mock_transcription)
+        mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
         # Simulate src.pipeline.clip being unavailable by mocking it as None.

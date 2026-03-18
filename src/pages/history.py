@@ -69,7 +69,7 @@ async def _load_tasks() -> tuple[list[Task], dict[str, int]]:
                 GeneratedClip.task_id
             )
         )
-        clip_counts: dict[str, int] = dict(count_result.all())
+        clip_counts: dict[str, int] = {row[0]: row[1] for row in count_result.all()}
 
     log.debug("history.tasks_loaded", count=len(tasks))
     return tasks, clip_counts
