@@ -14,7 +14,7 @@
 
 | File | What changes |
 |------|-------------|
-| `src/pages/settings.py` | Add `from pathlib import Path`, `from fonttools.ttLib import TTFont`, add `Config` to existing import; add `_discover_fonts()`, `_build_typo_html()`, `_build_phone_html()` at module level; update `render()` throughout |
+| `src/pages/settings.py` | Add `from pathlib import Path`, `from fontTools.ttLib import TTFont`, add `Config` to existing import; add `_discover_fonts()`, `_build_typo_html()`, `_build_phone_html()` at module level; update `render()` throughout |
 | `tests/unit/test_settings.py` | Add `TestDiscoverFonts`, `TestBuildPreviewHtml`; update `_build_capturing_ui_mock` and `_build_ui_mock` to mock `ui.html`; add integration tests `test_font_family_select_not_input`, `test_reset_calls_update_preview` |
 
 ---
@@ -177,7 +177,7 @@ import re
 from pathlib import Path
 
 import structlog
-from fonttools.ttLib import TTFont
+from fontTools.ttLib import TTFont
 from nicegui import ui
 
 from src.config import Config, get_config
