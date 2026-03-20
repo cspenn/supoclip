@@ -275,6 +275,7 @@ async def render() -> None:
     """
     prefs = await load_prefs()
     config = get_config()
+    font_options = _discover_fonts(current_value=prefs.font_family)
 
     # Mutable state for logo path — updated by upload handler
     logo_state: dict[str, str | None] = {"path": prefs.logo_path}
@@ -288,41 +289,55 @@ async def render() -> None:
         with ui.card().classes("w-full"):
             ui.label("Font Settings").classes("text-xl font-semibold mb-4")
 
-            font_family = ui.input(
+            font_family = ui.select(
                 label="Font Family",
+                options=font_options,
                 value=prefs.font_family,
-                placeholder="e.g. Arial, TikTokSans-Regular",
+                on_change=lambda _: _update_preview(),
             ).classes("w-full")
 
-            ui.label(f"Font Size: {prefs.font_size}pt").classes("mt-4")
+            size_label = ui.label(f"Font Size: {prefs.font_size}pt").classes("mt-4")
             font_size = ui.slider(min=8, max=72, value=prefs.font_size, step=1).classes(
                 "w-full"
             )
 
             font_color = ui.color_input(
-                label="Font Color", value=prefs.font_color
+                label="Font Color",
+                value=prefs.font_color,
+                on_change=lambda _: _update_preview(),
             ).classes("w-full mt-4")
 
             stroke_color = ui.color_input(
-                label="Stroke Color", value=prefs.font_stroke_color
+                label="Stroke Color",
+                value=prefs.font_stroke_color,
+                on_change=lambda _: _update_preview(),
             ).classes("w-full mt-4")
 
-            ui.label(f"Stroke Width: {prefs.font_stroke_width}").classes("mt-4")
+            stroke_label = ui.label(
+                f"Stroke Width: {prefs.font_stroke_width:.1f}"
+            ).classes("mt-4")
             stroke_width = ui.slider(
                 min=0, max=8, value=prefs.font_stroke_width, step=0.5
             ).classes("w-full")
 
-            ui.label(f"Shadow Offset: {prefs.font_shadow_offset}px").classes("mt-4")
+            shadow_label = ui.label(
+                f"Shadow Offset: {prefs.font_shadow_offset}px"
+            ).classes("mt-4")
             shadow_offset = ui.slider(
                 min=0, max=8, value=prefs.font_shadow_offset, step=1
             ).classes("w-full")
 
-            ui.label(
+            subtitle_label = ui.label(
                 f"Subtitle Y Position: {prefs.subtitle_position_y}% from top"
             ).classes("mt-4")
             subtitle_y = ui.slider(
                 min=50, max=95, value=prefs.subtitle_position_y, step=1
             ).classes("w-full")
+
+            # Live preview
+            ui.label("Preview").classes("mt-6 text-sm font-semibold text-gray-500")
+            typo_preview = ui.html("").classes("w-full mt-2")
+            phone_preview = ui.html("").classes("w-full mt-4")
 
         # ------------------------------------------------------------------ #
         # Clip settings
@@ -330,12 +345,16 @@ async def render() -> None:
         with ui.card().classes("w-full"):
             ui.label("Clip Settings").classes("text-xl font-semibold mb-4")
 
-            ui.label(f"Min Clip Length: {prefs.min_clip_length}s").classes("mt-2")
+            min_label = ui.label(f"Min Clip Length: {prefs.min_clip_length}s").classes(
+                "mt-2"
+            )
             min_clip = ui.slider(
                 min=10, max=60, value=prefs.min_clip_length, step=1
             ).classes("w-full")
 
-            ui.label(f"Max Clip Length: {prefs.max_clip_length}s").classes("mt-4")
+            max_label = ui.label(f"Max Clip Length: {prefs.max_clip_length}s").classes(
+                "mt-4"
+            )
             max_clip = ui.slider(
                 min=10, max=90, value=prefs.max_clip_length, step=1
             ).classes("w-full")
@@ -457,6 +476,12 @@ async def render() -> None:
 
             def reset() -> None:
                 """Restore all controls to their default values."""
+                # _update_preview is a co-local in render() defined after this
+                # `with` block.  Python does NOT have block scope — `with`
+                # blocks share the enclosing function's local namespace.
+                # _update_preview will exist in render()'s locals by the time
+                # reset() is ever called (user click happens after render()
+                # returns).  This is safe; mypy strict=false does not flag it.
                 font_family.value = "Arial"
                 font_size.value = 24
                 font_color.value = "#FFFFFF"
@@ -470,6 +495,7 @@ async def render() -> None:
                 ai_prompt.value = ""
                 logo_state["path"] = None
                 logo_display.text = "Current logo: None"
+                _update_preview()
                 ui.notify("Settings reset to defaults.", color="info")
 
             ui.button("Save Settings", on_click=save).classes(
@@ -478,4 +504,41 @@ async def render() -> None:
             ui.button("Reset to Defaults", on_click=reset).classes(
                 "bg-gray-500 text-white flex-1"
             )
+
+    # ---------------------------------------------------------------------- #
+    # Reactive wiring — define after all widget references exist
+    # ---------------------------------------------------------------------- #
+
+    def _update_preview() -> None:
+        """Update all slider labels and refresh the live preview HTML."""
+        fam = str(font_family.value or "Arial")
+        size = int(font_size.value)
+        fc = str(font_color.value or "#FFFFFF")
+        sc = str(stroke_color.value or "#000000")
+        sw = float(stroke_width.value)
+        so = int(shadow_offset.value)
+        sy = int(subtitle_y.value)
+
+        size_label.set_text(f"Font Size: {size}pt")
+        stroke_label.set_text(f"Stroke Width: {sw:.1f}")
+        shadow_label.set_text(f"Shadow Offset: {so}px")
+        subtitle_label.set_text(f"Subtitle Y Position: {sy}% from top")
+        min_label.set_text(f"Min Clip Length: {int(min_clip.value)}s")
+        max_label.set_text(f"Max Clip Length: {int(max_clip.value)}s")
+
+        typo_preview.set_content(_build_typo_html(fam, size, fc, sc, sw, so))
+        phone_preview.set_content(_build_phone_html(fam, size, fc, sc, sw, so, sy))
+
+    # Wire all sliders — update on release only (Quasar `change` event).
+    # Dropdowns (font_family) and colour inputs (font_color, stroke_color)
+    # are wired via on_change= kwarg in their constructors above.
+    font_size.on("change", lambda _: _update_preview())
+    stroke_width.on("change", lambda _: _update_preview())
+    shadow_offset.on("change", lambda _: _update_preview())
+    subtitle_y.on("change", lambda _: _update_preview())
+    min_clip.on("change", lambda _: _update_preview())
+    max_clip.on("change", lambda _: _update_preview())
+
+    # Initialise preview with saved values
+    _update_preview()
 # end src/pages/settings.py

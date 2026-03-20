@@ -651,6 +651,7 @@ class TestRender:
         with (
             patch("src.pages.settings.load_prefs", new=AsyncMock(return_value=existing)),
             patch("src.pages.settings.get_config", return_value=_mock_config()),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial", "Comic Sans"]),
             patch("src.pages.settings.ui", new=_build_ui_mock()),
         ):
             from src.pages.settings import render
@@ -678,6 +679,7 @@ class TestRender:
         with (
             patch("src.pages.settings.load_prefs", new=AsyncMock(return_value=defaults)),
             patch("src.pages.settings.get_config", return_value=_mock_config()),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
             patch("src.pages.settings.ui", new=_build_ui_mock()),
         ):
             from src.pages.settings import render
@@ -828,7 +830,7 @@ def _build_capturing_ui_mock(
         return MagicMock()
 
     mock_ui = MagicMock()
-    for name in ("column", "card", "row", "label", "input", "textarea", "select"):
+    for name in ("column", "card", "row", "label", "input", "textarea", "select", "html"):
         getattr(mock_ui, name).side_effect = _make_elem
 
     mock_ui.slider.side_effect = _slider
@@ -836,6 +838,26 @@ def _build_capturing_ui_mock(
     mock_ui.button.side_effect = _button
     mock_ui.upload.side_effect = _upload
     mock_ui.notify.side_effect = _notify
+
+    html_elements: list[MagicMock] = []
+    captured["html_elements"] = html_elements
+
+    def _html(*_args: object, **_kwargs: object) -> MagicMock:
+        elem = _make_elem()
+        html_elements.append(elem)
+        return elem
+
+    mock_ui.html.side_effect = _html
+
+    label_elements: list[MagicMock] = []
+    captured["label_elements"] = label_elements
+
+    def _label_capture(*_args: object, **_kwargs: object) -> MagicMock:
+        elem = _make_elem(*_args, **_kwargs)
+        label_elements.append(elem)
+        return elem
+
+    mock_ui.label.side_effect = _label_capture
 
     return mock_ui, captured
 
@@ -861,6 +883,18 @@ def _make_default_prefs() -> UserPreferences:
 
 class TestHandlerCallbacks:
     """Tests that exercise inner closures in render() via captured callbacks."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_discover_fonts(self) -> None:  # type: ignore[override]
+        """Patch _discover_fonts for all TestHandlerCallbacks tests.
+
+        After render() calls _discover_fonts(), without this patch every
+        TestHandlerCallbacks test would scan the real fonts/ directory,
+        violating unit test isolation.  Tests that need a different return
+        value can override with their own explicit patch inside the test.
+        """
+        with patch("src.pages.settings._discover_fonts", return_value=["Arial"]):
+            yield
 
     async def test_save_max_less_than_min_shows_error(
         self, tmp_path: Path
@@ -1121,6 +1155,215 @@ class TestHandlerCallbacks:
         assert expected.exists()
         assert expected.read_bytes() == b"fake-image-bytes"
 
+    async def test_font_family_uses_select_not_input(
+        self, tmp_path: Path
+    ) -> None:
+        """font_family widget is a ui.select, not a ui.input."""
+        import src.pages.settings as settings_mod
+
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, _captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
+        ):
+            await settings_mod.render()
+
+        # ui.select must have been called with label="Font Family"
+        select_calls = mock_ui.select.call_args_list
+        font_family_select = any(
+            "Font Family" in str(call) for call in select_calls
+        )
+        assert font_family_select, (
+            f"ui.select not called with Font Family; calls={select_calls}"
+        )
+
+        # ui.input must NOT have been called with label="Font Family"
+        input_calls = mock_ui.input.call_args_list
+        font_family_input = any(
+            "Font Family" in str(call) for call in input_calls
+        )
+        assert not font_family_input, (
+            f"ui.input was incorrectly called with Font Family; calls={input_calls}"
+        )
+
+    async def test_reset_calls_update_preview(self, tmp_path: Path) -> None:
+        """reset() triggers _update_preview(), updating both html preview elements."""
+        import src.pages.settings as settings_mod
+
+        notify_calls: list[tuple] = []
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock(notify_calls=notify_calls)
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
+        ):
+            await settings_mod.render()
+            reset_cb = next(
+                (v for k, v in captured.items() if "Reset" in k), None
+            )
+            assert reset_cb is not None, (
+                f"Reset callback missing; keys={list(captured)}"
+            )
+            # Clear call counts from the initial _update_preview() call at render time
+            html_elements: list[MagicMock] = captured["html_elements"]  # type: ignore[assignment]
+            for elem in html_elements:
+                elem.set_content.reset_mock()
+
+            reset_cb()  # type: ignore[operator]
+
+        # After reset, _update_preview() must have been called — both html elements updated
+        assert len(html_elements) >= 2, (
+            f"Expected ≥2 html elements (typo + phone); got {len(html_elements)}"
+        )
+        assert html_elements[0].set_content.called, "typo_preview.set_content not called after reset"
+        assert html_elements[1].set_content.called, "phone_preview.set_content not called after reset"
+
+
+# ---------------------------------------------------------------------------
+# _update_preview closure — verified via initial call at end of render()
+# ---------------------------------------------------------------------------
+
+
+class TestUpdatePreview:
+    """Verify that _update_preview() updates labels and preview HTML elements.
+
+    _update_preview is a closure inside render().  It is called once at the
+    end of render() to initialise the preview.  These tests drive it through
+    that initial call using specific pref values and assert on the resulting
+    mock state.
+    """
+
+    async def test_update_preview_sets_label_texts(self, tmp_path: Path) -> None:
+        """_update_preview() calls set_text on all six slider labels correctly."""
+        import src.pages.settings as settings_mod
+
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        prefs = _make_default_prefs()
+        prefs.font_size = 32
+        prefs.font_stroke_width = 3.5
+        prefs.font_shadow_offset = 2
+        prefs.subtitle_position_y = 80
+        prefs.min_clip_length = 20
+        prefs.max_clip_length = 50
+        mock_ui, captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=prefs),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
+        ):
+            await settings_mod.render()
+
+        # Collect every set_text() call across all captured label mocks
+        set_text_args: list[str] = []
+        for elem in captured["label_elements"]:  # type: ignore[index]
+            for call in elem.set_text.call_args_list:
+                if call.args:
+                    set_text_args.append(str(call.args[0]))
+
+        assert any("Font Size: 32pt" in s for s in set_text_args), (
+            f"Expected 'Font Size: 32pt'; got set_text calls: {set_text_args}"
+        )
+        assert any("Stroke Width: 3.5" in s for s in set_text_args), (
+            f"Expected 'Stroke Width: 3.5'; got: {set_text_args}"
+        )
+        assert any("Shadow Offset: 2px" in s for s in set_text_args), (
+            f"Expected 'Shadow Offset: 2px'; got: {set_text_args}"
+        )
+        assert any("Subtitle Y Position: 80% from top" in s for s in set_text_args), (
+            f"Expected 'Subtitle Y Position: 80% from top'; got: {set_text_args}"
+        )
+        assert any("Min Clip Length: 20s" in s for s in set_text_args), (
+            f"Expected 'Min Clip Length: 20s'; got: {set_text_args}"
+        )
+        assert any("Max Clip Length: 50s" in s for s in set_text_args), (
+            f"Expected 'Max Clip Length: 50s'; got: {set_text_args}"
+        )
+
+    async def test_update_preview_calls_set_content_on_both_html_elements(
+        self, tmp_path: Path
+    ) -> None:
+        """_update_preview() calls set_content() on both typo and phone html elements."""
+        import src.pages.settings as settings_mod
+
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        mock_ui, captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=_make_default_prefs()),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
+        ):
+            await settings_mod.render()
+
+        html_elements: list[MagicMock] = captured["html_elements"]  # type: ignore[assignment]
+        assert len(html_elements) >= 2, (
+            f"Expected ≥2 html elements (typo + phone frame); got {len(html_elements)}"
+        )
+        assert html_elements[0].set_content.called, (
+            "typo_preview.set_content() was not called by _update_preview()"
+        )
+        assert html_elements[1].set_content.called, (
+            "phone_preview.set_content() was not called by _update_preview()"
+        )
+
+    async def test_update_preview_preview_html_contains_font_settings(
+        self, tmp_path: Path
+    ) -> None:
+        """The HTML passed to typo_preview.set_content() contains color, size, and stroke."""
+        import src.pages.settings as settings_mod
+
+        cfg_mock = MagicMock()
+        cfg_mock.temp_dir = tmp_path
+        prefs = _make_default_prefs()
+        prefs.font_color = "#FF1234"
+        prefs.font_size = 28
+        prefs.font_stroke_width = 4.0
+        mock_ui, captured = _build_capturing_ui_mock()
+
+        with (
+            patch(
+                "src.pages.settings.load_prefs",
+                new=AsyncMock(return_value=prefs),
+            ),
+            patch("src.pages.settings.get_config", return_value=cfg_mock),
+            patch("src.pages.settings.ui", new=mock_ui),
+            patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
+        ):
+            await settings_mod.render()
+
+        html_elements: list[MagicMock] = captured["html_elements"]  # type: ignore[assignment]
+        assert html_elements, "No html elements captured"
+        typo_html = str(html_elements[0].set_content.call_args)
+        assert "#FF1234" in typo_html, f"Expected '#FF1234' in typo HTML; got: {typo_html}"
+        assert "28px" in typo_html, f"Expected '28px' in typo HTML; got: {typo_html}"
+        assert "4.0px" in typo_html, f"Expected '4.0px' in typo HTML; got: {typo_html}"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1180,6 +1423,7 @@ def _build_ui_mock() -> MagicMock:
         "row",
         "label",
         "input",
+        "html",
         "slider",
         "color_input",
         "textarea",
