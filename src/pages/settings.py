@@ -293,7 +293,6 @@ async def render() -> None:
                 label="Font Family",
                 options=font_options,
                 value=prefs.font_family,
-                on_change=lambda _: _update_preview(),
             ).classes("w-full")
 
             size_label = ui.label(f"Font Size: {prefs.font_size}pt").classes("mt-4")
@@ -304,13 +303,11 @@ async def render() -> None:
             font_color = ui.color_input(
                 label="Font Color",
                 value=prefs.font_color,
-                on_change=lambda _: _update_preview(),
             ).classes("w-full mt-4")
 
             stroke_color = ui.color_input(
                 label="Stroke Color",
                 value=prefs.font_stroke_color,
-                on_change=lambda _: _update_preview(),
             ).classes("w-full mt-4")
 
             stroke_label = ui.label(
@@ -531,9 +528,10 @@ async def render() -> None:
         typo_preview.set_content(_build_typo_html(fam, size, fc, sc, sw, so))
         phone_preview.set_content(_build_phone_html(fam, size, fc, sc, sw, so, sy))
 
-    # Wire all sliders — update on release only (Quasar `change` event).
-    # Dropdowns (font_family) and colour inputs (font_color, stroke_color)
-    # are wired via on_change= kwarg in their constructors above.
+    # Wire all interactive widgets — update on release only (Quasar `change` event).
+    font_family.on("change", _update_preview)
+    font_color.on("change", _update_preview)
+    stroke_color.on("change", _update_preview)
     font_size.on("change", _update_preview)
     stroke_width.on("change", _update_preview)
     shadow_offset.on("change", _update_preview)
