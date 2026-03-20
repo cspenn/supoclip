@@ -62,7 +62,7 @@ def _discover_fonts(
         files fail to parse.
     """
     names: list[str] = []
-    for ttf_path in sorted(fonts_dir.glob("*.ttf")):
+    for ttf_path in fonts_dir.glob("*.ttf"):
         try:
             font = TTFont(str(ttf_path))
             name_table = font["name"]
