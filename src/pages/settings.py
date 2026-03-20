@@ -96,11 +96,13 @@ def _discover_fonts(
 # ---------------------------------------------------------------------------
 
 _PREVIEW_SAMPLE_TEXT = "Every moment is a fresh beginning."
+_PREVIEW_SAMPLE_TEXT_BR = _PREVIEW_SAMPLE_TEXT.replace(" a ", " a<br>")
+_PREVIEW_BG_COLOR = "#1a1a1a"
 
 
 def _build_subtitle_style(
     font_family: str,
-    font_size_px: int,
+    font_size: int,
     font_color: str,
     stroke_color: str,
     stroke_width: float,
@@ -110,7 +112,7 @@ def _build_subtitle_style(
 
     Args:
         font_family: CSS font-family value.
-        font_size_px: Font size already in CSS pixels.
+        font_size: Font size in CSS pixels.
         font_color: Hex colour string for the text.
         stroke_color: Hex colour string for the stroke/shadow.
         stroke_width: Stroke width in pixels.
@@ -122,7 +124,7 @@ def _build_subtitle_style(
     return (
         f"color: {font_color};"
         f"font-family: {font_family}, sans-serif;"
-        f"font-size: {font_size_px}px;"
+        f"font-size: {font_size}px;"
         f"font-weight: bold;"
         f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
         f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
@@ -152,9 +154,9 @@ def _build_typo_html(
     """
     style = _build_subtitle_style(font_family, font_size, font_color, stroke_color, stroke_width, shadow_offset)
     return (
-        '<div style="background-color: #1a1a1a; padding: 16px; border-radius: 8px;">'
+        f'<div style="background-color: {_PREVIEW_BG_COLOR}; padding: 16px; border-radius: 8px;">'
         f'<span style="{style}">'
-        f"{_PREVIEW_SAMPLE_TEXT.replace(' a ', ' a<br>')}"
+        f"{_PREVIEW_SAMPLE_TEXT_BR}"
         "</span>"
         "</div>"
     )
@@ -187,7 +189,7 @@ def _build_phone_html(
     text_style = _build_subtitle_style(font_family, scaled_size, font_color, stroke_color, stroke_width, shadow_offset)
     return (
         '<div style="width: 120px; height: 213px; margin: 16px auto;'
-        " background-color: #1a1a1a; border: 2px solid #555;"
+        f" background-color: {_PREVIEW_BG_COLOR}; border: 2px solid #555;"
         ' border-radius: 8px; position: relative; overflow: hidden;">'
         f'<span style="position: absolute; left: 50%;'
         f" transform: translateX(-50%); top: {subtitle_y}%;"

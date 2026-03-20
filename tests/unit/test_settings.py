@@ -380,7 +380,7 @@ class TestBuildPreviewHtml:
         )
         # font_size=6 → max(8, 6//3=2) = 8 — must produce 8px, not 2px
         assert "8px" in html
-        assert "2px" not in html.split("font-size")[1].split(";")[0]  # 2px not in font-size value
+        assert "font-size: 2px" not in html
 
     def test_typo_html_contains_line_break(self) -> None:
         """Typography card HTML contains a <br> for two-line display."""
@@ -402,7 +402,7 @@ class TestBuildPreviewHtml:
 
         css = _build_subtitle_style(
             font_family="Arial",
-            font_size_px=24,
+            font_size=24,
             font_color="#FFFFFF",
             stroke_color="#000000",
             stroke_width=2.0,
