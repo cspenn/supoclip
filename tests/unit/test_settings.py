@@ -365,6 +365,55 @@ class TestBuildPreviewHtml:
         )
         assert "Every moment" in html
 
+    def test_phone_html_font_size_clamped_to_minimum(self) -> None:
+        """Phone frame font size is clamped to 8px minimum for very small inputs."""
+        from src.pages.settings import _build_phone_html
+
+        html = _build_phone_html(
+            font_family="Arial",
+            font_size=6,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=1.0,
+            shadow_offset=0,
+            subtitle_y=75,
+        )
+        # font_size=6 → max(8, 6//3=2) = 8 — must produce 8px, not 2px
+        assert "8px" in html
+        assert "2px" not in html.split("font-size")[1].split(";")[0]  # 2px not in font-size value
+
+    def test_typo_html_contains_line_break(self) -> None:
+        """Typography card HTML contains a <br> for two-line display."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "<br>" in html
+
+    def test_build_subtitle_style_returns_expected_properties(self) -> None:
+        """_build_subtitle_style returns a CSS string with all six properties."""
+        from src.pages.settings import _build_subtitle_style
+
+        css = _build_subtitle_style(
+            font_family="Arial",
+            font_size_px=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "color: #FFFFFF;" in css
+        assert "font-size: 24px;" in css
+        assert "font-family: Arial, sans-serif;" in css
+        assert "-webkit-text-stroke: 2.0px #000000;" in css
+        assert "font-weight: bold;" in css
+
 
 # ---------------------------------------------------------------------------
 # load_prefs

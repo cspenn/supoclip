@@ -98,6 +98,37 @@ def _discover_fonts(
 _PREVIEW_SAMPLE_TEXT = "Every moment is a fresh beginning."
 
 
+def _build_subtitle_style(
+    font_family: str,
+    font_size_px: int,
+    font_color: str,
+    stroke_color: str,
+    stroke_width: float,
+    shadow_offset: int,
+) -> str:
+    """Build the common CSS style string for subtitle text in previews.
+
+    Args:
+        font_family: CSS font-family value.
+        font_size_px: Font size already in CSS pixels.
+        font_color: Hex colour string for the text.
+        stroke_color: Hex colour string for the stroke/shadow.
+        stroke_width: Stroke width in pixels.
+        shadow_offset: Drop-shadow offset in pixels.
+
+    Returns:
+        A semicolon-separated CSS style string.
+    """
+    return (
+        f"color: {font_color};"
+        f"font-family: {font_family}, sans-serif;"
+        f"font-size: {font_size_px}px;"
+        f"font-weight: bold;"
+        f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
+        f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
+    )
+
+
 def _build_typo_html(
     font_family: str,
     font_size: int,
@@ -119,14 +150,7 @@ def _build_typo_html(
     Returns:
         An HTML string suitable for use in ``ui.html().set_content()``.
     """
-    style = (
-        f"color: {font_color};"
-        f"font-family: {font_family}, sans-serif;"
-        f"font-size: {font_size}px;"
-        f"font-weight: bold;"
-        f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
-        f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
-    )
+    style = _build_subtitle_style(font_family, font_size, font_color, stroke_color, stroke_width, shadow_offset)
     return (
         '<div style="background-color: #1a1a1a; padding: 16px; border-radius: 8px;">'
         f'<span style="{style}">'
@@ -160,14 +184,7 @@ def _build_phone_html(
         An HTML string suitable for use in ``ui.html().set_content()``.
     """
     scaled_size = max(8, font_size // 3)
-    text_style = (
-        f"color: {font_color};"
-        f"font-family: {font_family}, sans-serif;"
-        f"font-size: {scaled_size}px;"
-        f"font-weight: bold;"
-        f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
-        f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
-    )
+    text_style = _build_subtitle_style(font_family, scaled_size, font_color, stroke_color, stroke_width, shadow_offset)
     return (
         '<div style="width: 120px; height: 213px; margin: 16px auto;'
         " background-color: #1a1a1a; border: 2px solid #555;"
