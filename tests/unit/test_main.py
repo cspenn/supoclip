@@ -6,12 +6,9 @@ import importlib
 import importlib.util
 import sys
 import types
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers

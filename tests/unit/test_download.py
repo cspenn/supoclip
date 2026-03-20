@@ -42,6 +42,7 @@ class TestValidateYouTubeUrl:
             "https://www.youtube.com/shorts/dQw4w9WgXcQ",
             "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
             "http://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/live/jWFPN4bAFnA",
         ],
     )
     def test_valid_youtube_urls(self, url: str) -> None:
@@ -100,6 +101,11 @@ class TestExtractVideoId:
     def test_returns_none_for_non_youtube(self) -> None:
         """Returns None for non-YouTube URLs."""
         assert _extract_video_id("https://example.com/video") is None
+
+    def test_extract_video_id_live_url(self) -> None:
+        """Extracts ID from youtube.com/live/<id> URL."""
+        result = _extract_video_id("https://www.youtube.com/live/jWFPN4bAFnA")
+        assert result == "jWFPN4bAFnA"
 
 
 # ---------------------------------------------------------------------------
@@ -350,9 +356,8 @@ class TestRunYdlDownload:
         mock_ydl.__exit__ = MagicMock(return_value=False)
         mock_ydl.download.side_effect = yt_dlp.utils.DownloadError("403 Forbidden")
 
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
-            with pytest.raises(DownloadError, match="403 Forbidden"):
-                _run_ydl_download("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="403 Forbidden"):
+            _run_ydl_download("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
 
 
 # ---------------------------------------------------------------------------
@@ -370,9 +375,8 @@ class TestRunYdlInfo:
         mock_ydl.__exit__ = MagicMock(return_value=False)
         mock_ydl.extract_info.return_value = None
 
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
-            with pytest.raises(DownloadError, match="No metadata returned"):
-                _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="No metadata returned"):
+            _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
 
     def test_raises_download_error_on_yt_dlp_download_error(self) -> None:
         """Converts yt_dlp.utils.DownloadError into DownloadError (lines 210-211)."""
@@ -381,9 +385,8 @@ class TestRunYdlInfo:
         mock_ydl.__exit__ = MagicMock(return_value=False)
         mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("private video")
 
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
-            with pytest.raises(DownloadError, match="private video"):
-                _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="private video"):
+            _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
 
     def test_returns_dict_on_success(self) -> None:
         """Returns a dict when extract_info returns valid data (lines 204-209)."""

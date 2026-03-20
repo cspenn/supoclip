@@ -7,7 +7,6 @@ Tests cover:
 - Defaults when no row exists (graceful None return)
 """
 import pytest
-import pytest_asyncio
 
 from src.database import get_session
 from src.models import UserPreferences

@@ -605,7 +605,7 @@ class TestParakeetAvailableFlag:
             # Insert a stub that raises ImportError on access.
             import types
 
-            broken = types.ModuleType("parakeet_mlx")
+            types.ModuleType("parakeet_mlx")
 
             class _FailImport:
                 def __getattr__(self, name: str) -> object:

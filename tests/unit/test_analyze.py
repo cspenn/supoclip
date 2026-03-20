@@ -8,14 +8,14 @@ import pytest
 from src.pipeline.analyze import (
     AnalysisError,
     TranscriptSegment,
-    _RawAnalysis,
-    _RawSegment,
     _analyze_with_groq_structured,
     _analyze_with_pydantic_ai,
     _build_user_prompt,
     _parse_timestamp,
     _raw_segment_to_float_times,
     _raw_segments_to_transcript_segments,
+    _RawAnalysis,
+    _RawSegment,
     _should_use_structured_output,
     analyze_transcript,
     build_system_prompt,
@@ -633,11 +633,13 @@ class TestAnalyzeWithGroqStructured:
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
-                with pytest.raises(AnalysisError, match="Empty response from Groq API"):
-                    await _analyze_with_groq_structured(
-                        "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                    )
+            with (
+                patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client),
+                pytest.raises(AnalysisError, match="Empty response from Groq API"),
+            ):
+                await _analyze_with_groq_structured(
+                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                )
 
     @pytest.mark.asyncio
     async def test_invalid_json_raises_analysis_error(self):
@@ -657,11 +659,13 @@ class TestAnalyzeWithGroqStructured:
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
-                with pytest.raises(AnalysisError, match="Invalid JSON response from Groq"):
-                    await _analyze_with_groq_structured(
-                        "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                    )
+            with (
+                patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client),
+                pytest.raises(AnalysisError, match="Invalid JSON response from Groq"),
+            ):
+                await _analyze_with_groq_structured(
+                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
+                )
 
     @pytest.mark.asyncio
     async def test_bare_model_name_strips_groq_prefix(self):
@@ -728,7 +732,8 @@ class TestAnalyzeWithPydanticAI:
 
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
-            mock_cfg.get_llm_model.return_value = "local-model"
+            mock_cfg.local_llm_enabled = False
+            mock_cfg.get_llm_model.return_value = "openai:gpt-4o"
             mock_cfg_cls.return_value = mock_cfg
 
             with patch("src.pipeline.analyze.Agent", return_value=mock_agent):
@@ -756,13 +761,51 @@ class TestAnalyzeWithPydanticAI:
 
         with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
             mock_cfg = MagicMock()
-            mock_cfg.get_llm_model.return_value = "local-model"
+            mock_cfg.local_llm_enabled = False
+            mock_cfg.get_llm_model.return_value = "openai:gpt-4o"
             mock_cfg_cls.return_value = mock_cfg
 
             with patch("src.pipeline.analyze.Agent", return_value=mock_agent):
                 result = await _analyze_with_pydantic_ai("user prompt", "system prompt")
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_local_llm_constructs_openai_model_with_base_url(self):
+        """When local_llm_enabled=True, Agent is constructed with an OpenAIModel."""
+        raw_analysis = _RawAnalysis(
+            most_relevant_segments=[],
+            summary="",
+            key_topics=[],
+        )
+        mock_result = MagicMock()
+        mock_result.output = raw_analysis
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+
+        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.local_llm_enabled = True
+            mock_cfg.local_llm_model = "local-model"
+            mock_cfg.local_llm_base_url = "http://localhost:6969/v1"
+            mock_cfg.local_llm_api_key = "not-needed"
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze.OpenAIProvider") as mock_provider_cls, \
+                 patch("src.pipeline.analyze.OpenAIModel") as mock_model_cls, \
+                 patch("src.pipeline.analyze.Agent", return_value=mock_agent):
+                mock_provider_cls.return_value = MagicMock()
+                mock_model_cls.return_value = MagicMock()
+                await _analyze_with_pydantic_ai("user prompt", "system prompt")
+
+        mock_provider_cls.assert_called_once_with(
+            base_url="http://localhost:6969/v1",
+            api_key="not-needed",
+        )
+        mock_model_cls.assert_called_once_with(
+            "local-model",
+            provider=mock_provider_cls.return_value,
+        )
 
 
 # end tests/unit/test_analyze.py

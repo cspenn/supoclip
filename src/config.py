@@ -45,6 +45,10 @@ class Config(BaseSettings):
         default="local-model",
         validation_alias="LOCAL_LLM_MODEL",
     )
+    local_llm_api_key: str = Field(
+        default="not-needed",
+        validation_alias="LOCAL_LLM_API_KEY",
+    )
 
     # Cloud LLM (optional)
     llm_model: str = Field(

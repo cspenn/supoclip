@@ -245,10 +245,7 @@ class TestRenderCompleted:
         original_side_effect = ui_stub.column.side_effect
 
         def _tracking_col(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-            if original_side_effect:
-                m = original_side_effect(*args, **kwargs)
-            else:
-                m = MagicMock()
+            m = original_side_effect(*args, **kwargs) if original_side_effect else MagicMock()
             m.classes.return_value = m
             m.__enter__ = lambda s: s
             m.__exit__ = MagicMock(return_value=False)
@@ -350,10 +347,7 @@ class TestRenderFailed:
         original_side_effect = ui_stub.card.side_effect
 
         def _tracking_card(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-            if original_side_effect:
-                m = original_side_effect(*args, **kwargs)
-            else:
-                m = MagicMock()
+            m = original_side_effect(*args, **kwargs) if original_side_effect else MagicMock()
             m.classes.return_value = m
             m.__enter__ = lambda s: s
             m.__exit__ = MagicMock(return_value=False)
@@ -520,9 +514,9 @@ class TestScoreColor:
 
 
 def _make_session_ctx(
-    task: "MagicMock | None",
-    clips: "list[MagicMock] | None" = None,
-) -> "MagicMock":
+    task: MagicMock | None,
+    clips: list[MagicMock] | None = None,
+) -> MagicMock:
     clips = clips or []
     scalars_m = MagicMock()
     scalars_m.all.return_value = clips
@@ -537,12 +531,12 @@ def _make_session_ctx(
     return ctx
 
 
-def _make_session_factory(*contexts: "MagicMock") -> object:
+def _make_session_factory(*contexts: MagicMock) -> object:
     ctx_list = list(contexts)
     idx_d = {"i": 0}
     fallback = ctx_list[-1] if ctx_list else MagicMock()
 
-    def _factory() -> "MagicMock":
+    def _factory() -> MagicMock:
         i = idx_d["i"]
         idx_d["i"] += 1
         return ctx_list[i] if i < len(ctx_list) else fallback

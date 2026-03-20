@@ -19,6 +19,8 @@ from contextlib import suppress
 from groq import AsyncGroq
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from src.config import Config
 
@@ -423,10 +425,19 @@ async def _analyze_with_pydantic_ai(
         AnalysisError: If the agent call fails or returns no data.
     """
     cfg = Config()
-    model = cfg.get_llm_model()
+    if cfg.local_llm_enabled:
+        llm_model: str | OpenAIModel = OpenAIModel(
+            cfg.local_llm_model,
+            provider=OpenAIProvider(
+                base_url=cfg.local_llm_base_url,
+                api_key=cfg.local_llm_api_key,
+            ),
+        )
+    else:
+        llm_model = cfg.get_llm_model()
 
     agent: Agent[None, _RawAnalysis] = Agent(
-        model=model,
+        model=llm_model,
         output_type=_RawAnalysis,
         system_prompt=system_prompt,
     )
