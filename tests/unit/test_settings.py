@@ -17,8 +17,10 @@ Covers:
 """
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, Generator
 from io import BytesIO
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,7 +39,7 @@ _TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest_asyncio.fixture()
-async def session() -> AsyncSession:
+async def session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a fresh in-memory database session for each test.
 
     Yields:
@@ -718,7 +720,7 @@ class TestLogoUpload:
                 if content is None:
                     return
 
-                logo_dir = cfg.temp_dir / "logo"
+                logo_dir = cfg.temp_dir / "logo"  # type: ignore[attr-defined]
                 logo_dir.mkdir(parents=True, exist_ok=True)
                 dest = logo_dir / name
                 dest.write_bytes(content.read())
@@ -885,7 +887,7 @@ class TestHandlerCallbacks:
     """Tests that exercise inner closures in render() via captured callbacks."""
 
     @pytest.fixture(autouse=True)
-    def _patch_discover_fonts(self) -> None:  # type: ignore[override]
+    def _patch_discover_fonts(self) -> Generator[None, None, None]:  # type: ignore[override]
         """Patch _discover_fonts for all TestHandlerCallbacks tests.
 
         After render() calls _discover_fonts(), without this patch every
@@ -1249,7 +1251,7 @@ class TestUpdatePreview:
     """
 
     @pytest.fixture(autouse=True)
-    def _patch_discover_fonts(self) -> None:  # type: ignore[override]
+    def _patch_discover_fonts(self) -> Generator[None, None, None]:  # type: ignore[override]
         """Patch _discover_fonts for all TestUpdatePreview tests."""
         with patch("src.pages.settings._discover_fonts", return_value=["Arial"]):
             yield
@@ -1282,7 +1284,7 @@ class TestUpdatePreview:
 
         # Collect every set_text() call across all captured label mocks
         set_text_args: list[str] = []
-        for elem in captured["label_elements"]:  # type: ignore[index]
+        for elem in cast(list[MagicMock], captured["label_elements"]):
             for call in elem.set_text.call_args_list:
                 if call.args:
                     set_text_args.append(str(call.args[0]))
