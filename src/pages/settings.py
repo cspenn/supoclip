@@ -92,6 +92,96 @@ def _discover_fonts(
 
 
 # ---------------------------------------------------------------------------
+# Preview HTML builders
+# ---------------------------------------------------------------------------
+
+_PREVIEW_SAMPLE_TEXT = "Every moment is a fresh beginning."
+
+
+def _build_typo_html(
+    font_family: str,
+    font_size: int,
+    font_color: str,
+    stroke_color: str,
+    stroke_width: float,
+    shadow_offset: int,
+) -> str:
+    """Build the HTML string for the typography preview card.
+
+    Args:
+        font_family: CSS font-family value.
+        font_size: Font size in points (rendered as px in the browser).
+        font_color: Hex colour string for the text, e.g. ``'#FFFFFF'``.
+        stroke_color: Hex colour string for the stroke/shadow.
+        stroke_width: Stroke width in pixels.
+        shadow_offset: Drop-shadow offset in pixels.
+
+    Returns:
+        An HTML string suitable for use in ``ui.html().set_content()``.
+    """
+    style = (
+        f"color: {font_color};"
+        f"font-family: {font_family}, sans-serif;"
+        f"font-size: {font_size}px;"
+        f"font-weight: bold;"
+        f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
+        f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
+    )
+    return (
+        '<div style="background-color: #1a1a1a; padding: 16px; border-radius: 8px;">'
+        f'<span style="{style}">'
+        f"{_PREVIEW_SAMPLE_TEXT.replace(' a ', ' a<br>')}"
+        "</span>"
+        "</div>"
+    )
+
+
+def _build_phone_html(
+    font_family: str,
+    font_size: int,
+    font_color: str,
+    stroke_color: str,
+    stroke_width: float,
+    shadow_offset: int,
+    subtitle_y: int,
+) -> str:
+    """Build the HTML string for the 9:16 phone-frame preview.
+
+    Args:
+        font_family: CSS font-family value.
+        font_size: Full font size in points; scaled down for the small frame.
+        font_color: Hex colour string for the text.
+        stroke_color: Hex colour string for the stroke/shadow.
+        stroke_width: Stroke width in pixels.
+        shadow_offset: Drop-shadow offset in pixels.
+        subtitle_y: Vertical position as a percentage from the top of the frame.
+
+    Returns:
+        An HTML string suitable for use in ``ui.html().set_content()``.
+    """
+    scaled_size = max(8, font_size // 3)
+    text_style = (
+        f"color: {font_color};"
+        f"font-family: {font_family}, sans-serif;"
+        f"font-size: {scaled_size}px;"
+        f"font-weight: bold;"
+        f"-webkit-text-stroke: {stroke_width}px {stroke_color};"
+        f"text-shadow: {shadow_offset}px {shadow_offset}px 2px {stroke_color};"
+    )
+    return (
+        '<div style="width: 120px; height: 213px; margin: 16px auto;'
+        " background-color: #1a1a1a; border: 2px solid #555;"
+        ' border-radius: 8px; position: relative; overflow: hidden;">'
+        f'<span style="position: absolute; left: 50%;'
+        f" transform: translateX(-50%); top: {subtitle_y}%;"
+        f' text-align: center; white-space: nowrap; {text_style}">'
+        f"{_PREVIEW_SAMPLE_TEXT}"
+        "</span>"
+        "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 

@@ -243,6 +243,130 @@ class TestDiscoverFonts:
 
 
 # ---------------------------------------------------------------------------
+# _build_typo_html / _build_phone_html
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPreviewHtml:
+    """Tests for the preview HTML builder functions."""
+
+    def test_typo_html_contains_font_color(self) -> None:
+        """Typography card HTML includes the font color."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FF0000",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "#FF0000" in html
+
+    def test_typo_html_contains_font_size(self) -> None:
+        """Typography card HTML includes the font size in px."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=36,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "36px" in html
+
+    def test_typo_html_contains_stroke_color(self) -> None:
+        """Typography card HTML includes the stroke color."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#ABCDEF",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "#ABCDEF" in html
+
+    def test_typo_html_contains_stroke_width(self) -> None:
+        """Typography card HTML includes the stroke width."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=3.5,
+            shadow_offset=1,
+        )
+        assert "3.5px" in html
+
+    def test_typo_html_contains_sample_text(self) -> None:
+        """Typography card HTML contains the sample subtitle text."""
+        from src.pages.settings import _build_typo_html
+
+        html = _build_typo_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+        )
+        assert "Every moment" in html
+
+    def test_phone_html_contains_subtitle_y_position(self) -> None:
+        """Phone frame HTML positions the text at the specified Y percentage."""
+        from src.pages.settings import _build_phone_html
+
+        html = _build_phone_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+            subtitle_y=80,
+        )
+        assert "80%" in html
+
+    def test_phone_html_contains_font_color(self) -> None:
+        """Phone frame HTML includes the font color."""
+        from src.pages.settings import _build_phone_html
+
+        html = _build_phone_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#12FF34",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+            subtitle_y=75,
+        )
+        assert "#12FF34" in html
+
+    def test_phone_html_contains_sample_text(self) -> None:
+        """Phone frame HTML contains the sample subtitle text."""
+        from src.pages.settings import _build_phone_html
+
+        html = _build_phone_html(
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            stroke_color="#000000",
+            stroke_width=2.0,
+            shadow_offset=1,
+            subtitle_y=75,
+        )
+        assert "Every moment" in html
+
+
+# ---------------------------------------------------------------------------
 # load_prefs
 # ---------------------------------------------------------------------------
 
