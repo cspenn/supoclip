@@ -185,15 +185,18 @@ def _build_phone_html(
     Returns:
         An HTML string suitable for use in ``ui.html().set_content()``.
     """
-    scaled_size = max(8, font_size // 3)
-    text_style = _build_subtitle_style(font_family, scaled_size, font_color, stroke_color, stroke_width, shadow_offset)
+    scaled_size = max(8, round(font_size * 0.4))
+    scale = scaled_size / font_size if font_size > 0 else 1.0
+    scaled_sw = round(stroke_width * scale, 1)
+    scaled_so = max(1, round(shadow_offset * scale))
+    text_style = _build_subtitle_style(font_family, scaled_size, font_color, stroke_color, scaled_sw, scaled_so)
     return (
-        '<div style="width: 120px; height: 213px; margin: 16px auto;'
+        '<div style="width: 180px; height: 320px; margin: 16px auto;'
         f" background-color: {_PREVIEW_BG_COLOR}; border: 2px solid #555;"
         ' border-radius: 8px; position: relative; overflow: hidden;">'
         f'<span style="position: absolute; left: 50%;'
         f" transform: translateX(-50%); top: {subtitle_y}%;"
-        f' text-align: center; white-space: nowrap; {text_style}">'
+        f' text-align: center; width: 90%; white-space: normal; {text_style}">'
         f"{_PREVIEW_SAMPLE_TEXT}"
         "</span>"
         "</div>"
