@@ -14,3 +14,5 @@ htmlcov/
 .pytest_cache/
 backend/docs/reports/
 .worktrees/
+frontend/.next/
+frontend/node_modules/
