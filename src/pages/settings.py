@@ -333,8 +333,8 @@ async def render() -> None:
 
             # Live preview
             ui.label("Preview").classes("mt-6 text-sm font-semibold text-gray-500")
-            typo_preview = ui.html("").classes("w-full mt-2")
-            phone_preview = ui.html("").classes("w-full mt-4")
+            typo_preview = ui.html("", sanitize=False).classes("w-full mt-2")
+            phone_preview = ui.html("", sanitize=False).classes("w-full mt-4")
 
         # ------------------------------------------------------------------ #
         # Clip settings
