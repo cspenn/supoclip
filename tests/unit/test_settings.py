@@ -1248,6 +1248,12 @@ class TestUpdatePreview:
     mock state.
     """
 
+    @pytest.fixture(autouse=True)
+    def _patch_discover_fonts(self) -> None:  # type: ignore[override]
+        """Patch _discover_fonts for all TestUpdatePreview tests."""
+        with patch("src.pages.settings._discover_fonts", return_value=["Arial"]):
+            yield
+
     async def test_update_preview_sets_label_texts(self, tmp_path: Path) -> None:
         """_update_preview() calls set_text on all six slider labels correctly."""
         import src.pages.settings as settings_mod

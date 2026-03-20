@@ -509,7 +509,7 @@ async def render() -> None:
     # Reactive wiring — define after all widget references exist
     # ---------------------------------------------------------------------- #
 
-    def _update_preview() -> None:
+    def _update_preview(_event: object = None) -> None:
         """Update all slider labels and refresh the live preview HTML."""
         fam = str(font_family.value or "Arial")
         size = int(font_size.value)
@@ -518,13 +518,15 @@ async def render() -> None:
         sw = float(stroke_width.value)
         so = int(shadow_offset.value)
         sy = int(subtitle_y.value)
+        mc_min = int(min_clip.value)
+        mc_max = int(max_clip.value)
 
         size_label.set_text(f"Font Size: {size}pt")
         stroke_label.set_text(f"Stroke Width: {sw:.1f}")
         shadow_label.set_text(f"Shadow Offset: {so}px")
         subtitle_label.set_text(f"Subtitle Y Position: {sy}% from top")
-        min_label.set_text(f"Min Clip Length: {int(min_clip.value)}s")
-        max_label.set_text(f"Max Clip Length: {int(max_clip.value)}s")
+        min_label.set_text(f"Min Clip Length: {mc_min}s")
+        max_label.set_text(f"Max Clip Length: {mc_max}s")
 
         typo_preview.set_content(_build_typo_html(fam, size, fc, sc, sw, so))
         phone_preview.set_content(_build_phone_html(fam, size, fc, sc, sw, so, sy))
@@ -532,12 +534,12 @@ async def render() -> None:
     # Wire all sliders — update on release only (Quasar `change` event).
     # Dropdowns (font_family) and colour inputs (font_color, stroke_color)
     # are wired via on_change= kwarg in their constructors above.
-    font_size.on("change", lambda _: _update_preview())
-    stroke_width.on("change", lambda _: _update_preview())
-    shadow_offset.on("change", lambda _: _update_preview())
-    subtitle_y.on("change", lambda _: _update_preview())
-    min_clip.on("change", lambda _: _update_preview())
-    max_clip.on("change", lambda _: _update_preview())
+    font_size.on("change", _update_preview)
+    stroke_width.on("change", _update_preview)
+    shadow_offset.on("change", _update_preview)
+    subtitle_y.on("change", _update_preview)
+    min_clip.on("change", _update_preview)
+    max_clip.on("change", _update_preview)
 
     # Initialise preview with saved values
     _update_preview()
