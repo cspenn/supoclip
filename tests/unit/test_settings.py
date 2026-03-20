@@ -102,6 +102,147 @@ class TestIsValidHexColor:
 
 
 # ---------------------------------------------------------------------------
+# _discover_fonts
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverFonts:
+    """Tests for the _discover_fonts() module-level helper."""
+
+    def test_empty_dir_returns_arial(self, tmp_path: Path) -> None:
+        """Empty fonts directory returns the Arial fallback."""
+        from src.pages.settings import _discover_fonts
+
+        result = _discover_fonts(fonts_dir=tmp_path)
+        assert result == ["Arial"]
+
+    def test_valid_ttfs_returns_sorted_names(self, tmp_path: Path) -> None:
+        """TTF files are parsed and names returned sorted alphabetically."""
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "barlow.ttf").write_bytes(b"fake")
+        (tmp_path / "arial.ttf").write_bytes(b"fake")
+
+        def _mock_ttfont(path: str) -> MagicMock:
+            font = MagicMock()
+            name_table = MagicMock()
+            if "barlow" in path:
+                r = MagicMock()
+                r.nameID = 1
+                r.toUnicode.return_value = "Barlow Condensed"
+            else:
+                r = MagicMock()
+                r.nameID = 1
+                r.toUnicode.return_value = "Arial"
+            name_table.names = [r]
+            font.__getitem__ = lambda _self, _key: name_table
+            return font
+
+        with patch("src.pages.settings.TTFont", side_effect=_mock_ttfont):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Arial", "Barlow Condensed"]
+
+    def test_bad_file_is_skipped(self, tmp_path: Path) -> None:
+        """Unparseable TTF files are skipped; valid ones still returned."""
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "good.ttf").write_bytes(b"fake")
+        (tmp_path / "bad.ttf").write_bytes(b"invalid")
+
+        good_font = MagicMock()
+        good_record = MagicMock()
+        good_record.nameID = 1
+        good_record.toUnicode.return_value = "Good Font"
+        good_name_table = MagicMock()
+        good_name_table.names = [good_record]
+        good_font.__getitem__ = lambda _self, _key: good_name_table
+
+        def _mock_ttfont(path: str) -> MagicMock:
+            if Path(path).name == "bad.ttf":
+                raise Exception("Invalid font file")
+            return good_font
+
+        with patch("src.pages.settings.TTFont", side_effect=_mock_ttfont):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Good Font"]
+
+    def test_all_files_fail_falls_back_to_arial(self, tmp_path: Path) -> None:
+        """When all TTF files fail to parse, Arial fallback is returned."""
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "broken.ttf").write_bytes(b"garbage")
+
+        with patch("src.pages.settings.TTFont", side_effect=Exception("parse error")):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Arial"]
+
+    def test_current_value_not_in_list_is_prepended(self, tmp_path: Path) -> None:
+        """current_value is prepended when not in the discovered list."""
+        from src.pages.settings import _discover_fonts
+
+        result = _discover_fonts(fonts_dir=tmp_path, current_value="MyCustomFont")
+        # tmp_path is empty → fallback ["Arial"], "MyCustomFont" prepended
+        assert result == ["MyCustomFont", "Arial"]
+
+    def test_current_value_already_in_list_not_duplicated(
+        self, tmp_path: Path
+    ) -> None:
+        """current_value is not added when already present in the list."""
+        from src.pages.settings import _discover_fonts
+
+        result = _discover_fonts(fonts_dir=tmp_path, current_value="Arial")
+        assert result == ["Arial"]  # not ["Arial", "Arial"]
+
+    def test_nameids_fallback_to_nameid4(self, tmp_path: Path) -> None:
+        """Falls back to nameID 4 when nameID 1 is absent."""
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "font.ttf").write_bytes(b"fake")
+
+        font = MagicMock()
+        name_table = MagicMock()
+        r4 = MagicMock()
+        r4.nameID = 4
+        r4.toUnicode.return_value = "Full Name Font"
+        name_table.names = [r4]
+        font.__getitem__ = lambda _self, _key: name_table
+
+        with patch("src.pages.settings.TTFont", return_value=font):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Full Name Font"]
+
+    def test_tounicode_error_falls_back_to_next_record(self, tmp_path: Path) -> None:
+        """When toUnicode() raises, the next matching record is tried."""
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "font.ttf").write_bytes(b"fake")
+
+        font = MagicMock()
+        name_table = MagicMock()
+
+        # First nameID-1 record raises, second nameID-1 record succeeds
+        r_bad = MagicMock()
+        r_bad.nameID = 1
+        r_bad.toUnicode.side_effect = Exception("decode error")
+
+        r_good = MagicMock()
+        r_good.nameID = 1
+        r_good.toUnicode.return_value = "Fallback Font"
+
+        name_table.names = [r_bad, r_good]
+        font.__getitem__ = lambda _self, _key: name_table
+
+        with patch("src.pages.settings.TTFont", return_value=font):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Fallback Font"]
+
+
+# ---------------------------------------------------------------------------
 # load_prefs
 # ---------------------------------------------------------------------------
 

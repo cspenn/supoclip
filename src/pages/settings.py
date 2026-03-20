@@ -7,11 +7,13 @@ All settings are persisted to the UserPreferences singleton row (id=1).
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import structlog
+from fontTools.ttLib import TTFont
 from nicegui import ui
 
-from src.config import get_config
+from src.config import Config, get_config
 from src.database import get_session
 from src.models import UserPreferences
 
@@ -34,6 +36,59 @@ def is_valid_hex_color(value: str) -> bool:
         True when the string matches ``#RRGGBB`` exactly.
     """
     return bool(_HEX_COLOR_RE.match(value))
+
+
+# ---------------------------------------------------------------------------
+# Font discovery
+# ---------------------------------------------------------------------------
+
+
+def _discover_fonts(
+    fonts_dir: Path = Config.FONTS_DIR,
+    current_value: str | None = None,
+) -> list[str]:
+    """Discover font family names from TTF files in fonts_dir.
+
+    Args:
+        fonts_dir: Directory to scan for ``*.ttf`` files.
+            Defaults to :data:`Config.FONTS_DIR` (``fonts/``).
+        current_value: Currently saved font family name.  If provided and
+            not in the discovered list, it is prepended so the saved value
+            is never silently dropped.
+
+    Returns:
+        Alphabetically sorted list of internal font family names.
+        Falls back to ``["Arial"]`` when the directory is empty or all
+        files fail to parse.
+    """
+    names: list[str] = []
+    for ttf_path in sorted(fonts_dir.glob("*.ttf")):
+        try:
+            font = TTFont(str(ttf_path))
+            name_table = font["name"]
+            family: str | None = None
+            # Prefer nameID 1 (Family name), fall back to nameID 4 (Full name)
+            for name_id in (1, 4):
+                for record in name_table.names:
+                    if record.nameID == name_id:
+                        try:
+                            family = record.toUnicode()
+                            break
+                        except Exception:
+                            continue
+                if family:
+                    break
+            if family:
+                names.append(family)
+        except Exception:
+            log.warning("settings.discover_fonts.parse_error", path=str(ttf_path))
+
+    names = sorted(set(names))
+    if not names:
+        names = ["Arial"]
+    if current_value and current_value not in names:
+        names = [current_value] + names
+    return names
 
 
 # ---------------------------------------------------------------------------
