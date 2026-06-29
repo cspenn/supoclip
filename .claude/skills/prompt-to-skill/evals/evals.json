@@ -1,0 +1,35 @@
+{
+  "skill_name": "prompt-to-skill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Here's a prompt I use every week to generate my team's status report from our Jira board. Turn it into a skill.\n\n<original prompt>\nYou are a weekly status report generator. Pull the completed tickets from our Jira board for this sprint, summarize them by epic, note any blockers, and format as a markdown document with sections: Completed, In Progress, Blocked, Next Week. Use a professional but concise tone. Include ticket IDs. End with a one-paragraph executive summary.\n</original prompt>",
+      "expected_output": "Complete skill folder with SKILL.md containing: kebab-case name, description with Jira/status/sprint trigger phrases, sequential steps for data pull → summarize → format → deliver, reference to Jira MCP requirement in compatibility, quality checklist, and evals.json with test cases.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I keep pasting this same prompt every time I need to create a client proposal. Make it a skill so I don't have to keep doing that.\n\n<original prompt>\nCreate a professional proposal document for a consulting engagement. Ask me for the client name, project scope, timeline, and budget. Use our standard structure: cover page, executive summary, problem statement, proposed approach, timeline with milestones, investment summary, team bios, and terms. Make it formal but approachable. Output as a Word document.\n</original prompt>",
+      "expected_output": "Complete skill folder with SKILL.md containing: name like 'client-proposal', description triggering on 'proposal/quote/SOW/engagement', step-by-step document assembly workflow, reference to docx skill pattern, template structure in body or assets/, quality checklist for all required sections.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "skillify this: I use this to clean up messy CSV data before loading it into our dashboard. It checks for missing values, standardizes date formats to ISO 8601, removes duplicate rows, and flags outliers beyond 3 standard deviations. Then it exports a clean CSV and a summary of what was changed.",
+      "expected_output": "Complete skill folder with SKILL.md containing: name like 'csv-cleaner', description triggering on CSV/data cleaning/messy data phrases, bundled Python script in scripts/ for the deterministic validation and cleaning steps, step-by-step workflow, quality checklist verifying clean output and change summary.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "What's the capital of France?",
+      "expected_output": "This query should NOT trigger the prompt-to-skill skill. It is a simple factual question with no prompt conversion intent.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Help me write a better prompt for generating social media posts",
+      "expected_output": "This query should NOT trigger the prompt-to-skill skill. The user wants prompt-writing help, not skill creation. Close keyword match but different intent.",
+      "files": []
+    }
+  ]
+}

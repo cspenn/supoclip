@@ -63,3 +63,12 @@ For PRs, include a concise summary, list the tests you ran (commands + results),
 ## Configuration & Secrets
 
 Local dev uses `.env` files. The root `./start.sh` copies `.env.example` if needed and updates `frontend/.env.local`. Backend defaults to local-first settings in `backend/.env.example`, so API keys are optional for offline workflows.
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

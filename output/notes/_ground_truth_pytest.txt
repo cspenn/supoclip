@@ -1,0 +1,41 @@
+ Downloaded nicegui
+ Downloaded llvmlite
+ Downloaded mlx-metal
+ Downloaded opencv-contrib-python
+Installed 206 packages in 684ms
+........................................................................ [ 15%]
+........................................................................ [ 30%]
+........................................................................ [ 46%]
+........................................................................ [ 61%]
+........................................................................ [ 77%]
+........................................................................ [ 92%]
+..................................                                       [100%]
+================================ tests coverage ================================
+_______________ coverage: platform darwin, python 3.12.8-final-0 _______________
+
+Name                            Stmts   Miss  Cover   Missing
+-------------------------------------------------------------
+src/__init__.py                     0      0   100%
+src/config.py                      35      0   100%
+src/database.py                    47      0   100%
+src/main.py                        34      0   100%
+src/models.py                      52      0   100%
+src/pages/__init__.py               0      0   100%
+src/pages/history.py               73      0   100%
+src/pages/home.py                  97      0   100%
+src/pages/settings.py             200      0   100%
+src/pages/task.py                 121      0   100%
+src/pipeline/__init__.py            0      0   100%
+src/pipeline/analyze.py           144      0   100%
+src/pipeline/clip.py              109      0   100%
+src/pipeline/download.py           89      0   100%
+src/pipeline/face_detect.py        80      0   100%
+src/pipeline/subtitles.py          69      0   100%
+src/pipeline/transcribe.py        128      0   100%
+src/services/__init__.py            0      0   100%
+src/services/video_service.py     156      0   100%
+-------------------------------------------------------------
+TOTAL                            1434      0   100%
+Required test coverage of 100% reached. Total coverage: 100.00%
+466 passed in 23.21s
+pytest exit: 0
