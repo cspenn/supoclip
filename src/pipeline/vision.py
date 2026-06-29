@@ -50,6 +50,13 @@ _ENGAGEMENT_PROMPT: str = (
     'with strict JSON only: {"engagement": 0-1}. End your reply with that JSON.'
 )
 
+_THUMBNAIL_PROMPT: str = (
+    "These are candidate thumbnail frames for a short-form clip, numbered from 1 "
+    "in order. Pick the single best thumbnail — clearest face, peak expression, "
+    "readable on-screen text, most eye-catching. Reply with strict JSON only: "
+    '{"best_frame": <number>}. End your reply with that JSON.'
+)
+
 
 @dataclass(slots=True)
 class ActiveSpeaker:
@@ -213,6 +220,115 @@ def fuse_scores(
     if total <= 0:
         return transcript_score
     return (transcript_weight * transcript_score + visual_weight * engagement) / total
+
+
+def parse_frame_index(content: str, count: int) -> int | None:
+    """Parse a ``{"best_frame": N}`` reply into a 0-based index, or ``None``.
+
+    The model is prompted with 1-based frame numbers; this clamps the value into
+    ``[1, count]`` and converts to a 0-based list index.
+
+    Args:
+        content: Raw VLM reply text.
+        count: Number of candidate frames offered.
+
+    Returns:
+        A 0-based index in ``[0, count)``, or ``None`` if unparseable.
+    """
+    data = extract_json(content)
+    if data is None or "best_frame" not in data:
+        return None
+    try:
+        one_based = int(data["best_frame"])
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(count, one_based)) - 1
+
+
+def write_thumbnail(
+    video_path: str | Path,
+    timestamp_s: float,
+    dest: str | Path,
+    max_dim: int,
+) -> Path | None:
+    """Write a single frame to ``dest`` as a JPEG thumbnail, or ``None`` on failure.
+
+    Args:
+        video_path: Source video path.
+        timestamp_s: Frame timestamp in seconds.
+        dest: Destination ``.jpg`` path.
+        max_dim: Thumbnail width in pixels (aspect preserved).
+
+    Returns:
+        The written :class:`pathlib.Path`, or ``None`` if extraction failed.
+    """
+    encoded = extract_frame_b64(video_path, timestamp_s, max_dim)
+    if encoded is None:
+        return None
+    out = Path(dest)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(base64.b64decode(encoded))
+    return out
+
+
+def _vlm_pick_frame_timestamp(
+    video_path: str | Path,
+    timestamps: list[float],
+    cfg: Config,
+) -> float | None:
+    """Ask the VLM to pick the best thumbnail timestamp among sampled frames.
+
+    Args:
+        video_path: Source video path.
+        timestamps: Candidate frame timestamps to offer.
+        cfg: Application config (model + image budget).
+
+    Returns:
+        The chosen timestamp, or ``None`` if no frame could be extracted, the
+        VLM call failed, or the reply was unparseable.
+    """
+    candidates = [(ts, extract_frame_b64(video_path, ts, cfg.vlm_image_max_dim)) for ts in timestamps]
+    valid = [(ts, frame) for ts, frame in candidates if frame is not None]
+    if not valid:
+        return None
+    reply = _vlm_chat([frame for _, frame in valid], _THUMBNAIL_PROMPT, cfg)
+    if reply is None:
+        return None
+    index = parse_frame_index(reply, len(valid))
+    if index is None:
+        return None
+    return valid[index][0]
+
+
+def select_best_frame_timestamp(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    config: Config | None = None,
+) -> float:
+    """Pick the timestamp of the best thumbnail frame for a clip.
+
+    Deterministic by default: returns the segment midpoint. When the VLM is
+    enabled it samples candidate frames and asks the model to choose the most
+    eye-catching one, falling back to the midpoint on any failure — so thumbnail
+    generation always succeeds, with or without the VLM.
+
+    Args:
+        video_path: Source video path.
+        start_s: Segment start in seconds.
+        end_s: Segment end in seconds.
+        config: Optional config override (defaults to :func:`get_config`).
+
+    Returns:
+        The chosen frame timestamp in seconds.
+    """
+    cfg = config or get_config()
+    midpoint = start_s + (end_s - start_s) / 2
+    if not cfg.vlm_enabled or not cfg.vlm_model:
+        return midpoint
+    timestamps = sample_timestamps(start_s, end_s, cfg.vlm_frames_per_clip)
+    picked = _vlm_pick_frame_timestamp(video_path, timestamps, cfg)
+    return picked if picked is not None else midpoint
 
 
 # ---------------------------------------------------------------------------

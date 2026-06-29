@@ -36,6 +36,7 @@ from src.services.video_service import (
     ProcessingResult,
     _delete_existing_clips,
     _generate_clips_concurrently,
+    _generate_thumbnail,
     _list_transition_files,
     _options_for_clip,
     _positive_number,
@@ -89,6 +90,35 @@ class TestOptionsForClipActiveSpeaker:
         result = _options_for_clip(base, 0, [], active_speaker_side="left")
         assert result is not base
         assert result.active_speaker_side == "left"  # type: ignore[union-attr]
+
+
+class TestGenerateThumbnail:
+    """Tests for per-clip thumbnail generation."""
+
+    @pytest.mark.asyncio
+    async def test_returns_filename_when_written(self, tmp_path: Path) -> None:
+        """A written thumbnail's filename is returned for persistence."""
+        seg = _make_segment(start=0.0, end=4.0)
+        clip_path = tmp_path / "task_clip_01.mp4"
+        with (
+            patch("src.services.video_service.get_config", return_value=SimpleNamespace(vlm_image_max_dim=768)),
+            patch("src.pipeline.vision.select_best_frame_timestamp", return_value=2.0),
+            patch("src.pipeline.vision.write_thumbnail", return_value=tmp_path / "task_clip_01.jpg"),
+        ):
+            name = await _generate_thumbnail(tmp_path / "src.mp4", seg, clip_path, tmp_path)
+        assert name == "task_clip_01.jpg"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_extraction_fails(self, tmp_path: Path) -> None:
+        """A failed thumbnail extraction yields None (no crash)."""
+        seg = _make_segment(start=0.0, end=4.0)
+        with (
+            patch("src.services.video_service.get_config", return_value=SimpleNamespace(vlm_image_max_dim=768)),
+            patch("src.pipeline.vision.select_best_frame_timestamp", return_value=2.0),
+            patch("src.pipeline.vision.write_thumbnail", return_value=None),
+        ):
+            name = await _generate_thumbnail(tmp_path / "src.mp4", seg, tmp_path / "c.mp4", tmp_path)
+        assert name is None
 
 
 class TestRerankByEngagement:
@@ -194,6 +224,9 @@ def _make_cfg(tmp_path: Path, max_workers: int = 4) -> MagicMock:
     # Vision features default OFF so process_video tests exercise the deterministic
     # path (the VLM seam is covered separately and in the e2e tier).
     cfg.vlm_rerank_enabled = False
+    cfg.vlm_enabled = False
+    cfg.vlm_model = ""
+    cfg.vlm_image_max_dim = 768
     return cfg
 
 

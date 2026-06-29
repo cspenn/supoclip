@@ -82,6 +82,7 @@ def _make_clip(task_id: str, *, index: int = 1) -> MagicMock:
     clip.title = f"Clip {index}"
     clip.transcript_text = f"Transcript for clip {index}."
     clip.score = 0.85
+    clip.thumbnail_filename = f"clip_{index:03d}.jpg"
     clip.created_at = datetime.now(UTC)
     return clip
 
@@ -961,6 +962,23 @@ class TestDeleteClip:
             await partials[0]()
 
         mock_delete.assert_awaited_once_with(clip.id)
+
+    @pytest.mark.asyncio
+    async def test_clip_card_without_thumbnail_sets_no_poster(self, ui_stub: MagicMock) -> None:
+        """A clip with no thumbnail renders without setting a video poster."""
+        from src.pages import task as task_mod
+
+        video_widget = MagicMock()
+        video_widget.classes.return_value = video_widget
+        ui_stub.video.return_value = video_widget
+
+        clip = _make_clip("task-1", index=1)
+        clip.thumbnail_filename = None
+
+        task_mod._render_clip_card(clip)
+
+        for call in video_widget.props.call_args_list:
+            assert "poster=" not in str(call), "no poster should be set without a thumbnail"
 
 
 # end tests/unit/test_task_page.py

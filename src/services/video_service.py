@@ -161,6 +161,7 @@ async def _save_generated_clip(
     clip_path: Path,
     segment: TranscriptSegment,
     clip_order: int,
+    thumbnail_filename: str | None = None,
 ) -> None:
     """Persist a generated clip record to the database.
 
@@ -169,6 +170,7 @@ async def _save_generated_clip(
         clip_path: Absolute path to the generated clip file.
         segment: The TranscriptSegment this clip was generated from.
         clip_order: Zero-based position within the task's clip list.
+        thumbnail_filename: Optional thumbnail JPEG filename (served from /clips).
     """
     duration = segment.end_time - segment.start_time
 
@@ -182,10 +184,42 @@ async def _save_generated_clip(
             title=segment.title,
             transcript_text=segment.text,
             score=segment.score,
+            thumbnail_filename=thumbnail_filename,
         )
         session.add(clip)
         await session.flush()
         logger.info("clip_saved", filename=clip_path.name, task_id=task_id)
+
+
+async def _generate_thumbnail(
+    source_video: Path,
+    segment: TranscriptSegment,
+    clip_path: Path,
+    clips_dir: Path,
+) -> str | None:
+    """Generate a thumbnail JPEG for a clip; return its filename or ``None``.
+
+    Picks the best frame (VLM-selected when enabled, segment midpoint otherwise)
+    and writes ``{clip_stem}.jpg`` next to the clip so it is served from /clips.
+    All work runs off the event loop.
+
+    Args:
+        source_video: Source video the clip was cut from.
+        segment: The segment the clip covers.
+        clip_path: The generated clip's path (names the thumbnail).
+        clips_dir: Directory thumbnails are written to.
+
+    Returns:
+        The thumbnail filename, or ``None`` if it could not be produced.
+    """
+    from src.pipeline.vision import select_best_frame_timestamp, write_thumbnail
+
+    cfg = get_config()
+    max_dim = getattr(cfg, "vlm_image_max_dim", 768)
+    timestamp = await asyncio.to_thread(select_best_frame_timestamp, source_video, segment.start_time, segment.end_time)
+    dest = clips_dir / f"{clip_path.stem}.jpg"
+    written = await asyncio.to_thread(write_thumbnail, source_video, timestamp, dest, max_dim)
+    return written.name if written is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -665,11 +699,13 @@ async def _run_clip_generation(
     # Replace any prior clips so re-processing the task is idempotent.
     await _delete_existing_clips(request.task_id)
     for order, (clip_path, segment) in enumerate(generated):
+        thumbnail_filename = await _generate_thumbnail(source_video, segment, clip_path, clips_dir)
         await _save_generated_clip(
             task_id=request.task_id,
             clip_path=clip_path,
             segment=segment,
             clip_order=order,
+            thumbnail_filename=thumbnail_filename,
         )
 
     clip_paths = [p for p, _ in generated]

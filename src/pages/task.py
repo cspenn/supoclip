@@ -111,8 +111,10 @@ def _render_clip_card(clip: GeneratedClip) -> None:
         clip: The :class:`~src.models.GeneratedClip` instance to render.
     """
     with ui.card().classes("w-full shadow-md"):
-        # --- video player ---
-        ui.video(src=f"/clips/{clip.filename}").classes("w-full rounded")
+        # --- video player (thumbnail used as the poster when available) ---
+        video = ui.video(src=f"/clips/{clip.filename}").classes("w-full rounded")
+        if clip.thumbnail_filename:
+            video.props(f'poster="/clips/{clip.thumbnail_filename}"')
 
         with ui.column().classes("p-3 gap-2 w-full"):
             # title + score badge on the same row

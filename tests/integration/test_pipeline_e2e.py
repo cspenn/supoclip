@@ -91,6 +91,10 @@ async def test_local_file_pipeline_happy_path(
                 ]
             ),
         ),
+        patch(
+            "src.services.video_service._generate_thumbnail",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         request = ProcessingRequest(
             source=str(fake_video),
@@ -170,6 +174,10 @@ async def test_progress_callback_milestones(
                     )
                 ]
             ),
+        ),
+        patch(
+            "src.services.video_service._generate_thumbnail",
+            new=AsyncMock(return_value=None),
         ),
     ):
         request = ProcessingRequest(

@@ -26,8 +26,11 @@ from src.pipeline.vision import (
     fuse_scores,
     parse_active_speaker,
     parse_engagement,
+    parse_frame_index,
     sample_timestamps,
     score_engagement,
+    select_best_frame_timestamp,
+    write_thumbnail,
 )
 
 _FIXTURE = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
@@ -141,6 +144,71 @@ class TestFuseScores:
 
     def test_zero_weights_returns_transcript(self) -> None:
         assert fuse_scores(0.9, 0.1, 0.0, 0.0) == pytest.approx(0.9)
+
+
+class TestParseFrameIndex:
+    def test_valid_one_based_to_zero_based(self) -> None:
+        assert parse_frame_index('{"best_frame": 2}', 3) == 1
+
+    def test_clamped_to_range(self) -> None:
+        assert parse_frame_index('{"best_frame": 9}', 3) == 2
+        assert parse_frame_index('{"best_frame": 0}', 3) == 0
+
+    def test_missing_key_returns_none(self) -> None:
+        assert parse_frame_index('{"other": 1}', 3) is None
+
+    def test_non_numeric_returns_none(self) -> None:
+        assert parse_frame_index('{"best_frame": "two"}', 3) is None
+
+    def test_no_json_returns_none(self) -> None:
+        assert parse_frame_index("nope", 3) is None
+
+
+class TestWriteThumbnail:
+    def test_writes_real_jpeg(self, tmp_path: Path) -> None:
+        dest = tmp_path / "thumb.jpg"
+        out = write_thumbnail(_FIXTURE, 1.0, dest, 256)
+        assert out == dest
+        assert dest.exists() and dest.stat().st_size > 0
+
+    def test_missing_source_returns_none(self, tmp_path: Path) -> None:
+        assert write_thumbnail("/no/such.mp4", 1.0, tmp_path / "t.jpg", 256) is None
+
+
+class TestSelectBestFrame:
+    def test_disabled_returns_midpoint(self) -> None:
+        ts = select_best_frame_timestamp(_FIXTURE, 0.0, 2.0, Config(VLM_ENABLED=False))
+        assert ts == pytest.approx(1.0)
+
+    def test_no_frames_returns_midpoint(self) -> None:
+        with patch("src.pipeline.vision.extract_frame_b64", return_value=None):
+            ts = select_best_frame_timestamp(_FIXTURE, 0.0, 4.0, _cfg())
+        assert ts == pytest.approx(2.0)
+
+    def test_vlm_failure_returns_midpoint(self) -> None:
+        with (
+            patch("src.pipeline.vision.extract_frame_b64", return_value="AAA"),
+            patch("src.pipeline.vision._vlm_chat", return_value=None),
+        ):
+            ts = select_best_frame_timestamp(_FIXTURE, 0.0, 4.0, _cfg())
+        assert ts == pytest.approx(2.0)
+
+    def test_unparseable_index_returns_midpoint(self) -> None:
+        with (
+            patch("src.pipeline.vision.extract_frame_b64", return_value="AAA"),
+            patch("src.pipeline.vision._vlm_chat", return_value="garbage"),
+        ):
+            ts = select_best_frame_timestamp(_FIXTURE, 0.0, 4.0, _cfg())
+        assert ts == pytest.approx(2.0)
+
+    def test_vlm_selects_frame(self) -> None:
+        # 3 frames at 0, 2, 4; the VLM picks frame 3 (1-based) -> timestamp 4.0.
+        with (
+            patch("src.pipeline.vision.extract_frame_b64", return_value="AAA"),
+            patch("src.pipeline.vision._vlm_chat", return_value='{"best_frame": 3}'),
+        ):
+            ts = select_best_frame_timestamp(_FIXTURE, 0.0, 4.0, _cfg())
+        assert ts == pytest.approx(4.0)
 
 
 class TestBuildPayload:
