@@ -182,9 +182,39 @@ Lives in the e2e tier from day one.
 *Reference smoke sources:*
 - **single** — `https://www.youtube.com/watch?v=wkPL4QNlNV4` ("LLM Context Window
   Decay", talking-head; already validated end-to-end by `tests/e2e/smoke_pipeline.py`).
-- **duo** — `https://www.youtube.com/watch?v=kssjy4RCKgU` (two-speaker; the active-
-  speaker / `duo` framing + diarization-vs-VLM comparison target).
+- **duo** — `https://www.youtube.com/watch?v=kssjy4RCKgU` ("What is Agentic SEO?",
+  split-screen two-speaker; the active-speaker / `duo` framing + diarization-vs-VLM
+  comparison target).
 - *(add a `multi` source when that mode is scheduled.)*
+
+### ⚠️ Phase 0 spike RESULT (2026-06-29) — VLM vision is currently NON-FUNCTIONAL
+
+Ran the spike against `gemma-4-26B-A4B-MLX-4-8` @ `http://127.0.0.1:8998/v1`:
+- The endpoint **accepts** the OpenAI vision message format (base64 `image_url`
+  parts) and consumes ~290 image tokens — so the request shape is correct and an
+  image is being decoded server-side. Latency ~1–2 s/image (acceptable).
+- **But perception is broken.** A real duo frame (two people on a branded gray
+  background) → *"solid uniform gray, no people."* A tight single-speaker crop →
+  same. **A synthetic solid-RED 512×512 image → "Gray."** A black circle on white →
+  vaguely "circle" but called gray. The image token count is a fixed ~290
+  regardless of source size (32 KB JPEG vs 425 KB PNG), and content is ignored.
+- **Conclusion:** the image pixels are not reaching the model correctly — the
+  vision tower/preprocessing on this omlx endpoint (or this 4-8 mixed quant) is
+  effectively non-functional. **NO-GO for any VLM-vision feature until the endpoint
+  is fixed/replaced.** Suspects to check server-side: omlx image preprocessing,
+  the 4-8 quantization damaging the vision tower, Gemma `<start_of_image>` token
+  handling in the OpenAI shim, or vision not actually loaded despite the `vlm` tag.
+  Useful isolation test: try the omlx server's *native* (non-OpenAI) vision API,
+  and/or a known-good VLM (e.g. a standard Gemma 3 / Qwen2-VL build).
+
+**Roadmap impact:** this *validates* the §4.0 P12 build-vs-borrow note. The
+highest-value `duo`/`multi` feature — **active-speaker framing — does NOT need the
+VLM** and can ship deterministically (audio diarization + MediaPipe face
+positions), fully inside the gate, unblocked by the broken endpoint. So the
+revised near-term order is: **(1) deterministic active-speaker framing first**
+(no VLM dependency), **(2) gate every VLM-vision feature (engagement re-ranking,
+thumbnails) behind a verified-working vision endpoint** — re-run this spike as the
+entry gate before resuming them.
 
 **Phase 1 — `content_mode` config + mode-aware framing.** Add
 `content_mode: Literal["single","duo","multi"]` (default `single`) to `Config`,
