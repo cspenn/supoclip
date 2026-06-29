@@ -18,6 +18,8 @@ Config (all from env / src.config, no magic constants):
     LOCAL_LLM_BASE_URL, LOCAL_LLM_API_KEY  — endpoint + key (src.config.Config)
     VLM_MODEL                              — model id to probe (defaults to LOCAL_LLM_MODEL)
     VLM_PROBE_TIMEOUT_S                    — request timeout (default 180)
+    VLM_PROBE_MAX_TOKENS                   — max output tokens (default 512; raise for
+                                             reasoning VLMs that emit chain-of-thought)
 
 Usage::
 
@@ -43,6 +45,9 @@ from PIL import Image
 from src.config import get_config
 
 _DEFAULT_TIMEOUT_S = 180.0
+# Generous default so reasoning VLMs (e.g. Qwen3.x) aren't cut off mid-chain-of-
+# thought before they emit the answer; overridable via VLM_PROBE_MAX_TOKENS.
+_DEFAULT_MAX_TOKENS = 512
 _PROBE_IMAGE_SIZE = 512
 _RED = (220, 20, 20)
 
@@ -54,7 +59,7 @@ def _b64_jpeg(image: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def _ask(base_url: str, api_key: str, model: str, b64: str, prompt: str, timeout: float) -> tuple[str, float, int]:
+def _ask(base_url: str, api_key: str, model: str, b64: str, prompt: str, timeout: float, max_tokens: int) -> tuple[str, float, int]:
     """Send one vision chat-completion; return (reply_text, latency_s, prompt_tokens)."""
     payload = {
         "model": model,
@@ -67,7 +72,7 @@ def _ask(base_url: str, api_key: str, model: str, b64: str, prompt: str, timeout
                 ],
             }
         ],
-        "max_tokens": 60,
+        "max_tokens": max_tokens,
         "temperature": 0,
     }
     t0 = time.monotonic()
@@ -122,6 +127,7 @@ def main() -> None:
     api_key = cfg.local_llm_api_key
     model = os.environ.get("VLM_MODEL", cfg.local_llm_model)
     timeout = float(os.environ.get("VLM_PROBE_TIMEOUT_S", _DEFAULT_TIMEOUT_S))
+    max_tokens = int(os.environ.get("VLM_PROBE_MAX_TOKENS", _DEFAULT_MAX_TOKENS))
 
     print(f"VLM probe -> endpoint={base_url} model={model}", flush=True)
 
@@ -131,8 +137,9 @@ def main() -> None:
         api_key,
         model,
         _b64_jpeg(red),
-        "What is the single dominant color of this image? Answer with one word.",
+        "What is the dominant color of this image? Think briefly, then end with 'FINAL: <color>'.",
         timeout,
+        max_tokens,
     )
     print(f"  solid-RED test: {latency:.1f}s, {ptok} prompt tokens -> {reply!r}", flush=True)
     vision_ok = "red" in reply.strip().lower()
@@ -149,6 +156,7 @@ def main() -> None:
                     fb,
                     "How many people are visible and what is the setting? One sentence.",
                     timeout,
+                    max_tokens,
                 )
                 print(f"  real-frame test: {lat2:.1f}s, {ptok2} prompt tokens -> {rep2!r}", flush=True)
 
