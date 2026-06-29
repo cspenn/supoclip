@@ -67,6 +67,114 @@ def _ffprobe_video_stream(path: Path) -> dict[str, str]:
     return info
 
 
+def _ffprobe_duration(path: Path) -> float:
+    """Return the container duration of *path* in seconds via ffprobe."""
+    out = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return float(out.stdout.strip())
+
+
+def _synthesize_magenta_transition(dest: Path, duration_s: float = 0.5) -> Path:
+    """Render a solid-magenta clip (with silent audio) for transition tests."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration_s),
+            "-i",
+            "color=c=magenta:s=1280x720:r=30",
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration_s),
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            str(dest),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return dest
+
+
+def _synthesize_portrait_source_with_audio(dest: Path, duration_s: float = 2.0) -> Path:
+    """Render a 720x1280 portrait clip WITH an audio track (for mux tests)."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration_s),
+            "-i",
+            "color=c=blue:s=720x1280:r=24",
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration_s),
+            "-i",
+            "sine=frequency=440:sample_rate=44100",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            str(dest),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return dest
+
+
+def _has_audio_stream(path: Path) -> bool:
+    """Return True when *path* exposes at least one audio stream (via ffprobe)."""
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return bool(out.stdout.strip())
+
+
+def _magenta_fraction(image_path: Path) -> float:
+    """Return the fraction of predominantly-magenta pixels in *image_path*."""
+    from PIL import Image
+
+    img = Image.open(image_path).convert("RGB")
+    px = img.tobytes()
+    total = len(px) // 3
+    magenta = sum(1 for i in range(0, len(px), 3) if px[i] > 180 and px[i + 2] > 180 and px[i + 1] < 80)
+    return magenta / total
+
+
 def _extract_frame(video: Path, timestamp_s: float, dest: Path) -> Path:
     """Extract a single PNG frame from *video* at *timestamp_s*."""
     subprocess.run(
@@ -267,6 +375,86 @@ async def test_caption_event_timings_match_word_timestamps(tmp_path: Path) -> No
         assert word in visible, f"event at {event.start}ms missing active word {word!r}; visible={visible!r}"
         assert abs(event.start - exp_start) <= tol_ms, f"{word}: start {event.start}ms drifted from {exp_start}ms"
         assert abs(event.end - exp_end) <= tol_ms, f"{word}: end {event.end}ms drifted from {exp_end}ms"
+
+
+@pytest.mark.asyncio
+async def test_real_clip_prepends_transition_content(tmp_path: Path) -> None:
+    """A configured transition's CONTENT is muxed at the start of the clip.
+
+    This is the proof that real transition muxing — not a fade — happens: a 0.5s
+    solid-magenta transition is prepended to a 2.0s main segment, so (a) the
+    output runs ~2.5s and (b) the opening frame is overwhelmingly magenta (the
+    transition's own pixels) while a later frame from the main portion is not.
+    A fade-only or no-op implementation fails both assertions.
+    """
+    pytest.importorskip("PIL.Image")
+
+    transition = _synthesize_magenta_transition(tmp_path / "transition.mp4", duration_s=0.5)
+    out = tmp_path / "clip.mp4"
+    segment = TranscriptSegment(start_s=0.0, end_s=2.0, text="transition test")
+
+    await generate_clip(
+        source_video=_FIXTURE,
+        segment=segment,
+        words=[],
+        output_path=out,
+        options=ClipOptions(output_resolution="720p", transition_path=transition),
+    )
+
+    assert out.exists() and out.stat().st_size > 0
+
+    # (a) Total duration ≈ transition (0.5s) + segment (2.0s).
+    duration = _ffprobe_duration(out)
+    assert duration == pytest.approx(2.5, abs=0.2), f"expected ~2.5s, got {duration}s"
+
+    # The muxed output keeps the main clip's 9:16 geometry and H.264 codec.
+    info = _ffprobe_video_stream(out)
+    assert info.get("codec_name") == "h264", info
+    assert (int(info["width"]), int(info["height"])) == (720, 1280), info
+
+    # (b) Opening frame is the transition's solid magenta; a later (main) frame is not.
+    opening = _extract_frame(out, 0.1, tmp_path / "opening.png")
+    later = _extract_frame(out, 1.5, tmp_path / "later.png")
+
+    opening_magenta = _magenta_fraction(opening)
+    later_magenta = _magenta_fraction(later)
+
+    assert opening_magenta > 0.9, f"opening frame only {opening_magenta:.2%} magenta — transition content not muxed at start"
+    assert later_magenta < 0.1, f"later frame is {later_magenta:.2%} magenta — main content was overwritten by the transition"
+
+
+@pytest.mark.asyncio
+async def test_real_transition_preserves_main_audio_track(tmp_path: Path) -> None:
+    """Muxing a transition onto an audio-bearing source keeps the main's audio.
+
+    The committed fixture has no audio, so the production-common branch — main
+    clip WITH audio, concatenated using its own ``1:a`` stream — is exercised
+    here against a synthesized source that carries a real audio track. The muxed
+    output must still expose exactly one video and one audio stream, run the
+    combined duration, and open on the transition's magenta content.
+    """
+    pytest.importorskip("PIL.Image")
+
+    source = _synthesize_portrait_source_with_audio(tmp_path / "source.mp4", duration_s=2.0)
+    assert _has_audio_stream(source), "synthesized source should carry audio"
+
+    transition = _synthesize_magenta_transition(tmp_path / "transition.mp4", duration_s=0.5)
+    out = tmp_path / "clip.mp4"
+    segment = TranscriptSegment(start_s=0.0, end_s=2.0, text="audio mux test")
+
+    await generate_clip(
+        source_video=source,
+        segment=segment,
+        words=[],
+        output_path=out,
+        options=ClipOptions(output_resolution="720p", transition_path=transition),
+    )
+
+    assert out.exists() and out.stat().st_size > 0
+    assert _has_audio_stream(out), "muxed output lost the main clip's audio track"
+    assert _ffprobe_duration(out) == pytest.approx(2.5, abs=0.2)
+    opening = _extract_frame(out, 0.1, tmp_path / "opening.png")
+    assert _magenta_fraction(opening) > 0.9, "transition content not muxed at start of audio-bearing clip"
 
 
 # end tests/integration/test_pipeline_real_output.py

@@ -107,16 +107,19 @@ class ClipOptions:
         subtitle_style: Subtitle styling; None disables subtitle burn-in.
         logo_path: Path to a logo image overlaid at the top-right of the clip.
             When the file is missing the overlay is silently skipped.
-        fade_in_s: Fade-in transition duration in seconds. ``0.0`` (the
-            default) disables the fade, leaving output byte-identical to the
-            pre-transition pipeline. The orchestration layer sets this per clip
-            via round-robin selection over the configured transitions.
+        transition_path: Path to a transition ``.mp4`` whose **content** is
+            prepended to the generated clip so the output is
+            ``[transition][main clip]``. ``None`` (the default) is a clean no-op
+            that leaves output byte-identical to the no-transition pipeline.
+            When the file is missing the transition is silently skipped. The
+            orchestration layer sets this per clip via round-robin selection over
+            the configured transitions directory.
     """
 
     output_resolution: str = _DEFAULT_RESOLUTION
     subtitle_style: SubtitleStyle | None = None
     logo_path: str | Path | None = None
-    fade_in_s: float = 0.0
+    transition_path: str | Path | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -222,27 +225,30 @@ _ENCODE_ARGS: tuple[str, ...] = (
     "+faststart",
 )
 
+# lavfi source generating silent stereo audio. Used to give a transition (or a
+# main clip whose source had no audio track) a concat-compatible audio stream,
+# since the concat filter requires every segment to expose the same streams.
+_SILENT_AUDIO_SOURCE: str = "anullsrc=channel_layout=stereo:sample_rate=44100"
+
 
 def _build_main_video_filter(
     crop_box: tuple[int, int, int, int],
     out_width: int,
     out_height: int,
-    fade_in_s: float,
     ass_path: str | Path | None,
     fonts_dir: str | Path | None,
 ) -> str:
     """Build the comma-joined filter chain applied to the main video stream.
 
-    The chain is crop → scale → optional fade-in → optional ASS burn-in. It is
-    identical whether the clip is rendered via ``-vf`` (no logo) or as the base
-    branch of a ``-filter_complex`` overlay graph (logo present), so the
-    no-transition / no-logo output stays byte-identical to the legacy pipeline.
+    The chain is crop → scale → optional ASS burn-in. It is identical whether
+    the clip is rendered via ``-vf`` (no logo) or as the base branch of a
+    ``-filter_complex`` overlay graph (logo present), so the no-logo output
+    stays byte-identical to the legacy pipeline.
 
     Args:
         crop_box: ``(x, y, width, height)`` crop rectangle.
         out_width: Desired output width in pixels.
         out_height: Desired output height in pixels.
-        fade_in_s: Fade-in duration in seconds; ``<= 0`` omits the fade filter.
         ass_path: Path to an ``.ass`` subtitle file, or ``None`` to skip.
         fonts_dir: Directory of TTF fonts for libass (used only with ass_path).
 
@@ -254,9 +260,6 @@ def _build_main_video_filter(
         f"crop={crop_w}:{crop_h}:{x}:{y}",
         f"scale={out_width}:{out_height}",
     ]
-
-    if fade_in_s > 0:
-        parts.append(f"fade=t=in:st=0:d={fade_in_s}")
 
     if ass_path is not None:
         ass_filter = f"ass={_escape_filter_path(ass_path)}"
@@ -288,6 +291,72 @@ def _build_logo_overlay_graph(main_chain: str, out_width: int) -> str:
     return f"[0:v]{main_chain}[base];[1:v]scale={logo_w}:-1[logo];[base][logo]overlay=main_w-overlay_w-{margin}:{margin}[vout]"
 
 
+def build_concat_command(
+    transition_path: str | Path,
+    main_path: str | Path,
+    output_path: str | Path,
+    *,
+    out_width: int,
+    out_height: int,
+    fps: float,
+    transition_silence_s: float | None,
+    main_silence_s: float | None,
+) -> list[str]:
+    """Build the ffmpeg command that prepends a transition to the main clip.
+
+    The transition video is normalised to the main clip's exact geometry — width,
+    height, fps, square pixel aspect ratio and ``yuv420p`` pixel format — then the
+    two segments are joined with the ``concat`` filter so the output is
+    ``[transition][main clip]``. The concat filter requires every segment to
+    expose the same streams, so a silent stereo audio track is synthesised for
+    any segment whose source lacks audio.
+
+    Args:
+        transition_path: Source transition ``.mp4`` (input ``0``).
+        main_path: Already-rendered main clip (input ``1``), carrying its crop,
+            scale, subtitle burn-in and logo overlay.
+        output_path: Destination path for the concatenated ``.mp4``.
+        out_width: Main clip width in pixels (transition is scaled to match).
+        out_height: Main clip height in pixels (transition is scaled to match).
+        fps: Target frame rate; the transition is retimed to it so both segments
+            share a frame rate. ``fps`` filtering preserves duration.
+        transition_silence_s: When set, synthesise a silent audio track of this
+            many seconds for the transition (its source had no audio). When
+            ``None`` the transition's own audio stream (``0:a``) is used.
+        main_silence_s: When set, synthesise a silent audio track of this many
+            seconds for the main clip (its source had no audio). When ``None``
+            the main clip's own audio stream (``1:a``) is used.
+
+    Returns:
+        List of string arguments suitable for ``subprocess.run(cmd, shell=False)``.
+    """
+    cmd: list[str] = ["ffmpeg", "-y", "-i", str(transition_path), "-i", str(main_path)]
+    next_input = 2
+
+    if transition_silence_s is None:
+        transition_audio = "[0:a]"
+    else:
+        cmd += ["-f", "lavfi", "-t", str(transition_silence_s), "-i", _SILENT_AUDIO_SOURCE]
+        transition_audio = f"[{next_input}:a]"
+        next_input += 1
+
+    if main_silence_s is None:
+        main_audio = "[1:a]"
+    else:
+        cmd += ["-f", "lavfi", "-t", str(main_silence_s), "-i", _SILENT_AUDIO_SOURCE]
+        main_audio = f"[{next_input}:a]"
+        next_input += 1
+
+    graph = (
+        f"[0:v]scale={out_width}:{out_height},setsar=1,fps={fps},format=yuv420p[tv];"
+        f"[1:v]setsar=1,format=yuv420p[mv];"
+        f"[tv]{transition_audio}[mv]{main_audio}concat=n=2:v=1:a=1[v][a]"
+    )
+
+    cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]", *_ENCODE_ARGS, str(output_path)]
+    return cmd
+
+
 def build_ffmpeg_command(
     input_path: str | Path,
     output_path: str | Path,
@@ -299,15 +368,14 @@ def build_ffmpeg_command(
     ass_path: str | Path | None = None,
     fonts_dir: str | Path | None = None,
     logo_path: str | Path | None = None,
-    fade_in_s: float = 0.0,
 ) -> list[str]:
     """Build the ffmpeg argument list for clip generation.
 
     Constructs a command that: fast-seeks before the input (``-ss``
     before ``-i``), trims to the segment duration (``-to``), applies
-    a video-filter chain of crop → scale → optional fade-in → optional
-    ASS subtitle burn-in, optionally overlays a logo via a second input,
-    and encodes with libx264/aac.
+    a video-filter chain of crop → scale → optional ASS subtitle burn-in,
+    optionally overlays a logo via a second input, and encodes with
+    libx264/aac.
 
     When ``logo_path`` is ``None`` the command uses a single-input ``-vf``
     chain (byte-identical to the legacy pipeline). When a logo is supplied a
@@ -329,7 +397,6 @@ def build_ffmpeg_command(
             used when ``ass_path`` is also provided.
         logo_path: Path to a logo image overlaid at the top-right. ``None``
             keeps the simple ``-vf`` path with no behaviour change.
-        fade_in_s: Fade-in duration in seconds; ``0.0`` disables the fade.
 
     Returns:
         List of string arguments suitable for
@@ -345,7 +412,6 @@ def build_ffmpeg_command(
         crop_box,
         out_width,
         out_height,
-        fade_in_s,
         ass_path,
         fonts_dir,
     )
@@ -369,6 +435,50 @@ def build_ffmpeg_command(
 
     cmd += ["-to", str(duration_s), *video_args, *_ENCODE_ARGS, str(output_path)]
     return cmd
+
+
+def _prepare_subtitle_file(
+    out: Path,
+    segment: TranscriptSegment,
+    words: list[dict],
+    style: SubtitleStyle | None,
+) -> Path | None:
+    """Write an ``.ass`` subtitle file for the segment, or return ``None``.
+
+    Args:
+        out: Final clip output path (the ``.ass`` is named from its stem).
+        segment: Segment whose time range bounds the included words.
+        words: Full word-level transcript (filtered to the segment range).
+        style: Subtitle styling; ``None`` disables subtitle burn-in.
+
+    Returns:
+        Path to the written ``.ass`` file, or ``None`` when burn-in is disabled
+        or no words fall within the segment.
+    """
+    if style is None:
+        return None
+    segment_words = filter_words_for_segment(words, segment.start_s, segment.end_s)
+    if not segment_words:
+        return None
+    ass_path = out.parent / (out.stem + ".ass")
+    write_ass_file(segment_words, ass_path, style=style)
+    log.info("subtitle_file_written", path=str(ass_path), words=len(segment_words))
+    return ass_path
+
+
+def _resolve_logo(logo_path: str | Path | None) -> str | Path | None:
+    """Return the logo path only when it points at an existing file.
+
+    Args:
+        logo_path: Candidate logo path from :class:`ClipOptions`.
+
+    Returns:
+        The path when configured and the file exists; ``None`` otherwise so a
+        misconfigured path degrades to a clean no-overlay clip.
+    """
+    if logo_path is not None and Path(logo_path).exists():
+        return logo_path
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -442,32 +552,26 @@ async def generate_clip(
     )
 
     # --- Step 3: subtitle file --------------------------------------------
-    ass_path: Path | None = None
-    if opts.subtitle_style is not None:
-        segment_words = filter_words_for_segment(words, segment.start_s, segment.end_s)
-        if segment_words:
-            tmp_dir = out.parent
-            ass_path = tmp_dir / (out.stem + ".ass")
-            write_ass_file(
-                segment_words,
-                ass_path,
-                style=opts.subtitle_style,
-            )
-            log.info("subtitle_file_written", path=str(ass_path), words=len(segment_words))
+    ass_path = _prepare_subtitle_file(out, segment, words, opts.subtitle_style)
 
     # Locate fonts directory relative to the project.
     fonts_dir: Path | None = _find_fonts_dir()
 
     # Resolve the logo overlay: only pass it through when the file exists, so a
     # misconfigured path degrades to a clean no-overlay clip instead of failing.
-    logo_path: str | Path | None = None
-    if opts.logo_path is not None and Path(opts.logo_path).exists():
-        logo_path = opts.logo_path
+    logo_path = _resolve_logo(opts.logo_path)
+
+    # Resolve the transition: only mux it when the file exists, so a misconfigured
+    # path degrades to a clean no-transition clip. When active, the main clip is
+    # rendered to an intermediate file first and the transition is prepended in a
+    # second pass; otherwise we render straight to ``out`` (byte-identical no-op).
+    transition = _resolve_transition(opts.transition_path)
+    main_target = out if transition is None else out.parent / f"{out.stem}.main{out.suffix}"
 
     # --- Step 4: ffmpeg ---------------------------------------------------
     cmd = build_ffmpeg_command(
         input_path=source,
-        output_path=out,
+        output_path=main_target,
         start_s=segment.start_s,
         end_s=segment.end_s,
         crop_box=crop_box,
@@ -476,7 +580,6 @@ async def generate_clip(
         ass_path=ass_path,
         fonts_dir=fonts_dir,
         logo_path=logo_path,
-        fade_in_s=opts.fade_in_s,
     )
 
     log.info("ffmpeg_start", cmd=" ".join(cmd))
@@ -485,6 +588,17 @@ async def generate_clip(
     if result.returncode != 0:
         stderr = result.stderr or b""
         raise ClipGenerationError(f"ffmpeg failed (exit {result.returncode}): " + stderr.decode(errors="replace").strip())
+
+    # --- Step 5: prepend transition content (when configured) -------------
+    if transition is not None:
+        await asyncio.to_thread(
+            _prepend_transition,
+            transition,
+            main_target,
+            out,
+            out_width,
+            out_height,
+        )
 
     log.info(
         "clip_generated",
@@ -527,6 +641,199 @@ def _run_ffmpeg(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[
         )
     except subprocess.TimeoutExpired as exc:
         raise ClipGenerationError(f"ffmpeg timed out after {timeout_s}s") from exc
+
+
+def _resolve_transition(transition_path: str | Path | None) -> Path | None:
+    """Resolve a configured transition path to an existing file, or ``None``.
+
+    Args:
+        transition_path: Candidate transition path from :class:`ClipOptions`.
+
+    Returns:
+        The :class:`~pathlib.Path` when a path is configured and the file
+        exists; ``None`` when unset or missing (a clean no-op).
+    """
+    if transition_path is None:
+        return None
+    candidate = Path(transition_path)
+    return candidate if candidate.exists() else None
+
+
+def _prepend_transition(
+    transition_path: Path,
+    main_path: Path,
+    output_path: Path,
+    out_width: int,
+    out_height: int,
+) -> None:
+    """Mux a transition clip's content in front of the rendered main clip.
+
+    Probes the main clip's frame rate and both clips' audio presence, then runs a
+    concat pass producing ``[transition][main clip]`` at ``output_path``. The
+    intermediate ``main_path`` is always removed afterwards. Fails loudly so a
+    broken concat never silently yields a transition-less clip.
+
+    Args:
+        transition_path: Existing transition ``.mp4`` to prepend.
+        main_path: Intermediate main clip (crop/scale/subtitles/logo already
+            applied); removed once muxing finishes.
+        output_path: Destination for the concatenated clip.
+        out_width: Main clip width in pixels.
+        out_height: Main clip height in pixels.
+
+    Raises:
+        ClipGenerationError: If any probe fails or the concat ffmpeg pass exits
+            non-zero.
+    """
+    fps = _probe_video_fps(main_path)
+    transition_silence_s = None if _video_has_audio(transition_path) else _probe_duration(transition_path)
+    main_silence_s = None if _video_has_audio(main_path) else _probe_duration(main_path)
+
+    cmd = build_concat_command(
+        transition_path,
+        main_path,
+        output_path,
+        out_width=out_width,
+        out_height=out_height,
+        fps=fps,
+        transition_silence_s=transition_silence_s,
+        main_silence_s=main_silence_s,
+    )
+
+    log.info("ffmpeg_transition_start", cmd=" ".join(cmd))
+    try:
+        result = _run_ffmpeg(cmd)
+        if result.returncode != 0:
+            stderr = (result.stderr or b"").decode(errors="replace").strip()
+            raise ClipGenerationError(f"ffmpeg transition concat failed (exit {result.returncode}): {stderr}")
+    finally:
+        main_path.unlink(missing_ok=True)
+
+
+def _run_ffprobe(cmd: list[str]) -> bytes:
+    """Execute an ffprobe command and return its stdout, failing loudly.
+
+    Args:
+        cmd: Full ffprobe argument list.
+
+    Returns:
+        Raw stdout bytes from ffprobe.
+
+    Raises:
+        ClipGenerationError: If ffprobe cannot be executed or exits non-zero.
+    """
+    try:
+        result = subprocess.run(cmd, capture_output=True, check=False)
+    except OSError as exc:
+        raise ClipGenerationError(f"ffprobe could not be executed: {exc}") from exc
+
+    if result.returncode != 0:
+        stderr = (result.stderr or b"").decode(errors="replace").strip()
+        raise ClipGenerationError(f"ffprobe failed (exit {result.returncode}): {stderr}")
+
+    return result.stdout or b""
+
+
+def _probe_duration(video_path: Path) -> float:
+    """Return the container duration of *video_path* in seconds via ffprobe.
+
+    Args:
+        video_path: Path to the video file.
+
+    Returns:
+        Duration in seconds.
+
+    Raises:
+        ClipGenerationError: If ffprobe fails or the duration cannot be parsed.
+    """
+    stdout = _run_ffprobe(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ]
+    )
+    text = stdout.decode(errors="replace").strip()
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise ClipGenerationError(f"could not parse ffprobe duration for {video_path}: {text!r}") from exc
+
+
+def _video_has_audio(video_path: Path) -> bool:
+    """Return ``True`` when *video_path* exposes at least one audio stream.
+
+    Args:
+        video_path: Path to the video file.
+
+    Returns:
+        ``True`` if an audio stream is present, else ``False``.
+
+    Raises:
+        ClipGenerationError: If ffprobe fails.
+    """
+    stdout = _run_ffprobe(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(video_path),
+        ]
+    )
+    return bool(stdout.strip())
+
+
+def _probe_video_fps(video_path: Path) -> float:
+    """Return the first video stream's frame rate of *video_path* via ffprobe.
+
+    ffprobe reports ``r_frame_rate`` as a ``num/den`` rational (e.g. ``24/1``).
+
+    Args:
+        video_path: Path to the video file.
+
+    Returns:
+        Frame rate in frames per second.
+
+    Raises:
+        ClipGenerationError: If ffprobe fails, the value cannot be parsed, or the
+            denominator is zero.
+    """
+    stdout = _run_ffprobe(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=r_frame_rate",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ]
+    )
+    text = stdout.decode(errors="replace").strip()
+    numerator_text, _, denominator_text = text.partition("/")
+    try:
+        numerator = float(numerator_text)
+        denominator = float(denominator_text) if denominator_text else 1.0
+    except ValueError as exc:
+        raise ClipGenerationError(f"could not parse ffprobe fps for {video_path}: {text!r}") from exc
+
+    if denominator == 0:
+        raise ClipGenerationError(f"ffprobe reported zero fps denominator for {video_path}: {text!r}")
+    return numerator / denominator
 
 
 def _parse_ffprobe_dimensions(stdout: bytes) -> tuple[int, int]:

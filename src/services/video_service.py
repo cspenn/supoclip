@@ -185,7 +185,7 @@ async def _save_generated_clip(
 
 
 # ---------------------------------------------------------------------------
-# Transition selection (round-robin fade transitions)
+# Transition selection (round-robin transition-clip muxing)
 # ---------------------------------------------------------------------------
 
 
@@ -240,35 +240,33 @@ def _select_transition(clip_index: int, transitions: list[Path]) -> Path | None:
     return transitions[clip_index % len(transitions)]
 
 
-def _transition_settings(cfg: object) -> tuple[float, list[Path]]:
-    """Resolve the fade duration and available transitions from config.
+def _transition_pool(cfg: object) -> list[Path]:
+    """Resolve the available transition clips from config.
+
+    Transitions are picked up automatically: any ``.mp4`` dropped into
+    ``Config.TRANSITIONS_DIR`` joins the round-robin pool. An empty or absent
+    directory yields an empty pool, which is a clean no-op preserving
+    byte-identical output.
 
     Args:
         cfg: The application config (or a test double).
 
     Returns:
-        ``(fade_in_s, transitions)``. ``fade_in_s`` is ``0.0`` (a clean no-op,
-        preserving byte-identical output) unless ``transition_fade_s`` is set to
-        a positive number; ``transitions`` is the round-robin pool drawn from
-        ``Config.TRANSITIONS_DIR``.
+        The sorted round-robin pool drawn from ``Config.TRANSITIONS_DIR``.
     """
-    fade_s = _positive_number(getattr(cfg, "transition_fade_s", 0.0), 0.0)
-    if fade_s <= 0:
-        return 0.0, []
     transitions_dir = getattr(cfg, "TRANSITIONS_DIR", Path("transitions"))
-    return fade_s, _list_transition_files(transitions_dir)
+    return _list_transition_files(transitions_dir)
 
 
 def _options_for_clip(
     base: ClipOptions | None,
     clip_index: int,
     transitions: list[Path],
-    fade_s: float,
 ) -> ClipOptions | None:
-    """Build the per-clip options, applying a round-robin fade when configured.
+    """Build the per-clip options, assigning a round-robin transition clip.
 
-    When transitions are active and this clip's round-robin slot selects one, a
-    fade-in of ``fade_s`` seconds is applied by copying ``base``. Otherwise the
+    When transitions are available and this clip's round-robin slot selects one,
+    a copy of ``base`` carrying that transition's path is returned. Otherwise the
     shared ``base`` options are returned unchanged (the default no-op path).
 
     Args:
@@ -276,14 +274,15 @@ def _options_for_clip(
             is unavailable).
         clip_index: Zero-based clip position used for round-robin selection.
         transitions: Available transition files.
-        fade_s: Configured fade-in duration in seconds.
 
     Returns:
-        A per-clip ``ClipOptions`` (a fade-applied copy) or the unchanged base.
+        A per-clip ``ClipOptions`` (a transition-bearing copy) or the unchanged
+        base.
     """
-    if base is None or fade_s <= 0 or _select_transition(clip_index, transitions) is None:
+    selected = _select_transition(clip_index, transitions)
+    if base is None or selected is None:
         return base
-    return replace(base, fade_in_s=fade_s)
+    return replace(base, transition_path=selected)
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +333,7 @@ async def _generate_clips_concurrently(
     cfg = get_config()
     max_workers = getattr(cfg, "max_workers", 2)
     semaphore = asyncio.Semaphore(max_workers)
-    fade_s, transitions = _transition_settings(cfg)
+    transitions = _transition_pool(cfg)
 
     async def _generate_one(
         index: int,
@@ -348,7 +347,7 @@ async def _generate_clips_concurrently(
             text=segment.text,
             relevance_score=segment.score,
         )
-        options = _options_for_clip(clip_options, index, transitions, fade_s)
+        options = _options_for_clip(clip_options, index, transitions)
         try:
             async with semaphore:
                 await generate_clip(

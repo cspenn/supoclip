@@ -41,7 +41,7 @@ from src.services.video_service import (
     _positive_number,
     _save_generated_clip,
     _select_transition,
-    _transition_settings,
+    _transition_pool,
     _update_task_status,
     process_video,
 )
@@ -1288,64 +1288,63 @@ class TestSelectTransition:
         ]
 
 
-class TestTransitionSettings:
-    """Tests for _transition_settings config resolution."""
+class TestTransitionPool:
+    """Tests for _transition_pool config resolution."""
 
-    def test_disabled_by_default(self) -> None:
-        """Without transition_fade_s, fades are off and the pool is empty."""
-        fade_s, transitions = _transition_settings(SimpleNamespace())
-        assert fade_s == 0.0
-        assert transitions == []
+    def test_empty_when_no_dir(self) -> None:
+        """A config without a transitions directory yields an empty pool."""
+        assert _transition_pool(SimpleNamespace(TRANSITIONS_DIR=Path("/nope/here"))) == []
 
-    def test_enabled_lists_transitions(self, tmp_path: Path) -> None:
-        """A positive fade duration enables transitions and lists the pool."""
-        (tmp_path / "swoosh.mp4").touch()
-        cfg = SimpleNamespace(transition_fade_s=0.5, TRANSITIONS_DIR=tmp_path)
-        fade_s, transitions = _transition_settings(cfg)
-        assert fade_s == 0.5
-        assert [p.name for p in transitions] == ["swoosh.mp4"]
+    def test_lists_transitions_from_dir(self, tmp_path: Path) -> None:
+        """Every .mp4 in TRANSITIONS_DIR joins the round-robin pool."""
+        (tmp_path / "b.mp4").touch()
+        (tmp_path / "a.mp4").touch()
+        cfg = SimpleNamespace(TRANSITIONS_DIR=tmp_path)
+        assert [p.name for p in _transition_pool(cfg)] == ["a.mp4", "b.mp4"]
 
 
 class TestOptionsForClip:
-    """Tests for the per-clip _options_for_clip fade application."""
+    """Tests for the per-clip _options_for_clip transition assignment."""
 
     def test_none_base_returns_none(self) -> None:
         """A None base (clip module unavailable) passes through unchanged."""
-        assert _options_for_clip(None, 0, [Path("a.mp4")], 1.0) is None
-
-    def test_zero_fade_returns_base_unchanged(self) -> None:
-        """fade_s <= 0 returns the shared base options object (no copy)."""
-        base = ClipOptions()
-        assert _options_for_clip(base, 0, [Path("a.mp4")], 0.0) is base
+        assert _options_for_clip(None, 0, [Path("a.mp4")]) is None
 
     def test_no_transitions_returns_base_unchanged(self) -> None:
         """An empty transition pool leaves the base options unchanged."""
         base = ClipOptions()
-        assert _options_for_clip(base, 0, [], 1.0) is base
+        assert _options_for_clip(base, 0, []) is base
 
-    def test_applies_fade_when_selected(self) -> None:
-        """When a transition is selected, a fade-applied copy is returned."""
+    def test_assigns_transition_when_selected(self) -> None:
+        """When a transition is selected, a copy carrying its path is returned."""
         base = ClipOptions(output_resolution="720p")
-        result = _options_for_clip(base, 0, [Path("a.mp4")], 1.5)
+        result = _options_for_clip(base, 0, [Path("a.mp4")])
         assert result is not base
         assert result is not None
-        assert result.fade_in_s == 1.5
+        assert result.transition_path == Path("a.mp4")
         # Other fields are preserved.
         assert result.output_resolution == "720p"
 
+    def test_round_robin_assigns_per_index(self) -> None:
+        """Different clip indices receive transitions cycling through the pool."""
+        base = ClipOptions()
+        pool = [Path("a.mp4"), Path("b.mp4")]
+        paths = [_options_for_clip(base, i, pool).transition_path for i in range(3)]  # type: ignore[union-attr]
+        assert paths == [Path("a.mp4"), Path("b.mp4"), Path("a.mp4")]
 
-class TestConcurrentFadeWiring:
-    """The round-robin fade reaches generate_clip via _generate_clips_concurrently."""
+
+class TestConcurrentTransitionWiring:
+    """The round-robin transition reaches generate_clip via _generate_clips_concurrently."""
 
     @pytest.mark.asyncio
-    async def test_fade_applied_to_each_clip(self, tmp_path: Path) -> None:
-        """With transitions configured, each clip receives the fade duration."""
+    async def test_transition_assigned_to_each_clip(self, tmp_path: Path) -> None:
+        """With transitions configured, each clip receives a transition path."""
         (tmp_path / "t.mp4").touch()
         seg = _make_segment()
-        captured_fades: list[float] = []
+        captured_transitions: list[object] = []
 
         async def fake_generate(source_video, segment, words, output_path, options):
-            captured_fades.append(options.fade_in_s)
+            captured_transitions.append(options.transition_path)
             output_path.touch()
 
         mock_module = MagicMock()
@@ -1356,7 +1355,6 @@ class TestConcurrentFadeWiring:
         cfg = SimpleNamespace(
             temp_dir=str(tmp_path),
             max_workers=2,
-            transition_fade_s=0.75,
             TRANSITIONS_DIR=tmp_path,
         )
 
@@ -1374,7 +1372,7 @@ class TestConcurrentFadeWiring:
             )
 
         assert len(result) == 1
-        assert captured_fades == [0.75]
+        assert captured_transitions == [tmp_path / "t.mp4"]
 
 
 # ---------------------------------------------------------------------------
