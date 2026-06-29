@@ -71,14 +71,42 @@ endpoint accepts this shape and returns parseable structured output in Phase 0.
 
 ---
 
-## 4. Opportunity map (re-ranked; **ordering is content-dependent — see §8.1**)
+## 4. Opportunity map — organized by **content mode**
 
-> The smoke-test sample (a person talking in a kitchen) is the dominant OpusClip
-> case: talking-head / podcast / educational, with near-zero visual variance.
-> For *that* content, frame-level "engagement" re-ranking adds little, and
-> **active-speaker / salient framing is the bigger lever**. For multi-speaker or
-> cut-heavy footage the ranking flips. So the A-vs-B order below is provisional
-> until the user confirms their dominant content type.
+### 4.0 `content_mode`: single / duo / multi — the organizing axis (decided)
+
+Content type varies per video, so it is a **configured setting**, not a global
+assumption. A `content_mode` with three built-in options selects the
+framing/selection strategy per run:
+
+| Mode | Meaning | Framing strategy | Visual lever |
+|---|---|---|---|
+| `single` | one speaker / talking-head | existing face-centered crop (`detect_face_center_multi`) is sufficient — **skip the VLM framing call** (save latency) | engagement re-ranking (A) is the visual win, since framing is already solved |
+| `duo` | two speakers / interview | **active-speaker framing** — pick the currently-speaking person each moment; optionally alternate | who-is-talking (B) is the dominant lever |
+| `multi` | 3+ speakers / panel / cut-heavy | salient/active-subject tracking across many subjects; denser frame sampling | salient framing (B) + scene awareness |
+
+This dissolves the old "A-vs-B first" question: **the mode picks the strategy.**
+`single` leans on A, `duo`/`multi` lean on B. The deterministic default
+(`content_mode` unset / VLM off) is exactly today's behavior.
+
+**Config mechanism (small open decision — see §8.1):** the project standard
+(CLAUDE.md, `docs/spec.md`) is `.env` + Pydantic `BaseSettings` in
+`src/config.py`. Recommended: add `content_mode: Literal["single","duo","multi"]`
+(default `"single"`) to `Config` — consistent, validated at startup, and gate-
+friendly. The request for a `config.yml` would introduce a *new* config pattern;
+if richer per-profile YAML config is genuinely wanted, that's a separate,
+deliberate migration of the whole config layer, not a one-off file.
+
+**Active-speaker, build-vs-borrow (P12 check for `duo`/`multi`):** identifying the
+talking person is not necessarily a VLM job. Proven, cheaper, more deterministic
+options exist — audio **diarization** (who speaks when; Pyannote is already on the
+FOSS-borrow roadmap) fused with **face positions** (`face_detect`), or an
+audio-visual active-speaker model (TalkNet-style). Per-frame VLM is the expensive
+fallback. Phase 0 should compare "diarization + faces" against "VLM points at the
+active face" on a real `duo` clip before committing — the cheaper deterministic
+path may win and would live entirely inside the gate.
+
+### 4.1 Opportunities (mode-aware)
 
 ### B. Salient-subject / active-speaker reframing — **likely highest value**
 Today the crop centers on a detected face or the frame center. A VLM names the
@@ -132,6 +160,16 @@ budget, run within `max_workers`, timeouts like `ffmpeg_timeout`); **cache** VLM
 results by (video hash, timestamp) like the transcript cache; **offline-first**
 preserved (local endpoint, no new cloud dep unless opted in).
 
+**No magic numbers — every VLM tunable lives in `Config` (first-principles, P-config).**
+The audit's M-7 just moved hardcoded constants into config; VLM work must not
+reintroduce them. Each of these is a named, defaulted, env-overridable
+`Config` field, never a literal buried in code: `content_mode`, `VLM_ENABLED`,
+frames-per-clip / sampling FPS, per-video frame budget, fusion weights
+(transcript vs visual), score/threshold cutoffs, scene-detection threshold, VLM
+request timeout, max image dimension/quality, and the active-speaker approach
+toggle. Code review and `checkpython.sh` (radon/ruff) treat any bare numeric
+literal in the vision path as a defect, exactly as elsewhere in the codebase.
+
 ---
 
 ## 6. Phased roadmap
@@ -141,16 +179,20 @@ get a structured VLM judgment via the OpenAI vision message format against the
 gemma endpoint. Output: go/no-go on latency and message-format compatibility.
 Lives in the e2e tier from day one.
 
-**Phase 1 — first real feature: A *or* B depending on §8.1.** Default-off, fusion
-weight 0, deterministic core 100% unit-tested in the gate, VLM call e2e-only.
-- If content is multi-speaker/cut-heavy → **B (framing)** first.
-- If content is visually dynamic single-stream → **A (re-ranking)** first.
+**Phase 1 — `content_mode` config + mode-aware framing.** Add
+`content_mode: Literal["single","duo","multi"]` (default `single`) to `Config`,
+plus a strategy selector. `single` = today's face-centered crop (no VLM, cheap).
+`duo` = active-speaker framing — built per the Phase-0 build-vs-borrow result
+(diarization+faces vs VLM). Default-off for any VLM/active-speaker path;
+deterministic core (mode selection, frame sampling, fallback) 100% unit-tested in
+the gate; any VLM call e2e-only. **Regression callout:** changing
+`calculate_crop_box`'s input priority risks the face-centered crop the smoke test
+just validated — keep face/center as the *gate-tested* fallback behind the
+graceful boundary.
 
-**Phase 2 — the other of A/B.** **Regression callout:** changing
-`calculate_crop_box`'s input priority (VLM subject over face) risks the
-face-centered crop the smoke test just validated. Keep face/center as the
-*gate-tested* fallback behind the graceful boundary; verify the VLM-framing path in
-the e2e tier only.
+**Phase 2 — `multi` framing + engagement re-ranking (A).** Salient/active-subject
+tracking for `multi`; engagement re-ranking as the visual lever for `single`
+dynamic content. Same default-off / in-gate-core / e2e-VLM boundary.
 
 **Phase 3 — thumbnails/hook frames (C).** Surface in the task page.
 
@@ -177,15 +219,26 @@ in-gate).
 
 ---
 
-## 8. Open decisions (need your input)
+## 8. Decisions
 
-1. **Dominant content type? (gates Phase-1 A-vs-B order — answer this first.)**
-   Mostly single-speaker talking-head/podcast/educational → **B (framing)** first.
-   Multi-speaker / cut-heavy / visually dynamic → **A (re-ranking)** first.
-2. **Latency budget** per video for the vision pass (sets sampling density / frame
-   budget).
-3. **Offline-only** local VLM, or allow a cloud VLM fallback for speed/quality?
-4. **Determinism:** VLM as a re-ranker over deterministic selection
+**Resolved**
+- **Content type → `content_mode` (single/duo/multi) config setting** that selects
+  the per-video strategy (§4.0). Dissolves the A-vs-B ordering question.
+
+**Open (need your input)**
+1. **Config mechanism.** Recommended: `content_mode` (and all VLM tunables) as
+   `.env` + Pydantic `BaseSettings` fields in `src/config.py` — the project
+   standard. You mentioned `config.yml`; adopting YAML would be a deliberate
+   migration of the whole config layer (new pattern vs the audited standard). Keep
+   `.env`/`BaseSettings`, or commit to a YAML config layer?
+2. **Active-speaker approach (`duo`/`multi`).** Cheaper/deterministic
+   diarization+faces (or audio-visual model) vs per-frame VLM — Phase 0 compares
+   both on a real `duo` clip; do you have a preference or constraint (e.g. must
+   stay fully local)?
+3. **Latency budget** per video for the vision pass (sets sampling density / frame
+   budget — all config fields, no magic numbers).
+4. **Offline-only** local VLM, or allow a cloud VLM fallback for speed/quality?
+5. **Determinism:** VLM as a re-ranker over deterministic selection
    (recommended), or proposing segments directly?
 
 ---
