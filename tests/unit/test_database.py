@@ -133,4 +133,34 @@ class TestCloseDb:
             get_engine()
 
 
+class TestAdditiveColumnSync:
+    """Tests for _add_missing_columns (additive schema migration)."""
+
+    async def test_adds_column_to_stale_table(self, tmp_path: object) -> None:
+        """A pre-existing table missing a model column gets it added; missing tables skipped."""
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        import src.models  # noqa: F401  (register models on Base)
+        from src.database import _add_missing_columns
+
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/stale.db")
+        try:
+            async with engine.begin() as conn:
+                # Older schema: generated_clips WITHOUT thumbnail_filename; the
+                # other model tables (tasks, user_preferences) don't exist yet.
+                await conn.exec_driver_sql(
+                    "CREATE TABLE generated_clips ("
+                    "id TEXT PRIMARY KEY, task_id TEXT, filename TEXT, start_time REAL, "
+                    "end_time REAL, duration REAL, title TEXT, transcript_text TEXT, "
+                    "score REAL, created_at TEXT)"
+                )
+                await conn.run_sync(_add_missing_columns)
+                rows = (await conn.exec_driver_sql("PRAGMA table_info(generated_clips)")).fetchall()
+            columns = {row[1] for row in rows}
+        finally:
+            await engine.dispose()
+
+        assert "thumbnail_filename" in columns
+
+
 # end tests/unit/test_database.py

@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
+from sqlalchemy import Connection, inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -101,8 +102,39 @@ async def init_db(database_url: str) -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
 
     log.info("database.initialized")
+
+
+def _add_missing_columns(connection: Connection) -> None:
+    """Add any model columns missing from existing tables (additive migration).
+
+    ``create_all`` only creates absent tables — it never alters an existing one.
+    This project has no migration framework, so an additive column (e.g. a new
+    nullable field) would otherwise be invisible on a pre-existing database and
+    break inserts. For each mapped table that already exists, this issues an
+    ``ALTER TABLE ... ADD COLUMN`` for every model column not yet present.
+
+    Only safe for additive, nullable columns (SQLite cannot add a NOT NULL
+    column without a default). Idempotent: freshly created tables already have
+    every column, so nothing is altered.
+
+    Args:
+        connection: A synchronous SQLAlchemy connection (via ``run_sync``).
+    """
+    inspector = inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        present = {col["name"] for col in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in present:
+                continue
+            col_type = column.type.compile(dialect=connection.dialect)
+            connection.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}'))
+            log.info("database.column_added", table=table.name, column=column.name)
 
 
 async def close_db() -> None:

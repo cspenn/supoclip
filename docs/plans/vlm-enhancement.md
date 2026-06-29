@@ -33,6 +33,15 @@ all correct. **Tuning finding:** the reasoning VLM needs a generous token budget
 for multi-image prompts (engagement parsed empty at 512, worked at ~2000), so the
 `vlm_max_tokens` default was raised to 1024 — raise further for heavier models.
 
+**Assembled-chain verification** (the real proof): ran the full pipeline
+(`tests/e2e/smoke_pipeline.py`) with `CONTENT_MODE=duo VLM_ENABLED=true` on the
+duo clip — produced a real 9:16 clip **cropped to the active (left) speaker**,
+with subtitles, a thumbnail, and a persisted DB row. This run surfaced a real bug
+unit tests couldn't: a new model column (`thumbnail_filename`) is invisible on a
+**pre-existing** `supoclip.db` because `create_all` never alters tables. Fixed
+with an additive-column sync in `init_db` (`database._add_missing_columns`, runs
+`ALTER TABLE ADD COLUMN` for missing nullable columns).
+
 To enable: set `VLM_ENABLED=true`, `VLM_MODEL=Qwen3.6-35B-A3B-Mixed-4-8`,
 `CONTENT_MODE=duo`, and the feature flags (`VLM_RERANK_ENABLED`,
 `QUALITY_DARK_FILTER_ENABLED`, `SCENE_SNAP_ENABLED`) as desired.
