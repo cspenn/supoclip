@@ -187,6 +187,7 @@ async def build_processing_request(
         subtitle_style=style,
         logo_path=logo_path,
         custom_prompt=prefs.ai_prompt,
+        content_mode=get_config().content_mode,
     )
 
 

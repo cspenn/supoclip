@@ -60,6 +60,10 @@ _DEFAULT_RESOLUTION: str = "1080p"
 # Representative frame timestamp used for face detection (seconds into segment)
 _FACE_DETECT_OFFSET_S: float = 1.0
 
+# Horizontal focus fraction (of frame width) per active-speaker side, used to
+# bias the 9:16 crop toward the speaking person in a split-screen layout.
+_SIDE_X_FRACTION: dict[str, float] = {"left": 0.25, "right": 0.75, "center": 0.5}
+
 # ffprobe invocation prefix for probing the first video stream's dimensions.
 _FFPROBE_DIMENSION_ARGS: tuple[str, ...] = (
     "ffprobe",
@@ -114,17 +118,76 @@ class ClipOptions:
             When the file is missing the transition is silently skipped. The
             orchestration layer sets this per clip via round-robin selection over
             the configured transitions directory.
+        active_speaker_side: ``"left"``/``"right"``/``"center"`` framing focus for
+            split-screen `duo`/`multi` content. When set, the 9:16 crop is biased
+            toward that side (the speaking person) instead of using face detection.
+            ``None`` (the default) keeps face-centered/center-crop behavior.
     """
 
     output_resolution: str = _DEFAULT_RESOLUTION
     subtitle_style: SubtitleStyle | None = None
     logo_path: str | Path | None = None
     transition_path: str | Path | None = None
+    active_speaker_side: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Pure helper functions
 # ---------------------------------------------------------------------------
+
+
+def _side_face_center(side: str, frame_width: int, frame_height: int) -> tuple[int, int] | None:
+    """Return a framing focus point biased toward an active-speaker side.
+
+    Maps a split-screen side ("left"/"right"/"center") to a horizontal focus
+    point so the 9:16 crop frames the speaking person. Returns ``None`` for an
+    unrecognized side so the caller falls back to face detection.
+
+    Args:
+        side: Active-speaker side label.
+        frame_width: Source frame width in pixels.
+        frame_height: Source frame height in pixels.
+
+    Returns:
+        ``(x, y)`` focus point, or ``None`` if the side is unrecognized.
+    """
+    fraction = _SIDE_X_FRACTION.get(side)
+    if fraction is None:
+        return None
+    return (int(frame_width * fraction), frame_height // 2)
+
+
+def _resolve_face_center(
+    source: Path,
+    segment: TranscriptSegment,
+    opts: ClipOptions,
+    frame_width: int,
+    frame_height: int,
+) -> tuple[int, int] | None:
+    """Resolve the 9:16 crop focus point for a clip.
+
+    An explicit ``opts.active_speaker_side`` (set by the orchestration layer for
+    `duo`/`multi` content) takes priority and biases the crop toward that side.
+    Otherwise a representative frame is face-detected. Returns ``None`` when no
+    focus is found, so :func:`calculate_crop_box` falls back to a center crop.
+
+    Args:
+        source: Source video path.
+        segment: The segment being clipped.
+        opts: Clip options (carries ``active_speaker_side``).
+        frame_width: Source frame width in pixels.
+        frame_height: Source frame height in pixels.
+
+    Returns:
+        ``(x, y)`` focus point, or ``None``.
+    """
+    if opts.active_speaker_side:
+        side_center = _side_face_center(opts.active_speaker_side, frame_width, frame_height)
+        if side_center is not None:
+            return side_center
+    face_ts = segment.start_s + _FACE_DETECT_OFFSET_S
+    frame = get_representative_frame(source, timestamp_s=face_ts)
+    return detect_face_center(frame) if frame is not None else None
 
 
 def _escape_filter_path(path: str | Path) -> str:
@@ -528,15 +591,13 @@ async def generate_clip(
     # Resolve output resolution.
     out_width, out_height = RESOLUTIONS.get(opts.output_resolution, RESOLUTIONS[_DEFAULT_RESOLUTION])
 
-    # --- Step 1: face detection ----------------------------------------
-    face_ts = segment.start_s + _FACE_DETECT_OFFSET_S
-    frame = get_representative_frame(source, timestamp_s=face_ts)
-    face_center = detect_face_center(frame) if frame is not None else None
-
-    # --- Step 2: crop box -------------------------------------------------
-    # We need the source video's frame dimensions.  Probe them with ffprobe
-    # (the project's mandated tool); this fails loudly rather than guessing.
+    # --- Step 1 & 2: frame dimensions + framing focus --------------------
+    # Probe dimensions with ffprobe (the project's mandated tool); this fails
+    # loudly rather than guessing. The framing focus is an explicit active-speaker
+    # side (duo/multi) when set, otherwise face detection.
     frame_width, frame_height = _get_video_dimensions(source)
+    face_center = _resolve_face_center(source, segment, opts, frame_width, frame_height)
+
     crop_box = calculate_crop_box(
         frame_width=frame_width,
         frame_height=frame_height,

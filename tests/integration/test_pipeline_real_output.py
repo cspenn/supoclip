@@ -457,4 +457,62 @@ async def test_real_transition_preserves_main_audio_track(tmp_path: Path) -> Non
     assert _magenta_fraction(opening) > 0.9, "transition content not muxed at start of audio-bearing clip"
 
 
+@pytest.mark.asyncio
+async def test_active_speaker_side_biases_crop(tmp_path: Path) -> None:
+    """A duo/multi active_speaker_side crops the 9:16 frame to that half.
+
+    Synthesizes a 1920x1080 clip whose left half is red and right half is blue,
+    then generates clips with ``active_speaker_side="left"`` and ``"right"`` and
+    asserts each output is dominated by the corresponding half's color — proving
+    the side-biased crop frames the speaking person (no VLM needed; the side is
+    supplied directly).
+    """
+    pil_image = pytest.importorskip("PIL.Image")
+
+    source = tmp_path / "duo.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=960x1080:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=960x1080:d=1",
+            "-filter_complex",
+            "[0:v][1:v]hstack=inputs=2",
+            "-c:v",
+            "libx264",
+            "-t",
+            "1",
+            str(source),
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+    segment = TranscriptSegment(start_s=0.0, end_s=1.0, text="duo")
+
+    async def _dominant(side: str) -> str:
+        out = tmp_path / f"{side}.mp4"
+        await generate_clip(
+            source_video=source,
+            segment=segment,
+            words=[],
+            output_path=out,
+            options=ClipOptions(output_resolution="720p", active_speaker_side=side),
+        )
+        frame = _extract_frame(out, 0.3, tmp_path / f"{side}.png")
+        data = pil_image.open(frame).convert("RGB").tobytes()
+        red = sum(data[i] for i in range(0, len(data), 3))
+        blue = sum(data[i + 2] for i in range(0, len(data), 3))
+        return "red" if red > blue else "blue"
+
+    assert await _dominant("left") == "red"
+    assert await _dominant("right") == "blue"
+
+
 # end tests/integration/test_pipeline_real_output.py

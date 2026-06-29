@@ -39,12 +39,56 @@ from src.services.video_service import (
     _list_transition_files,
     _options_for_clip,
     _positive_number,
+    _resolve_active_speaker_side,
     _save_generated_clip,
     _select_transition,
     _transition_pool,
     _update_task_status,
     process_video,
 )
+
+
+class TestResolveActiveSpeakerSide:
+    """Tests for the per-segment active-speaker side resolution (duo/multi)."""
+
+    @pytest.mark.asyncio
+    async def test_single_mode_skips_vlm(self) -> None:
+        """single content never invokes the VLM and returns None."""
+        with patch("src.pipeline.vision.detect_active_speaker") as mock_detect:
+            side = await _resolve_active_speaker_side(Path("/v.mp4"), 0.0, 2.0, "single")
+        assert side is None
+        mock_detect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_duo_mode_returns_detected_side(self) -> None:
+        """duo content threads the VLM-detected side through."""
+        from src.pipeline.vision import ActiveSpeaker
+
+        with patch(
+            "src.pipeline.vision.detect_active_speaker",
+            return_value=ActiveSpeaker(side="right", confidence=0.9),
+        ):
+            side = await _resolve_active_speaker_side(Path("/v.mp4"), 0.0, 2.0, "duo")
+        assert side == "right"
+
+    @pytest.mark.asyncio
+    async def test_duo_mode_none_when_unavailable(self) -> None:
+        """When detection returns None (disabled/failed), the side is None."""
+        with patch("src.pipeline.vision.detect_active_speaker", return_value=None):
+            side = await _resolve_active_speaker_side(Path("/v.mp4"), 0.0, 2.0, "multi")
+        assert side is None
+
+
+class TestOptionsForClipActiveSpeaker:
+    """Tests for _options_for_clip's active-speaker-side assignment."""
+
+    def test_side_applied_to_options(self) -> None:
+        """A detected side is written onto the per-clip options copy."""
+        base = ClipOptions()
+        result = _options_for_clip(base, 0, [], active_speaker_side="left")
+        assert result is not base
+        assert result.active_speaker_side == "left"  # type: ignore[union-attr]
+
 
 # ---------------------------------------------------------------------------
 # Constants

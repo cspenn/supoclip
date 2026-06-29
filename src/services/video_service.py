@@ -62,6 +62,9 @@ class ProcessingRequest:
         subtitle_style: Optional subtitle styling configuration.
         logo_path: Optional path to a logo image for branding overlays.
         custom_prompt: Optional additional instructions for the AI analysis.
+        content_mode: ``"single"``/``"duo"``/``"multi"`` — drives the framing
+            strategy. ``"duo"``/``"multi"`` enable VLM active-speaker framing when
+            the VLM is configured; ``"single"`` (default) uses face/center crop.
     """
 
     source: str
@@ -72,6 +75,7 @@ class ProcessingRequest:
     subtitle_style: SubtitleStyle | None = None
     logo_path: Path | None = None
     custom_prompt: str | None = None
+    content_mode: str = "single"
 
 
 @dataclass(slots=True)
@@ -262,11 +266,12 @@ def _options_for_clip(
     base: ClipOptions | None,
     clip_index: int,
     transitions: list[Path],
+    active_speaker_side: str | None = None,
 ) -> ClipOptions | None:
-    """Build the per-clip options, assigning a round-robin transition clip.
+    """Build the per-clip options (round-robin transition + active-speaker side).
 
-    When transitions are available and this clip's round-robin slot selects one,
-    a copy of ``base`` carrying that transition's path is returned. Otherwise the
+    Returns a copy of ``base`` carrying this clip's round-robin transition (if
+    any) and active-speaker framing side (if detected). When neither applies the
     shared ``base`` options are returned unchanged (the default no-op path).
 
     Args:
@@ -274,20 +279,54 @@ def _options_for_clip(
             is unavailable).
         clip_index: Zero-based clip position used for round-robin selection.
         transitions: Available transition files.
+        active_speaker_side: Framing side from VLM detection, or ``None``.
 
     Returns:
-        A per-clip ``ClipOptions`` (a transition-bearing copy) or the unchanged
-        base.
+        A per-clip ``ClipOptions`` (a modified copy) or the unchanged base.
     """
-    selected = _select_transition(clip_index, transitions)
-    if base is None or selected is None:
+    if base is None:
         return base
-    return replace(base, transition_path=selected)
+    result = base
+    selected = _select_transition(clip_index, transitions)
+    if selected is not None:
+        result = replace(result, transition_path=selected)
+    if active_speaker_side is not None:
+        result = replace(result, active_speaker_side=active_speaker_side)
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Concurrent clip generation
 # ---------------------------------------------------------------------------
+
+
+async def _resolve_active_speaker_side(
+    source_video: Path,
+    start_s: float,
+    end_s: float,
+    content_mode: str,
+) -> str | None:
+    """Return the active-speaker framing side for a segment, or ``None``.
+
+    Only `duo`/`multi` content invokes the VLM (off the event loop); the VLM
+    itself short-circuits to ``None`` when disabled, so `single` content and a
+    disabled VLM both cost nothing and keep deterministic framing.
+
+    Args:
+        source_video: Path to the source video.
+        start_s: Segment start in seconds.
+        end_s: Segment end in seconds.
+        content_mode: ``"single"``/``"duo"``/``"multi"``.
+
+    Returns:
+        ``"left"``/``"right"``/``"center"`` or ``None``.
+    """
+    if content_mode not in ("duo", "multi"):
+        return None
+    from src.pipeline.vision import detect_active_speaker
+
+    speaker = await asyncio.to_thread(detect_active_speaker, source_video, start_s, end_s)
+    return speaker.side if speaker is not None else None
 
 
 async def _generate_clips_concurrently(
@@ -298,6 +337,7 @@ async def _generate_clips_concurrently(
     clip_options: ClipOptions | None,
     clips_dir: Path,
     progress_callback: ProgressCallback | None = None,
+    content_mode: str = "single",
 ) -> list[tuple[Path, TranscriptSegment]]:
     """Generate all clips concurrently using asyncio.TaskGroup.
 
@@ -347,7 +387,8 @@ async def _generate_clips_concurrently(
             text=segment.text,
             relevance_score=segment.score,
         )
-        options = _options_for_clip(clip_options, index, transitions)
+        side = await _resolve_active_speaker_side(source_video, segment.start_time, segment.end_time, content_mode)
+        options = _options_for_clip(clip_options, index, transitions, side)
         try:
             async with semaphore:
                 await generate_clip(
@@ -577,6 +618,7 @@ async def _run_clip_generation(
         clip_options=clip_options,
         clips_dir=clips_dir,
         progress_callback=progress_callback,
+        content_mode=request.content_mode,
     )
 
     if not generated and segments:

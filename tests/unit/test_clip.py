@@ -18,9 +18,11 @@ from src.pipeline.clip import (
     _prepend_transition,
     _probe_duration,
     _probe_video_fps,
+    _resolve_face_center,
     _resolve_transition,
     _run_ffmpeg,
     _run_ffprobe,
+    _side_face_center,
     _video_has_audio,
     build_concat_command,
     build_ffmpeg_command,
@@ -28,6 +30,51 @@ from src.pipeline.clip import (
     generate_clip,
 )
 from src.pipeline.subtitles import SubtitleStyle
+
+
+class TestActiveSpeakerFraming:
+    """Tests for side-biased crop focus (duo/multi active-speaker framing)."""
+
+    def test_side_face_center_left_right_center(self) -> None:
+        """Each side maps to its horizontal focus fraction at mid-height."""
+        assert _side_face_center("left", 1920, 1080) == (480, 540)
+        assert _side_face_center("right", 1920, 1080) == (1440, 540)
+        assert _side_face_center("center", 1920, 1080) == (960, 540)
+
+    def test_side_face_center_unknown_returns_none(self) -> None:
+        """An unrecognized side returns None so the caller falls back."""
+        assert _side_face_center("top", 1920, 1080) is None
+
+    def test_resolve_face_center_uses_side_when_set(self) -> None:
+        """An active_speaker_side biases the focus without face detection."""
+        seg = TranscriptSegment(start_s=0.0, end_s=2.0)
+        opts = ClipOptions(active_speaker_side="right")
+        with patch("src.pipeline.clip.detect_face_center") as mock_detect:
+            center = _resolve_face_center(Path("/v.mp4"), seg, opts, 1920, 1080)
+        assert center == (1440, 540)
+        mock_detect.assert_not_called()
+
+    def test_resolve_face_center_falls_back_to_detection(self) -> None:
+        """Without a side, it face-detects a representative frame."""
+        seg = TranscriptSegment(start_s=5.0, end_s=8.0)
+        opts = ClipOptions(active_speaker_side=None)
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value="frame"),
+            patch("src.pipeline.clip.detect_face_center", return_value=(100, 200)) as mock_detect,
+        ):
+            center = _resolve_face_center(Path("/v.mp4"), seg, opts, 1920, 1080)
+        assert center == (100, 200)
+        mock_detect.assert_called_once()
+
+    def test_resolve_face_center_unknown_side_falls_back(self) -> None:
+        """An unrecognized side still falls through to face detection."""
+        seg = TranscriptSegment(start_s=0.0, end_s=2.0)
+        opts = ClipOptions(active_speaker_side="bogus")
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+        ):
+            assert _resolve_face_center(Path("/v.mp4"), seg, opts, 1920, 1080) is None
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
