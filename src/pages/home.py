@@ -9,6 +9,7 @@ database and launches the pipeline as a background asyncio task.
 from __future__ import annotations
 
 import asyncio
+import functools
 from pathlib import Path
 
 import structlog
@@ -28,10 +29,12 @@ log = structlog.get_logger()
 
 _RESOLUTIONS: list[str] = ["720p", "1080p"]
 _DEFAULT_RESOLUTION = "1080p"
-_MIN_CLIP_DEFAULT = 15
-_MAX_CLIP_DEFAULT = 45
 _SLIDER_MIN = 10
 _SLIDER_MAX = 90
+
+# Upload hardening (M-10).
+_ALLOWED_UPLOAD_EXTENSIONS: frozenset[str] = frozenset({".mp4", ".mov", ".avi", ".mkv"})
+_DEFAULT_MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MiB
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +73,81 @@ async def _create_task(source_url: str, source_type: str) -> str:
         task_id: str = task.id
     log.info("home.task_created", task_id=task_id, source_type=source_type)
     return task_id
+
+
+def _max_upload_bytes() -> int:
+    """Return the maximum allowed upload size in bytes.
+
+    Reads ``max_upload_bytes`` from the application config when present,
+    otherwise falls back to :data:`_DEFAULT_MAX_UPLOAD_BYTES`.
+
+    Returns:
+        The upload size ceiling in bytes.
+    """
+    return int(getattr(get_config(), "max_upload_bytes", _DEFAULT_MAX_UPLOAD_BYTES))
+
+
+def _unsupported_type_message(suffix: str) -> str:
+    """Build the rejection message for an unsupported upload extension.
+
+    Args:
+        suffix: The lower-cased file suffix (including the leading dot), or an
+            empty string when the uploaded name has no extension.
+
+    Returns:
+        A human-readable error string naming the allowed extensions.
+    """
+    allowed = ", ".join(sorted(ext.lstrip(".") for ext in _ALLOWED_UPLOAD_EXTENSIONS))
+    shown = suffix or "(none)"
+    return f"Unsupported file type '{shown}'. Allowed: {allowed}."
+
+
+def _seed_resolution(prefs_resolution: str) -> str:
+    """Return a valid resolution preset to seed the home page select.
+
+    Args:
+        prefs_resolution: The persisted resolution preference.
+
+    Returns:
+        ``prefs_resolution`` when it is a known option, otherwise the
+        default resolution.
+    """
+    return prefs_resolution if prefs_resolution in _RESOLUTIONS else _DEFAULT_RESOLUTION
+
+
+async def _mark_task_failed(task_id: str, error: str) -> None:
+    """Mark a Task row as failed with the given error message.
+
+    Used by the background-pipeline done-callback so a crashed run does not
+    leave the task stuck in ``pending``/``processing``.
+
+    Args:
+        task_id: Database Task UUID to update.
+        error: Error message to persist on the row.
+    """
+    async with get_session() as session:
+        task = await session.get(Task, task_id)
+        if task is not None:
+            task.status = "failed"
+            task.error_message = error
+    log.error("home.background_pipeline_failed", task_id=task_id, error=error)
+
+
+def _on_pipeline_done(task_id: str, fut: asyncio.Future[None]) -> None:
+    """Done-callback for the fire-and-forget pipeline task.
+
+    If the background coroutine raised, schedule a DB update marking the task
+    ``failed``. Cancelled tasks are ignored.
+
+    Args:
+        task_id: Database Task UUID associated with this run.
+        fut: The completed background task future.
+    """
+    if fut.cancelled():
+        return
+    exc = fut.exception()
+    if exc is not None:
+        asyncio.create_task(_mark_task_failed(task_id, str(exc)))
 
 
 async def build_processing_request(
@@ -157,6 +235,12 @@ async def render() -> None:
     # ---- page-level state ----
     uploaded_path: list[str] = []  # mutable container used as a cell
 
+    # Seed widget defaults from saved preferences (M-10).
+    prefs = await load_prefs()
+    min_default = prefs.min_clip_length
+    max_default = prefs.max_clip_length
+    resolution_default = _seed_resolution(prefs.output_resolution)
+
     # ---- layout ----
     with ui.column().classes("w-full max-w-2xl mx-auto p-4 gap-4"):
         # Header / nav
@@ -190,16 +274,31 @@ async def render() -> None:
             if content is None:
                 ui.notify("Upload failed: no content received.", color="negative")
                 return
+            suffix = Path(name).suffix.lower()
+            if suffix not in _ALLOWED_UPLOAD_EXTENSIONS:
+                ui.notify(_unsupported_type_message(suffix), color="negative")
+                return
+            data: bytes = content.read() if hasattr(content, "read") else content
+            max_bytes = _max_upload_bytes()
+            if len(data) > max_bytes:
+                ui.notify(
+                    f"File too large: {len(data)} bytes exceeds the {max_bytes}-byte limit.",
+                    color="negative",
+                )
+                return
             uploads_dir = get_config().temp_dir / "uploads"
             uploads_dir.mkdir(parents=True, exist_ok=True)
             save_path = uploads_dir / name
-            save_path.write_bytes(content.read() if hasattr(content, "read") else content)
+            save_path.write_bytes(data)
             uploaded_path.clear()
             uploaded_path.append(str(save_path))
             ui.notify(f"File ready: {name}", color="positive")
             log.info("home.file_uploaded", path=str(save_path))
 
-        ui.upload(on_upload=handle_upload, label="Drop or click to upload a video file").classes("w-full")
+        ui.upload(
+            on_upload=handle_upload,
+            label="Drop or click to upload a video file",
+        ).props('accept=".mp4,.mov,.avi,.mkv"').classes("w-full")
 
         ui.separator()
 
@@ -208,8 +307,8 @@ async def render() -> None:
 
         # Min clip length
         with ui.column().classes("w-full gap-1"):
-            min_label = ui.label(f"Min clip length: {_MIN_CLIP_DEFAULT}s").classes("text-sm text-gray-700")
-            min_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MIN_CLIP_DEFAULT).props("label-always").classes("w-full")
+            min_label = ui.label(f"Min clip length: {min_default}s").classes("text-sm text-gray-700")
+            min_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=min_default).props("label-always").classes("w-full")
             min_slider.on(
                 "update:model-value",
                 lambda e: min_label.set_text(f"Min clip length: {int(e.args)}s"),
@@ -217,8 +316,8 @@ async def render() -> None:
 
         # Max clip length
         with ui.column().classes("w-full gap-1"):
-            max_label = ui.label(f"Max clip length: {_MAX_CLIP_DEFAULT}s").classes("text-sm text-gray-700")
-            max_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MAX_CLIP_DEFAULT).props("label-always").classes("w-full")
+            max_label = ui.label(f"Max clip length: {max_default}s").classes("text-sm text-gray-700")
+            max_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=max_default).props("label-always").classes("w-full")
             max_slider.on(
                 "update:model-value",
                 lambda e: max_label.set_text(f"Max clip length: {int(e.args)}s"),
@@ -227,7 +326,7 @@ async def render() -> None:
         # Resolution
         with ui.row().classes("w-full items-center gap-4"):
             ui.label("Output resolution").classes("text-sm text-gray-700")
-            resolution_select = ui.select(_RESOLUTIONS, value=_DEFAULT_RESOLUTION).classes("w-32")
+            resolution_select = ui.select(_RESOLUTIONS, value=resolution_default).classes("w-32")
 
         ui.separator()
 
@@ -275,8 +374,11 @@ async def render() -> None:
                 ui.notify(f"Failed to create task: {exc}", color="negative")
                 return
 
-            # Fire-and-forget background pipeline
-            asyncio.create_task(_start_processing(task_id, source, min_len, max_len, resolution))
+            # Fire-and-forget background pipeline. A done-callback marks the
+            # task 'failed' if the coroutine crashes (M-12) so it never stays
+            # stuck in 'pending'/'processing'.
+            bg_task = asyncio.create_task(_start_processing(task_id, source, min_len, max_len, resolution))
+            bg_task.add_done_callback(functools.partial(_on_pipeline_done, task_id))
 
             ui.notify("Processing started!", color="positive")
             log.info("home.processing_started", task_id=task_id)

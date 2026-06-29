@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -185,6 +185,108 @@ async def _save_generated_clip(
 
 
 # ---------------------------------------------------------------------------
+# Transition selection (round-robin fade transitions)
+# ---------------------------------------------------------------------------
+
+
+def _positive_number(value: object, default: float) -> float:
+    """Return ``value`` as a float when it is a positive real number, else default.
+
+    Defends against non-numeric config values (e.g. a ``MagicMock`` attribute in
+    tests, or a missing/None setting) so timeout and fade math never receives a
+    bogus type.
+
+    Args:
+        value: Candidate value read from config.
+        default: Fallback returned when ``value`` is not a positive number.
+
+    Returns:
+        ``float(value)`` when valid and ``> 0``; otherwise ``float(default)``.
+    """
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+    return float(default)
+
+
+def _list_transition_files(directory: Path) -> list[Path]:
+    """Return the sorted ``.mp4`` transition files in *directory*.
+
+    Args:
+        directory: Directory that may contain transition ``.mp4`` clips
+            (typically ``Config.TRANSITIONS_DIR``).
+
+    Returns:
+        Sorted list of ``.mp4`` paths, or an empty list when the directory does
+        not exist or contains no transitions.
+    """
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.mp4"))
+
+
+def _select_transition(clip_index: int, transitions: list[Path]) -> Path | None:
+    """Round-robin select a transition file for a given clip index.
+
+    Args:
+        clip_index: Zero-based position of the clip within the batch.
+        transitions: Available transition files.
+
+    Returns:
+        The transition assigned to this clip (cycling through ``transitions``),
+        or ``None`` when no transitions are available.
+    """
+    if not transitions:
+        return None
+    return transitions[clip_index % len(transitions)]
+
+
+def _transition_settings(cfg: object) -> tuple[float, list[Path]]:
+    """Resolve the fade duration and available transitions from config.
+
+    Args:
+        cfg: The application config (or a test double).
+
+    Returns:
+        ``(fade_in_s, transitions)``. ``fade_in_s`` is ``0.0`` (a clean no-op,
+        preserving byte-identical output) unless ``transition_fade_s`` is set to
+        a positive number; ``transitions`` is the round-robin pool drawn from
+        ``Config.TRANSITIONS_DIR``.
+    """
+    fade_s = _positive_number(getattr(cfg, "transition_fade_s", 0.0), 0.0)
+    if fade_s <= 0:
+        return 0.0, []
+    transitions_dir = getattr(cfg, "TRANSITIONS_DIR", Path("transitions"))
+    return fade_s, _list_transition_files(transitions_dir)
+
+
+def _options_for_clip(
+    base: ClipOptions | None,
+    clip_index: int,
+    transitions: list[Path],
+    fade_s: float,
+) -> ClipOptions | None:
+    """Build the per-clip options, applying a round-robin fade when configured.
+
+    When transitions are active and this clip's round-robin slot selects one, a
+    fade-in of ``fade_s`` seconds is applied by copying ``base``. Otherwise the
+    shared ``base`` options are returned unchanged (the default no-op path).
+
+    Args:
+        base: Shared clip options for the batch (``None`` when the clip module
+            is unavailable).
+        clip_index: Zero-based clip position used for round-robin selection.
+        transitions: Available transition files.
+        fade_s: Configured fade-in duration in seconds.
+
+    Returns:
+        A per-clip ``ClipOptions`` (a fade-applied copy) or the unchanged base.
+    """
+    if base is None or fade_s <= 0 or _select_transition(clip_index, transitions) is None:
+        return base
+    return replace(base, fade_in_s=fade_s)
+
+
+# ---------------------------------------------------------------------------
 # Concurrent clip generation
 # ---------------------------------------------------------------------------
 
@@ -229,8 +331,10 @@ async def _generate_clips_concurrently(
     results: list[tuple[Path, TranscriptSegment]] = []
     lock = asyncio.Lock()
     total = len(segments)
-    max_workers = getattr(get_config(), "max_workers", 2)
+    cfg = get_config()
+    max_workers = getattr(cfg, "max_workers", 2)
     semaphore = asyncio.Semaphore(max_workers)
+    fade_s, transitions = _transition_settings(cfg)
 
     async def _generate_one(
         index: int,
@@ -244,6 +348,7 @@ async def _generate_clips_concurrently(
             text=segment.text,
             relevance_score=segment.score,
         )
+        options = _options_for_clip(clip_options, index, transitions, fade_s)
         try:
             async with semaphore:
                 await generate_clip(
@@ -251,7 +356,7 @@ async def _generate_clips_concurrently(
                     segment=clip_segment,
                     words=words,
                     output_path=clip_path,
-                    options=clip_options,
+                    options=options,
                 )
             async with lock:
                 results.append((clip_path, segment))
@@ -351,15 +456,25 @@ async def _run_transcription(
     notify(20, "Transcribing...")
     await _update_task_status(request.task_id, "processing", 20, "Transcribing...")
 
+    timeout_s = _positive_number(getattr(get_config(), "transcription_timeout_s", 1800), 1800)
+
     try:
         from src.pipeline.transcribe import format_transcript_text, transcribe_video
 
-        transcription = await asyncio.to_thread(transcribe_video, source_video)
+        transcription = await asyncio.wait_for(
+            asyncio.to_thread(transcribe_video, source_video),
+            timeout=timeout_s,
+        )
         transcript_text = format_transcript_text(transcription)
         return transcript_text, transcription
     except ImportError:
         # pipeline/transcribe not yet written — surface a clear error.
         msg = "Transcription pipeline module not available"
+        await _update_task_status(request.task_id, "failed", 20, error=msg)
+        raise RuntimeError(msg) from None
+    except TimeoutError:
+        # Transcription exceeded its wall-clock budget — fail loudly (M-3).
+        msg = f"Transcription timed out after {timeout_s}s"
         await _update_task_status(request.task_id, "failed", 20, error=msg)
         raise RuntimeError(msg) from None
     except Exception as exc:

@@ -23,8 +23,10 @@ from src.pipeline.face_detect import (
     _detect_raw,
     _get_face_detector,
     _resolve_face_model,
+    _segment_sample_timestamps,
     calculate_crop_box,
     detect_face_center,
+    detect_face_center_multi,
     get_representative_frame,
     round_to_even,
 )
@@ -483,6 +485,123 @@ class TestGetRepresentativeFrame:
 
         assert result is None
         cap_mock.release.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _segment_sample_timestamps — even spacing and degenerate inputs
+# ---------------------------------------------------------------------------
+class TestSegmentSampleTimestamps:
+    def test_even_spacing_includes_endpoints(self) -> None:
+        ts = _segment_sample_timestamps(0.0, 9.0, samples=10)
+        assert len(ts) == 10
+        assert ts[0] == 0.0
+        assert ts[-1] == pytest.approx(9.0)
+        # Uniform spacing of 1.0s between consecutive samples.
+        diffs = [b - a for a, b in zip(ts, ts[1:], strict=False)]
+        assert all(d == pytest.approx(1.0) for d in diffs)
+
+    def test_zero_length_segment_collapses_to_single(self) -> None:
+        assert _segment_sample_timestamps(5.0, 5.0, samples=10) == [5.0]
+
+    def test_end_before_start_collapses_to_single(self) -> None:
+        assert _segment_sample_timestamps(8.0, 3.0, samples=10) == [8.0]
+
+    def test_single_sample_returns_start(self) -> None:
+        assert _segment_sample_timestamps(2.0, 6.0, samples=1) == [2.0]
+
+    def test_non_positive_samples_collapses_to_single(self) -> None:
+        assert _segment_sample_timestamps(2.0, 6.0, samples=0) == [2.0]
+
+
+# ---------------------------------------------------------------------------
+# detect_face_center_multi — median aggregation, fallback, outlier robustness
+# ---------------------------------------------------------------------------
+class TestDetectFaceCenterMulti:
+    """Aggregates per-frame detections via median (frame/detect boundaries mocked)."""
+
+    def test_median_of_successful_detections(self) -> None:
+        """Median x and y of all qualifying frames are returned."""
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        centers = [(100, 110), (120, 130), (140, 150)]
+        with (
+            patch("src.pipeline.face_detect.get_representative_frame", return_value=frame),
+            patch("src.pipeline.face_detect.detect_face_center", side_effect=centers),
+        ):
+            result = detect_face_center_multi("/fake.mp4", 0.0, 2.0, samples=3)
+        assert result == (120, 130)
+
+    def test_outlier_frame_does_not_skew_result(self) -> None:
+        """A single wild misdetection is rejected by the median, not averaged in."""
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        # Four tightly-clustered centers plus one far outlier.
+        centers = [(100, 100), (102, 100), (104, 100), (98, 100), (900, 100)]
+        with (
+            patch("src.pipeline.face_detect.get_representative_frame", return_value=frame),
+            patch("src.pipeline.face_detect.detect_face_center", side_effect=centers),
+        ):
+            result = detect_face_center_multi("/fake.mp4", 0.0, 4.0, samples=5)
+        assert result is not None
+        cx, _ = result
+        # Median x is 102, nowhere near the 900 outlier.
+        assert cx == 102
+
+    def test_frames_without_face_are_ignored(self) -> None:
+        """Frames whose detection is None are skipped; the rest are aggregated."""
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        detections = [None, (100, 100), None, (200, 200)]
+        with (
+            patch("src.pipeline.face_detect.get_representative_frame", return_value=frame),
+            patch("src.pipeline.face_detect.detect_face_center", side_effect=detections),
+        ):
+            result = detect_face_center_multi("/fake.mp4", 0.0, 3.0, samples=4)
+        # Even-count median of [100, 200] -> 150 (int).
+        assert result == (150, 150)
+
+    def test_undecodable_frames_are_skipped(self) -> None:
+        """A frame that fails to decode (None) is skipped without calling detect."""
+        good_frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        frames = [None, good_frame, None]
+        with (
+            patch("src.pipeline.face_detect.get_representative_frame", side_effect=frames),
+            patch("src.pipeline.face_detect.detect_face_center", return_value=(150, 160)) as det,
+        ):
+            result = detect_face_center_multi("/fake.mp4", 0.0, 2.0, samples=3)
+        assert result == (150, 160)
+        # detect only invoked for the one decodable frame.
+        assert det.call_count == 1
+
+    def test_no_face_anywhere_returns_none(self) -> None:
+        """When no sampled frame yields a face, return None (center-crop fallback)."""
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        with (
+            patch("src.pipeline.face_detect.get_representative_frame", return_value=frame),
+            patch("src.pipeline.face_detect.detect_face_center", return_value=None),
+        ):
+            assert detect_face_center_multi("/fake.mp4", 0.0, 2.0, samples=4) is None
+
+    def test_all_frames_undecodable_returns_none(self) -> None:
+        """When every frame fails to decode, return None without raising."""
+        with patch("src.pipeline.face_detect.get_representative_frame", return_value=None):
+            assert detect_face_center_multi("/fake.mp4", 0.0, 2.0, samples=4) is None
+
+
+class TestDetectFaceCenterMultiReal:
+    """Ground-truth: real multi-frame run over the fixture, None or valid center."""
+
+    def test_real_segment_returns_none_or_valid_center(self) -> None:
+        fixture = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
+        probe = get_representative_frame(fixture, timestamp_s=0.2)
+        if probe is None:
+            pytest.skip("could not extract a frame from the fixture")
+        height, width = probe.shape[:2]
+
+        _get_face_detector.cache_clear()
+        try:
+            result = detect_face_center_multi(fixture, 0.0, 2.5, samples=5)
+        finally:
+            _get_face_detector.cache_clear()
+
+        assert result is None or (isinstance(result, tuple) and len(result) == 2 and 0 <= result[0] < width and 0 <= result[1] < height)
 
 
 # end tests/unit/test_face_detect.py

@@ -224,6 +224,57 @@ class TestBuildFfmpegCommand:
         assert cmd[i_idx + 1] == "/src/video.mp4"
         assert cmd[-1] == "/out/clip.mp4"
 
+    # ---- fade-in transition (M-4) ----
+
+    def test_fade_in_added_to_vf_when_positive(self) -> None:
+        """A positive fade_in_s appends a fade=t=in filter after scale."""
+        cmd = self._base_cmd(fade_in_s=0.5)
+        vf = cmd[cmd.index("-vf") + 1]
+        assert "fade=t=in:st=0:d=0.5" in vf
+        # Ordering: crop, then scale, then fade.
+        assert vf.index("crop=") < vf.index("scale=") < vf.index("fade=")
+
+    def test_no_fade_when_zero(self) -> None:
+        """fade_in_s=0.0 (the default) emits no fade filter — byte-identical."""
+        cmd = self._base_cmd(fade_in_s=0.0)
+        vf = cmd[cmd.index("-vf") + 1]
+        assert "fade=" not in vf
+
+    # ---- logo overlay (M-4) ----
+
+    def test_logo_uses_filter_complex_not_vf(self) -> None:
+        """With a logo, the command switches to -filter_complex and a 2nd input."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png")
+        assert "-filter_complex" in cmd
+        assert "-vf" not in cmd
+        # Two -i inputs: source then logo.
+        assert cmd.count("-i") == 2
+        i_indices = [j for j, a in enumerate(cmd) if a == "-i"]
+        assert cmd[i_indices[1] + 1] == "/brand/logo.png"
+
+    def test_logo_maps_video_and_optional_audio(self) -> None:
+        """The overlaid video [vout] and optional source audio are mapped."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png")
+        assert "-map" in cmd
+        assert "[vout]" in cmd
+        assert "0:a?" in cmd
+
+    def test_logo_overlay_graph_top_right_and_scaled(self) -> None:
+        """Logo is scaled to ~18% of out_width and overlaid at top-right."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png", out_width=1000)
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "scale=180:-1" in graph  # 0.18 * 1000
+        assert "overlay=main_w-overlay_w-20:20" in graph
+
+    def test_logo_base_chain_includes_crop_scale_and_ass(self) -> None:
+        """The overlay base chain still carries crop, scale and the ass burn-in."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png", ass_path="/tmp/subs.ass")
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "crop=607:1080:0:0" in graph
+        assert "scale=1080:1920" in graph
+        assert "ass=/tmp/subs.ass" in graph
+        assert "[base]" in graph
+
 
 # ---------------------------------------------------------------------------
 # generate_clip — mocked ffmpeg
@@ -412,6 +463,66 @@ class TestGenerateClip:
                 )
 
     @pytest.mark.asyncio
+    async def test_logo_passed_through_when_file_exists(self, tmp_path: Path) -> None:
+        """An existing logo file flows into the ffmpeg command as an overlay."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment()
+        logo = Path(__file__).parent.parent / "fixtures" / "sample_logo.png"
+        assert logo.exists()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(logo_path=logo),
+            )
+
+        cmd = captured["cmd"]
+        assert "-filter_complex" in cmd
+        assert str(logo) in cmd
+
+    @pytest.mark.asyncio
+    async def test_logo_skipped_when_file_missing(self, tmp_path: Path) -> None:
+        """A non-existent logo path is ignored; the simple -vf path is used."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(logo_path=tmp_path / "missing_logo.png"),
+            )
+
+        cmd = captured["cmd"]
+        assert "-vf" in cmd
+        assert "-filter_complex" not in cmd
+
+    @pytest.mark.asyncio
     async def test_output_parent_dirs_created(self, tmp_path: Path) -> None:
         """Nested output directories are created automatically."""
         out = tmp_path / "nested" / "deep" / "clip.mp4"
@@ -483,8 +594,20 @@ class TestRunFfmpeg:
             shell=False,
             capture_output=True,
             check=False,
+            timeout=300,
         )
         assert result is fake_proc
+
+    def test_timeout_raises_clip_generation_error(self) -> None:
+        """A ffmpeg timeout is converted into a loud ClipGenerationError (M-3)."""
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["ffmpeg"], timeout=300),
+            ),
+            pytest.raises(ClipGenerationError, match="timed out"),
+        ):
+            _run_ffmpeg(["ffmpeg", "-i", "in.mp4", "out.mp4"])
 
 
 # ---------------------------------------------------------------------------

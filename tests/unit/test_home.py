@@ -13,17 +13,84 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
+import functools
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import UserPreferences
 from src.pages.home import (
+    _DEFAULT_MAX_UPLOAD_BYTES,
     _RESOLUTIONS,
     _create_task,
     _is_youtube_url,
+    _mark_task_failed,
+    _max_upload_bytes,
+    _on_pipeline_done,
+    _seed_resolution,
     _start_processing,
+    _unsupported_type_message,
 )
+
+
+def _default_prefs(**overrides: object) -> UserPreferences:
+    """Return a default UserPreferences row, optionally overriding fields.
+
+    Args:
+        **overrides: Field values to override on the default row.
+
+    Returns:
+        A UserPreferences instance seeded with sensible home-page defaults.
+    """
+    base: dict[str, Any] = {
+        "id": 1,
+        "font_family": "Arial",
+        "font_size": 24,
+        "font_color": "#FFFFFF",
+        "font_stroke_color": "#000000",
+        "font_stroke_width": 2.0,
+        "font_shadow_offset": 1,
+        "subtitle_position_y": 75,
+        "min_clip_length": 15,
+        "max_clip_length": 45,
+        "output_resolution": "1080p",
+        "ai_prompt": None,
+        "logo_path": None,
+    }
+    base.update(overrides)
+    return UserPreferences(**base)
+
+
+@pytest.fixture(autouse=True)
+def _patch_load_prefs() -> Any:
+    """Patch ``load_prefs`` for every test so ``render()`` never hits the DB.
+
+    Individual tests may still override the return value with their own
+    ``patch("src.pages.home.load_prefs", ...)`` inside the test body.
+
+    Yields:
+        None; the patch is active for the duration of each test.
+    """
+    with patch("src.pages.home.load_prefs", AsyncMock(return_value=_default_prefs())):
+        yield
+
+
+def _fake_create_task(coro: Any) -> MagicMock:
+    """Close a coroutine and return a task-like mock for ``add_done_callback``.
+
+    Args:
+        coro: The coroutine passed to ``asyncio.create_task``.
+
+    Returns:
+        A MagicMock standing in for the created task.
+    """
+    coro.close()
+    return MagicMock()
+
 
 # ---------------------------------------------------------------------------
 # _is_youtube_url
@@ -434,6 +501,7 @@ class TestHandleUpload:
         ui_mock, callbacks = _build_full_ui_mock()
         cfg = MagicMock()
         cfg.temp_dir = tmp_path
+        cfg.max_upload_bytes = _DEFAULT_MAX_UPLOAD_BYTES
 
         with (
             patch("src.pages.home.ui", ui_mock),
@@ -470,6 +538,7 @@ class TestHandleUpload:
         ui_mock, callbacks = _build_full_ui_mock()
         cfg = MagicMock()
         cfg.temp_dir = tmp_path
+        cfg.max_upload_bytes = _DEFAULT_MAX_UPLOAD_BYTES
 
         with (
             patch("src.pages.home.ui", ui_mock),
@@ -586,7 +655,7 @@ class TestOnStart:
             with (
                 patch("src.pages.home._create_task", mock_create),
                 patch("src.pages.home._start_processing", mock_start),
-                patch("src.pages.home.asyncio.create_task", side_effect=lambda c: c.close()) as mock_create_task,
+                patch("src.pages.home.asyncio.create_task", side_effect=_fake_create_task) as mock_create_task,
             ):
                 await on_start()
 
@@ -605,6 +674,7 @@ class TestOnStart:
         ui_mock, callbacks = _build_full_ui_mock(url_value="", min_value=10, max_value=45)
         cfg = MagicMock()
         cfg.temp_dir = tmp_path
+        cfg.max_upload_bytes = _DEFAULT_MAX_UPLOAD_BYTES
 
         with (
             patch("src.pages.home.ui", ui_mock),
@@ -630,7 +700,7 @@ class TestOnStart:
             with (
                 patch("src.pages.home._create_task", mock_create),
                 patch("src.pages.home._start_processing", AsyncMock()),
-                patch("src.pages.home.asyncio.create_task", side_effect=lambda c: c.close()),
+                patch("src.pages.home.asyncio.create_task", side_effect=_fake_create_task),
             ):
                 await on_start()
 
@@ -640,6 +710,320 @@ class TestOnStart:
         # The uploaded source path must point under the configured temp dir.
         expected_source = str(tmp_path / "uploads" / "local.mp4")
         assert create_call_args.args[0] == expected_source
+
+
+# ---------------------------------------------------------------------------
+# M-10: upload-hardening module helpers
+# ---------------------------------------------------------------------------
+
+
+class TestUploadHelpers:
+    """Tests for the module-level upload-hardening helpers."""
+
+    def test_max_upload_bytes_uses_config_value(self) -> None:
+        """_max_upload_bytes reads max_upload_bytes from the config when present."""
+        cfg = MagicMock()
+        cfg.max_upload_bytes = 1234
+        with patch("src.pages.home.get_config", return_value=cfg):
+            assert _max_upload_bytes() == 1234
+
+    def test_max_upload_bytes_falls_back_to_default(self) -> None:
+        """_max_upload_bytes falls back to the 500 MiB default when unset."""
+
+        class _Cfg:
+            """Config stub without a max_upload_bytes attribute."""
+
+        with patch("src.pages.home.get_config", return_value=_Cfg()):
+            assert _max_upload_bytes() == _DEFAULT_MAX_UPLOAD_BYTES
+
+    def test_seed_resolution_keeps_known_option(self) -> None:
+        """_seed_resolution returns a known resolution unchanged."""
+        assert _seed_resolution("720p") == "720p"
+
+    def test_seed_resolution_falls_back_for_unknown(self) -> None:
+        """_seed_resolution falls back to the default for an unknown value."""
+        assert _seed_resolution("480p") == "1080p"
+
+    def test_unsupported_type_message_lists_allowed_and_value(self) -> None:
+        """_unsupported_type_message names the rejected suffix and allowed types."""
+        msg = _unsupported_type_message(".txt")
+        assert ".txt" in msg
+        assert "mp4" in msg and "mov" in msg and "avi" in msg and "mkv" in msg
+
+    def test_unsupported_type_message_handles_empty_suffix(self) -> None:
+        """A name with no extension is reported as '(none)'."""
+        assert "(none)" in _unsupported_type_message("")
+
+
+class TestHandleUploadHardening:
+    """Tests for the extension/size validation added to handle_upload."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_unsupported_extension(self, tmp_path: Path) -> None:
+        """A non-video extension must be rejected and not written to disk.
+
+        Args:
+            tmp_path: pytest-provided temporary directory used as temp_dir.
+        """
+        ui_mock, callbacks = _build_full_ui_mock()
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+        cfg.max_upload_bytes = _DEFAULT_MAX_UPLOAD_BYTES
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.get_config", return_value=cfg),
+        ):
+            from src.pages.home import render
+
+            await render()
+            handle_upload = callbacks["upload"][0]
+
+            class _Event:
+                name = "malware.txt"
+                content = b"not a video"
+
+            handle_upload(_Event())
+
+        # Nothing written; rejection notified.
+        assert not (tmp_path / "uploads" / "malware.txt").exists()
+        notify_calls = [str(c) for c in ui_mock.notify.call_args_list]
+        assert any("Unsupported file type" in c for c in notify_calls)
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversize_file(self, tmp_path: Path) -> None:
+        """A file larger than the configured ceiling must be rejected.
+
+        Args:
+            tmp_path: pytest-provided temporary directory used as temp_dir.
+        """
+        ui_mock, callbacks = _build_full_ui_mock()
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+        cfg.max_upload_bytes = 4  # tiny ceiling
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.get_config", return_value=cfg),
+        ):
+            from src.pages.home import render
+
+            await render()
+            handle_upload = callbacks["upload"][0]
+
+            class _Event:
+                name = "big.mp4"
+                content = b"way too many bytes"
+
+            handle_upload(_Event())
+
+        assert not (tmp_path / "uploads" / "big.mp4").exists()
+        notify_calls = [str(c) for c in ui_mock.notify.call_args_list]
+        assert any("File too large" in c for c in notify_calls)
+
+
+# ---------------------------------------------------------------------------
+# M-10: home defaults seeded from prefs
+# ---------------------------------------------------------------------------
+
+
+def _build_seeding_ui_mock() -> tuple[MagicMock, dict[str, list]]:
+    """Build a ui mock that records slider/select/label creation values.
+
+    Returns:
+        A 2-tuple of (ui_mock, captured) where captured holds lists keyed by
+        ``"slider_values"``, ``"select_values"`` and ``"labels"``.
+    """
+    captured: dict[str, list] = {"slider_values": [], "select_values": [], "labels": []}
+    cm = _make_cm_stub()
+    element = _make_element_stub()
+
+    def _slider_factory(*_args: object, **kwargs: object) -> MagicMock:
+        captured["slider_values"].append(kwargs.get("value"))
+        return _make_element_stub()
+
+    def _select_factory(*_args: object, **kwargs: object) -> MagicMock:
+        captured["select_values"].append(kwargs.get("value"))
+        return _make_element_stub()
+
+    def _label_factory(*args: object, **_kwargs: object) -> MagicMock:
+        if args:
+            captured["labels"].append(str(args[0]))
+        return _make_element_stub()
+
+    ui_mock = MagicMock()
+    ui_mock.column.return_value = cm
+    ui_mock.row.return_value = cm
+    ui_mock.slider = _slider_factory
+    ui_mock.select = _select_factory
+    ui_mock.label = _label_factory
+    for attr in ("input", "upload", "button", "separator", "link"):
+        getattr(ui_mock, attr).return_value = element
+    ui_mock.notify = MagicMock()
+    ui_mock.navigate = MagicMock()
+    return ui_mock, captured
+
+
+class TestHomeDefaultsSeeding:
+    """Tests that render() seeds widget defaults from saved preferences."""
+
+    @pytest.mark.asyncio
+    async def test_render_seeds_sliders_and_select_from_prefs(self) -> None:
+        """Min/max sliders and resolution select reflect saved preferences."""
+        ui_mock, captured = _build_seeding_ui_mock()
+        prefs = _default_prefs(min_clip_length=22, max_clip_length=55, output_resolution="720p")
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.load_prefs", AsyncMock(return_value=prefs)),
+        ):
+            from src.pages.home import render
+
+            await render()
+
+        # Slider creation order: 1=min, 2=max.
+        assert captured["slider_values"][0] == 22
+        assert captured["slider_values"][1] == 55
+        assert captured["select_values"] == ["720p"]
+        assert any("Min clip length: 22s" in label for label in captured["labels"])
+        assert any("Max clip length: 55s" in label for label in captured["labels"])
+
+    @pytest.mark.asyncio
+    async def test_render_falls_back_for_unknown_resolution(self) -> None:
+        """An unsupported saved resolution falls back to the default."""
+        ui_mock, captured = _build_seeding_ui_mock()
+        prefs = _default_prefs(output_resolution="480p")
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.load_prefs", AsyncMock(return_value=prefs)),
+        ):
+            from src.pages.home import render
+
+            await render()
+
+        assert captured["select_values"] == ["1080p"]
+
+
+# ---------------------------------------------------------------------------
+# M-12: background failure marks the task failed
+# ---------------------------------------------------------------------------
+
+
+class TestMarkTaskFailed:
+    """Tests for the _mark_task_failed DB helper."""
+
+    @pytest.mark.asyncio
+    async def test_marks_existing_task_failed(self) -> None:
+        """_mark_task_failed sets status='failed' and the error message."""
+        fake_task = MagicMock()
+        fake_session = AsyncMock()
+        fake_session.get = AsyncMock(return_value=fake_task)
+
+        @asynccontextmanager
+        async def _mock_get_session():  # type: ignore[return]
+            yield fake_session
+
+        with patch("src.pages.home.get_session", _mock_get_session):
+            await _mark_task_failed("task-1", "boom")
+
+        assert fake_task.status == "failed"
+        assert fake_task.error_message == "boom"
+        fake_session.get.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_task_is_noop(self) -> None:
+        """_mark_task_failed does nothing when the task row is absent."""
+        fake_session = AsyncMock()
+        fake_session.get = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def _mock_get_session():  # type: ignore[return]
+            yield fake_session
+
+        with patch("src.pages.home.get_session", _mock_get_session):
+            await _mark_task_failed("missing", "boom")
+
+        fake_session.get.assert_awaited_once()
+
+
+class TestOnPipelineDone:
+    """Tests for the _on_pipeline_done done-callback."""
+
+    @staticmethod
+    async def _drain(calls: list) -> None:
+        """Yield control until the scheduled mark-failed coroutine runs.
+
+        Args:
+            calls: List populated by the patched _mark_task_failed.
+        """
+        for _ in range(10):
+            await asyncio.sleep(0)
+            if calls:
+                return
+
+    @pytest.mark.asyncio
+    async def test_exception_marks_task_failed(self) -> None:
+        """A raised background coroutine results in the task being marked failed."""
+        calls: list[tuple[str, str]] = []
+
+        async def _fake_mark(task_id: str, error: str) -> None:
+            calls.append((task_id, error))
+
+        async def _boom() -> None:
+            raise RuntimeError("pipeline crashed")
+
+        with patch("src.pages.home._mark_task_failed", new=_fake_mark):
+            bg = asyncio.create_task(_boom())
+            bg.add_done_callback(functools.partial(_on_pipeline_done, "task-77"))
+            with pytest.raises(RuntimeError):
+                await bg
+            await self._drain(calls)
+
+        assert calls == [("task-77", "pipeline crashed")]
+
+    @pytest.mark.asyncio
+    async def test_success_does_not_mark_failed(self) -> None:
+        """A clean background coroutine does not mark the task failed."""
+        calls: list[tuple[str, str]] = []
+
+        async def _fake_mark(task_id: str, error: str) -> None:
+            calls.append((task_id, error))
+
+        async def _ok() -> None:
+            return None
+
+        with patch("src.pages.home._mark_task_failed", new=_fake_mark):
+            bg = asyncio.create_task(_ok())
+            bg.add_done_callback(functools.partial(_on_pipeline_done, "task-ok"))
+            await bg
+            for _ in range(5):
+                await asyncio.sleep(0)
+
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_cancelled_does_not_mark_failed(self) -> None:
+        """A cancelled background task is ignored by the done-callback."""
+        calls: list[tuple[str, str]] = []
+
+        async def _fake_mark(task_id: str, error: str) -> None:
+            calls.append((task_id, error))
+
+        async def _forever() -> None:
+            await asyncio.Event().wait()
+
+        with patch("src.pages.home._mark_task_failed", new=_fake_mark):
+            bg = asyncio.create_task(_forever())
+            bg.add_done_callback(functools.partial(_on_pipeline_done, "task-c"))
+            await asyncio.sleep(0)
+            bg.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await bg
+            for _ in range(5):
+                await asyncio.sleep(0)
+
+        assert calls == []
 
 
 # end tests/unit/test_home.py

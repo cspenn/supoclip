@@ -23,18 +23,25 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.pipeline.analyze import TranscriptSegment
+from src.pipeline.clip import ClipOptions
 from src.pipeline.clip import TranscriptSegment as ClipTranscriptSegment
 from src.services.video_service import (
     ProcessingRequest,
     ProcessingResult,
     _delete_existing_clips,
     _generate_clips_concurrently,
+    _list_transition_files,
+    _options_for_clip,
+    _positive_number,
     _save_generated_clip,
+    _select_transition,
+    _transition_settings,
     _update_task_status,
     process_video,
 )
@@ -1218,6 +1225,199 @@ class TestProcessVideo:
         assert result.error is not None
         assert "All clip generations failed" in result.error
         assert result.clips == []
+
+
+# ---------------------------------------------------------------------------
+# Transition helpers (M-4: round-robin fade transitions)
+# ---------------------------------------------------------------------------
+
+
+class TestPositiveNumber:
+    """Tests for the _positive_number defensive coercion helper."""
+
+    def test_non_number_returns_default(self) -> None:
+        """A non-numeric value (e.g. a mock attribute) falls back to default."""
+        assert _positive_number(object(), 1800) == 1800.0
+
+    def test_zero_or_negative_returns_default(self) -> None:
+        """Zero and negatives are not positive, so the default is used."""
+        assert _positive_number(0, 5.0) == 5.0
+        assert _positive_number(-3, 5.0) == 5.0
+
+    def test_positive_number_is_returned_as_float(self) -> None:
+        """A positive int/float is returned as a float."""
+        assert _positive_number(2, 9.0) == 2.0
+        assert _positive_number(1.5, 9.0) == 1.5
+
+
+class TestListTransitionFiles:
+    """Tests for _list_transition_files directory scanning."""
+
+    def test_missing_directory_returns_empty(self, tmp_path: Path) -> None:
+        """A non-existent directory yields an empty list."""
+        assert _list_transition_files(tmp_path / "nope") == []
+
+    def test_returns_sorted_mp4_only(self, tmp_path: Path) -> None:
+        """Only .mp4 files are returned, sorted by name."""
+        (tmp_path / "b.mp4").touch()
+        (tmp_path / "a.mp4").touch()
+        (tmp_path / "notes.txt").touch()
+        result = _list_transition_files(tmp_path)
+        assert [p.name for p in result] == ["a.mp4", "b.mp4"]
+
+
+class TestSelectTransition:
+    """Tests for the round-robin _select_transition helper."""
+
+    def test_empty_pool_returns_none(self) -> None:
+        """No transitions available yields None."""
+        assert _select_transition(0, []) is None
+
+    def test_round_robin_cycles(self) -> None:
+        """Selection cycles through the pool by clip index (N clips, M files)."""
+        files = [Path("a.mp4"), Path("b.mp4"), Path("c.mp4")]
+        assigned = [_select_transition(i, files) for i in range(7)]
+        assert assigned == [
+            files[0],
+            files[1],
+            files[2],
+            files[0],
+            files[1],
+            files[2],
+            files[0],
+        ]
+
+
+class TestTransitionSettings:
+    """Tests for _transition_settings config resolution."""
+
+    def test_disabled_by_default(self) -> None:
+        """Without transition_fade_s, fades are off and the pool is empty."""
+        fade_s, transitions = _transition_settings(SimpleNamespace())
+        assert fade_s == 0.0
+        assert transitions == []
+
+    def test_enabled_lists_transitions(self, tmp_path: Path) -> None:
+        """A positive fade duration enables transitions and lists the pool."""
+        (tmp_path / "swoosh.mp4").touch()
+        cfg = SimpleNamespace(transition_fade_s=0.5, TRANSITIONS_DIR=tmp_path)
+        fade_s, transitions = _transition_settings(cfg)
+        assert fade_s == 0.5
+        assert [p.name for p in transitions] == ["swoosh.mp4"]
+
+
+class TestOptionsForClip:
+    """Tests for the per-clip _options_for_clip fade application."""
+
+    def test_none_base_returns_none(self) -> None:
+        """A None base (clip module unavailable) passes through unchanged."""
+        assert _options_for_clip(None, 0, [Path("a.mp4")], 1.0) is None
+
+    def test_zero_fade_returns_base_unchanged(self) -> None:
+        """fade_s <= 0 returns the shared base options object (no copy)."""
+        base = ClipOptions()
+        assert _options_for_clip(base, 0, [Path("a.mp4")], 0.0) is base
+
+    def test_no_transitions_returns_base_unchanged(self) -> None:
+        """An empty transition pool leaves the base options unchanged."""
+        base = ClipOptions()
+        assert _options_for_clip(base, 0, [], 1.0) is base
+
+    def test_applies_fade_when_selected(self) -> None:
+        """When a transition is selected, a fade-applied copy is returned."""
+        base = ClipOptions(output_resolution="720p")
+        result = _options_for_clip(base, 0, [Path("a.mp4")], 1.5)
+        assert result is not base
+        assert result is not None
+        assert result.fade_in_s == 1.5
+        # Other fields are preserved.
+        assert result.output_resolution == "720p"
+
+
+class TestConcurrentFadeWiring:
+    """The round-robin fade reaches generate_clip via _generate_clips_concurrently."""
+
+    @pytest.mark.asyncio
+    async def test_fade_applied_to_each_clip(self, tmp_path: Path) -> None:
+        """With transitions configured, each clip receives the fade duration."""
+        (tmp_path / "t.mp4").touch()
+        seg = _make_segment()
+        captured_fades: list[float] = []
+
+        async def fake_generate(source_video, segment, words, output_path, options):
+            captured_fades.append(options.fade_in_s)
+            output_path.touch()
+
+        mock_module = MagicMock()
+        mock_module.generate_clip = fake_generate
+        mock_module.ClipGenerationError = Exception
+        mock_module.TranscriptSegment = ClipTranscriptSegment
+
+        cfg = SimpleNamespace(
+            temp_dir=str(tmp_path),
+            max_workers=2,
+            transition_fade_s=0.75,
+            TRANSITIONS_DIR=tmp_path,
+        )
+
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch("src.services.video_service.get_config", return_value=cfg),
+        ):
+            result = await _generate_clips_concurrently(
+                source_video=tmp_path / "video.mp4",
+                segments=[seg],
+                words=[],
+                task_id="t1",
+                clip_options=ClipOptions(),
+                clips_dir=tmp_path,
+            )
+
+        assert len(result) == 1
+        assert captured_fades == [0.75]
+
+
+# ---------------------------------------------------------------------------
+# Transcription timeout (M-3)
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptionTimeout:
+    """Tests for the transcription wall-clock timeout."""
+
+    @pytest.mark.asyncio
+    async def test_transcription_timeout_fails_loudly(self, tmp_path: Path) -> None:
+        """A transcription timeout surfaces a clear error and fails the task."""
+        fake_video = tmp_path / "video.mp4"
+        fake_video.touch()
+        mock_task = MagicMock()
+        mock_session = _make_mock_session(mock_task)
+
+        mock_transcribe = MagicMock()
+        mock_transcribe.transcribe_video = MagicMock(return_value=[])
+        mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
+
+        def _raise_timeout(coro, timeout=None):
+            # Close the wrapped coroutine to avoid "never awaited" warnings.
+            coro.close()
+            raise TimeoutError
+
+        with (
+            patch("src.services.video_service.get_session", new=mock_session),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
+            patch.dict("sys.modules", {"src.pipeline.transcribe": mock_transcribe}),
+            patch("asyncio.wait_for", side_effect=_raise_timeout),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
+            result = await process_video(_make_request(source=str(fake_video), task_id="t_timeout"))
+
+        assert result.error is not None
+        assert "Transcription timed out" in result.error
+        assert mock_task.status == "failed"
+        assert mock_task.progress == 20
 
 
 # end tests/unit/test_video_service.py

@@ -30,6 +30,7 @@ from pathlib import Path
 
 import structlog
 
+from src.config import get_config
 from src.exceptions import ClipGenerationError
 from src.pipeline.face_detect import (
     calculate_crop_box,
@@ -42,9 +43,14 @@ log = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Resolution presets — 9:16 vertical format, (width, height)
+#
+# CANONICAL SOURCE OF TRUTH for output resolutions (M-11). The UI surfaces
+# (src/pages/home.py and src/pages/settings.py) expose exactly this key set
+# (720p / 1080p) with 1080p as the default. Keep those non-owned UI files in
+# sync with the keys defined here. 480p was dropped because no UI surface
+# offered it; an unknown key falls back to _DEFAULT_RESOLUTION below.
 # ---------------------------------------------------------------------------
 RESOLUTIONS: dict[str, tuple[int, int]] = {
-    "480p": (480, 854),
     "720p": (720, 1280),
     "1080p": (1080, 1920),
 }
@@ -97,18 +103,20 @@ class ClipOptions:
     """Options controlling clip generation behaviour.
 
     Attributes:
-        output_resolution: Target resolution preset key ("480p", "720p", "1080p").
+        output_resolution: Target resolution preset key ("720p", "1080p").
         subtitle_style: Subtitle styling; None disables subtitle burn-in.
-        logo_path: Path to a logo image for overlay (not yet implemented).
-        add_transitions: Reserved for future fade-in/fade-out support.
-        transitions_dir: Directory containing transition .mp4 files (reserved).
+        logo_path: Path to a logo image overlaid at the top-right of the clip.
+            When the file is missing the overlay is silently skipped.
+        fade_in_s: Fade-in transition duration in seconds. ``0.0`` (the
+            default) disables the fade, leaving output byte-identical to the
+            pre-transition pipeline. The orchestration layer sets this per clip
+            via round-robin selection over the configured transitions.
     """
 
     output_resolution: str = _DEFAULT_RESOLUTION
     subtitle_style: SubtitleStyle | None = None
     logo_path: str | Path | None = None
-    add_transitions: bool = False
-    transitions_dir: str | Path | None = None
+    fade_in_s: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +202,92 @@ def filter_words_for_segment(
     return filtered
 
 
+# Logo overlay sizing — fraction of the output width and pixel margin.
+_LOGO_WIDTH_FRACTION: float = 0.18
+_LOGO_MARGIN_PX: int = 20
+
+# Encode arguments shared by every clip (codec, preset, faststart).
+_ENCODE_ARGS: tuple[str, ...] = (
+    "-c:v",
+    "libx264",
+    "-preset",
+    "fast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-movflags",
+    "+faststart",
+)
+
+
+def _build_main_video_filter(
+    crop_box: tuple[int, int, int, int],
+    out_width: int,
+    out_height: int,
+    fade_in_s: float,
+    ass_path: str | Path | None,
+    fonts_dir: str | Path | None,
+) -> str:
+    """Build the comma-joined filter chain applied to the main video stream.
+
+    The chain is crop → scale → optional fade-in → optional ASS burn-in. It is
+    identical whether the clip is rendered via ``-vf`` (no logo) or as the base
+    branch of a ``-filter_complex`` overlay graph (logo present), so the
+    no-transition / no-logo output stays byte-identical to the legacy pipeline.
+
+    Args:
+        crop_box: ``(x, y, width, height)`` crop rectangle.
+        out_width: Desired output width in pixels.
+        out_height: Desired output height in pixels.
+        fade_in_s: Fade-in duration in seconds; ``<= 0`` omits the fade filter.
+        ass_path: Path to an ``.ass`` subtitle file, or ``None`` to skip.
+        fonts_dir: Directory of TTF fonts for libass (used only with ass_path).
+
+    Returns:
+        The filtergraph chain as a single comma-joined string.
+    """
+    x, y, crop_w, crop_h = crop_box
+    parts: list[str] = [
+        f"crop={crop_w}:{crop_h}:{x}:{y}",
+        f"scale={out_width}:{out_height}",
+    ]
+
+    if fade_in_s > 0:
+        parts.append(f"fade=t=in:st=0:d={fade_in_s}")
+
+    if ass_path is not None:
+        ass_filter = f"ass={_escape_filter_path(ass_path)}"
+        if fonts_dir is not None:
+            ass_filter += f":fontsdir={_escape_filter_path(fonts_dir)}"
+        parts.append(ass_filter)
+
+    return ",".join(parts)
+
+
+def _build_logo_overlay_graph(main_chain: str, out_width: int) -> str:
+    """Build a ``-filter_complex`` graph that overlays a logo on the main video.
+
+    The main video (input ``0``) runs through ``main_chain`` to produce a
+    ``[base]`` stream; the logo (input ``1``) is scaled to ~18% of the output
+    width preserving aspect ratio, then overlaid at the top-right with a small
+    margin. The final stream is labelled ``[vout]`` for explicit mapping.
+
+    Args:
+        main_chain: The crop/scale/fade/ass chain from
+            :func:`_build_main_video_filter`.
+        out_width: Output width in pixels, used to size the logo.
+
+    Returns:
+        The full ``filter_complex`` graph string.
+    """
+    logo_w = max(1, int(out_width * _LOGO_WIDTH_FRACTION))
+    margin = _LOGO_MARGIN_PX
+    return f"[0:v]{main_chain}[base];[1:v]scale={logo_w}:-1[logo];[base][logo]overlay=main_w-overlay_w-{margin}:{margin}[vout]"
+
+
 def build_ffmpeg_command(
     input_path: str | Path,
     output_path: str | Path,
@@ -204,13 +298,21 @@ def build_ffmpeg_command(
     out_height: int,
     ass_path: str | Path | None = None,
     fonts_dir: str | Path | None = None,
+    logo_path: str | Path | None = None,
+    fade_in_s: float = 0.0,
 ) -> list[str]:
     """Build the ffmpeg argument list for clip generation.
 
     Constructs a command that: fast-seeks before the input (``-ss``
     before ``-i``), trims to the segment duration (``-to``), applies
-    a video-filter chain of crop → scale → optional ASS subtitle
-    burn-in, and encodes with libx264/aac.
+    a video-filter chain of crop → scale → optional fade-in → optional
+    ASS subtitle burn-in, optionally overlays a logo via a second input,
+    and encodes with libx264/aac.
+
+    When ``logo_path`` is ``None`` the command uses a single-input ``-vf``
+    chain (byte-identical to the legacy pipeline). When a logo is supplied a
+    second ``-i`` input plus ``-filter_complex`` overlay graph is used, and the
+    output video/audio are explicitly mapped (``-map [vout] -map 0:a?``).
 
     Args:
         input_path: Source video file path.
@@ -225,6 +327,9 @@ def build_ffmpeg_command(
             ``ass=`` filter is appended to the chain.
         fonts_dir: Directory containing TTF font files for libass.  Only
             used when ``ass_path`` is also provided.
+        logo_path: Path to a logo image overlaid at the top-right. ``None``
+            keeps the simple ``-vf`` path with no behaviour change.
+        fade_in_s: Fade-in duration in seconds; ``0.0`` disables the fade.
 
     Returns:
         List of string arguments suitable for
@@ -235,48 +340,35 @@ def build_ffmpeg_command(
         the clip *duration* (not the absolute end time), because the seek
         has already advanced the stream.
     """
-    x, y, crop_w, crop_h = crop_box
     duration_s = end_s - start_s
+    main_chain = _build_main_video_filter(
+        crop_box,
+        out_width,
+        out_height,
+        fade_in_s,
+        ass_path,
+        fonts_dir,
+    )
 
-    # Build the video filter chain progressively.
-    vf_parts: list[str] = [
-        f"crop={crop_w}:{crop_h}:{x}:{y}",
-        f"scale={out_width}:{out_height}",
-    ]
-
-    if ass_path is not None:
-        ass_filter = f"ass={_escape_filter_path(ass_path)}"
-        if fonts_dir is not None:
-            ass_filter += f":fontsdir={_escape_filter_path(fonts_dir)}"
-        vf_parts.append(ass_filter)
-
-    video_filter = ",".join(vf_parts)
-
-    return [
+    cmd: list[str] = [
         "ffmpeg",
         "-y",  # overwrite output without prompting
         "-ss",
         str(start_s),
         "-i",
         str(input_path),
-        "-to",
-        str(duration_s),
-        "-vf",
-        video_filter,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        str(output_path),
     ]
+
+    if logo_path is not None:
+        cmd += ["-i", str(logo_path)]
+        graph = _build_logo_overlay_graph(main_chain, out_width)
+        # Map the overlaid video and pass through source audio if present.
+        video_args = ["-filter_complex", graph, "-map", "[vout]", "-map", "0:a?"]
+    else:
+        video_args = ["-vf", main_chain]
+
+    cmd += ["-to", str(duration_s), *video_args, *_ENCODE_ARGS, str(output_path)]
+    return cmd
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +458,12 @@ async def generate_clip(
     # Locate fonts directory relative to the project.
     fonts_dir: Path | None = _find_fonts_dir()
 
+    # Resolve the logo overlay: only pass it through when the file exists, so a
+    # misconfigured path degrades to a clean no-overlay clip instead of failing.
+    logo_path: str | Path | None = None
+    if opts.logo_path is not None and Path(opts.logo_path).exists():
+        logo_path = opts.logo_path
+
     # --- Step 4: ffmpeg ---------------------------------------------------
     cmd = build_ffmpeg_command(
         input_path=source,
@@ -377,6 +475,8 @@ async def generate_clip(
         out_height=out_height,
         ass_path=ass_path,
         fonts_dir=fonts_dir,
+        logo_path=logo_path,
+        fade_in_s=opts.fade_in_s,
     )
 
     log.info("ffmpeg_start", cmd=" ".join(cmd))
@@ -403,18 +503,30 @@ async def generate_clip(
 def _run_ffmpeg(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
     """Execute ffmpeg subprocess (blocking; call via asyncio.to_thread).
 
+    A hard wall-clock timeout (``ffmpeg_timeout_s`` config, default 300s) guards
+    against a hung encode pinning a worker forever. A timeout fails loudly as a
+    :class:`ClipGenerationError` rather than blocking indefinitely (M-3).
+
     Args:
         cmd: Full argument list as returned by :func:`build_ffmpeg_command`.
 
     Returns:
         :class:`subprocess.CompletedProcess` with captured stderr.
+
+    Raises:
+        ClipGenerationError: If ffmpeg does not finish within the timeout.
     """
-    return subprocess.run(
-        cmd,
-        shell=False,
-        capture_output=True,
-        check=False,
-    )
+    timeout_s = getattr(get_config(), "ffmpeg_timeout_s", 300)
+    try:
+        return subprocess.run(
+            cmd,
+            shell=False,
+            capture_output=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ClipGenerationError(f"ffmpeg timed out after {timeout_s}s") from exc
 
 
 def _parse_ffprobe_dimensions(stdout: bytes) -> tuple[int, int]:

@@ -30,6 +30,7 @@ from src.pipeline.clip import ClipOptions, TranscriptSegment, generate_clip
 from src.pipeline.subtitles import SubtitleStyle
 
 _FIXTURE = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
+_LOGO = Path(__file__).parent.parent / "fixtures" / "sample_logo.png"
 
 _HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 
@@ -169,6 +170,58 @@ async def test_real_clip_burns_in_captions(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_real_clip_overlays_logo(tmp_path: Path) -> None:
+    """Overlaying a logo actually changes top-right pixels vs. a logo-less clip.
+
+    This proves the M-4 overlay filtergraph renders the second input: the only
+    difference between the two clips is the logo, so the same extracted frame
+    must differ materially in the top-right region where the logo is placed.
+    """
+    pil_image = pytest.importorskip("PIL.Image")
+    assert _LOGO.exists(), "sample_logo.png fixture missing"
+
+    segment = TranscriptSegment(start_s=0.0, end_s=2.0, text="logo test")
+
+    plain = tmp_path / "plain.mp4"
+    branded = tmp_path / "branded.mp4"
+
+    await generate_clip(
+        source_video=_FIXTURE,
+        segment=segment,
+        words=[],
+        output_path=plain,
+        options=ClipOptions(output_resolution="720p"),
+    )
+    await generate_clip(
+        source_video=_FIXTURE,
+        segment=segment,
+        words=[],
+        output_path=branded,
+        options=ClipOptions(output_resolution="720p", logo_path=_LOGO),
+    )
+
+    f_plain = _extract_frame(plain, 0.5, tmp_path / "plain.png")
+    f_brand = _extract_frame(branded, 0.5, tmp_path / "brand.png")
+
+    img_a = pil_image.open(f_plain).convert("RGB")
+    img_b = pil_image.open(f_brand).convert("RGB")
+    assert img_a.size == img_b.size
+
+    # Crop the top-right quadrant where the logo is overlaid (margin 20px).
+    width, height = img_a.size
+    box = (width // 2, 0, width, height // 2)
+    region_a = img_a.crop(box).tobytes()
+    region_b = img_b.crop(box).tobytes()
+
+    diff_pixels = sum(
+        1
+        for i in range(0, len(region_a), 3)
+        if abs(region_a[i] - region_b[i]) + abs(region_a[i + 1] - region_b[i + 1]) + abs(region_a[i + 2] - region_b[i + 2]) > 40
+    )
+    assert diff_pixels > 100, f"branded frame differs from plain frame in only {diff_pixels} top-right pixels — logo was not overlaid"
+
+
+@pytest.mark.asyncio
 async def test_caption_event_timings_match_word_timestamps(tmp_path: Path) -> None:
     """Caption events are re-based to the clip and stay synced to the words.
 
@@ -199,14 +252,21 @@ async def test_caption_event_timings_match_word_timestamps(tmp_path: Path) -> No
     subs = pysubs2.load(str(ass_path))
     events = sorted(subs.events, key=lambda e: e.start)
 
-    texts = [e.text for e in events]
-    assert texts == ["alpha", "bravo", "charlie"], f"expected re-based, in-segment words only; got {texts}"
+    # Karaoke phrase windows (spec 9.2): the three in-segment words form one
+    # context window, so each active word emits one event whose visible text
+    # contains that word (others are dimmed context). Out-of-segment "delta" is
+    # dropped during re-basing. Each event's timing stays locked to its active
+    # word -- the 29-times-regressed SYNC property is non-negotiable.
+    assert len(events) == 3, f"expected 3 caption events (one per active word); got {len(events)}"
 
+    expected_words = ["alpha", "bravo", "charlie"]
     expected = [(100, 500), (600, 1100), (1200, 1700)]
     tol_ms = 15
-    for event, (exp_start, exp_end) in zip(events, expected, strict=True):
-        assert abs(event.start - exp_start) <= tol_ms, f"{event.text}: start {event.start}ms drifted from {exp_start}ms"
-        assert abs(event.end - exp_end) <= tol_ms, f"{event.text}: end {event.end}ms drifted from {exp_end}ms"
+    for event, word, (exp_start, exp_end) in zip(events, expected_words, expected, strict=True):
+        visible = event.plaintext  # strips ASS override tags
+        assert word in visible, f"event at {event.start}ms missing active word {word!r}; visible={visible!r}"
+        assert abs(event.start - exp_start) <= tol_ms, f"{word}: start {event.start}ms drifted from {exp_start}ms"
+        assert abs(event.end - exp_end) <= tol_ms, f"{word}: end {event.end}ms drifted from {exp_end}ms"
 
 
 # end tests/integration/test_pipeline_real_output.py

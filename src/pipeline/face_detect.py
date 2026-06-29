@@ -13,6 +13,7 @@ cleanly to a center crop and the reason is logged — never a spurious
 
 from functools import lru_cache
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import numpy as np
@@ -27,6 +28,11 @@ _MAX_RELATIVE_AREA: float = 0.3
 
 # Minimum face bounding-box edge (pixels) to treat a detection as reliable.
 _MIN_FACE_PIXELS: int = 30
+
+# Default number of frames sampled across a segment for multi-frame face
+# aggregation (spec 4.14). More samples smooth out per-frame jitter/misses at
+# the cost of additional decode/inference work.
+_DEFAULT_FRAME_SAMPLES: int = 10
 
 # MediaPipe Tasks face-detection model (BlazeFace short-range). Downloaded once
 # and cached on disk under the configured temp dir.
@@ -316,6 +322,90 @@ def get_representative_frame(video_path: str | Path, timestamp_s: float = 1.0) -
         return None
     finally:
         cap.release()
+
+
+def _segment_sample_timestamps(start_s: float, end_s: float, samples: int) -> list[float]:
+    """Return up to ``samples`` evenly spaced timestamps across a segment.
+
+    The first and last timestamps coincide with ``start_s`` and ``end_s``;
+    interior points are spread uniformly between them. Degenerate inputs are
+    handled defensively: a non-positive ``samples`` count or a zero-length
+    segment collapses to a single timestamp at ``start_s``.
+
+    Args:
+        start_s: Segment start in seconds.
+        end_s: Segment end in seconds.
+        samples: Desired number of sample timestamps.
+
+    Returns:
+        A list of timestamps (seconds) in ascending order, length >= 1.
+    """
+    count = max(1, samples)
+    if end_s <= start_s:
+        return [start_s]
+    if count == 1:
+        return [start_s]
+    step = (end_s - start_s) / (count - 1)
+    return [start_s + step * i for i in range(count)]
+
+
+def detect_face_center_multi(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    samples: int = _DEFAULT_FRAME_SAMPLES,
+) -> tuple[int, int] | None:
+    """Aggregate face centers across several frames of a segment (spec 4.14).
+
+    Samples up to ``samples`` frames evenly spaced across ``[start_s, end_s]``,
+    runs single-frame detection on each, and aggregates the successful results
+    by taking the median x and median y center. The median is robust to a small
+    number of outlier frames (e.g. a brief misdetection) that would otherwise
+    skew a mean. Frames that fail to decode or that yield no face are ignored.
+    Returns ``None`` when no sampled frame yields a face, signalling callers to
+    fall back to a center crop.
+
+    This is an additive capability layered on :func:`detect_face_center`; the
+    single-frame signature is unchanged.
+
+    Args:
+        video_path: Path to the source video file.
+        start_s: Segment start in seconds.
+        end_s: Segment end in seconds.
+        samples: Maximum number of frames to sample across the segment.
+
+    Returns:
+        (x, y) median pixel center of detected faces, or ``None`` if no frame
+        produced a qualifying face.
+    """
+    timestamps = _segment_sample_timestamps(start_s, end_s, samples)
+
+    centers: list[tuple[int, int]] = []
+    for timestamp_s in timestamps:
+        frame = get_representative_frame(video_path, timestamp_s=timestamp_s)
+        if frame is None:
+            continue
+        center = detect_face_center(frame)
+        if center is not None:
+            centers.append(center)
+
+    if not centers:
+        log.info(
+            "face_multi_no_detections",
+            path=str(video_path),
+            sampled=len(timestamps),
+        )
+        return None
+
+    median_x = int(median([c[0] for c in centers]))
+    median_y = int(median([c[1] for c in centers]))
+    log.info(
+        "face_multi_aggregated",
+        detections=len(centers),
+        sampled=len(timestamps),
+        center=(median_x, median_y),
+    )
+    return median_x, median_y
 
 
 # end src/pipeline/face_detect.py

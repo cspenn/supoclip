@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.pages.history import (
@@ -111,6 +113,9 @@ class TestDeleteTask:
         mock_task = _make_task("task-001")
         mock_session = AsyncMock()
         mock_session.get = AsyncMock(return_value=mock_task)
+        clip_result = MagicMock()
+        clip_result.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=clip_result)
         mock_session.delete = AsyncMock()
         mock_session.commit = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -118,6 +123,7 @@ class TestDeleteTask:
 
         with (
             patch("src.pages.history.get_session", return_value=mock_session),
+            patch("src.pages.history.remove_clip_files") as mock_remove,
             patch("src.pages.history.ui") as mock_ui,
         ):
             await delete_task("task-001")
@@ -125,6 +131,7 @@ class TestDeleteTask:
         mock_session.get.assert_awaited_once()
         mock_session.delete.assert_awaited_once_with(mock_task)
         mock_session.commit.assert_awaited_once()
+        mock_remove.assert_called_once_with([])
         mock_ui.navigate.reload.assert_called_once()
 
     async def test_no_error_when_task_not_found(self) -> None:
@@ -158,6 +165,77 @@ class TestDeleteTask:
             await delete_task("nonexistent-id")
 
         mock_ui.navigate.reload.assert_called_once()
+
+    async def test_deletes_clip_files_from_disk(self, tmp_path: Path) -> None:
+        """delete_task() removes the task's clip .mp4 files from the clips dir."""
+        clips_dir = tmp_path / "clips"
+        clips_dir.mkdir()
+        f1 = clips_dir / "clip_001.mp4"
+        f2 = clips_dir / "clip_002.mp4"
+        f1.write_bytes(b"a")
+        f2.write_bytes(b"b")
+
+        mock_task = _make_task("task-001")
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_task)
+        clip_result = MagicMock()
+        clip_result.all.return_value = [("clip_001.mp4",), ("clip_002.mp4",)]
+        mock_session.execute = AsyncMock(return_value=clip_result)
+        mock_session.delete = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+
+        with (
+            patch("src.pages.history.get_session", return_value=mock_session),
+            patch("src.pages._util.get_config", return_value=cfg),
+            patch("src.pages.history.ui"),
+        ):
+            await delete_task("task-001")
+
+        assert not f1.exists()
+        assert not f2.exists()
+        mock_session.delete.assert_awaited_once_with(mock_task)
+
+    async def test_delete_button_handler_runs_delete_coroutine(self) -> None:
+        """The row's delete button on_click is a partial that awaits delete_task."""
+        task = _make_task("task-xyz")
+        captured: list[dict] = []
+
+        def capture_button(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(dict(kwargs))
+            btn = MagicMock()
+            btn.props.return_value = btn
+            btn.tooltip.return_value = btn
+            return btn
+
+        with (
+            patch("src.pages.history.ui") as mock_ui,
+            patch("src.pages.history.delete_task", new=AsyncMock()) as mock_delete,
+        ):
+            cm = MagicMock()
+            cm.__enter__ = MagicMock(return_value=cm)
+            cm.__exit__ = MagicMock(return_value=False)
+            mock_ui.card.return_value = cm
+            mock_ui.row.return_value = cm
+            mock_ui.badge.return_value = MagicMock()
+            mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
+            mock_ui.button.side_effect = capture_button
+
+            _render_task_row(task, clip_count=1)
+
+            handlers = [kw.get("on_click") for kw in captured if kw.get("on_click") is not None]
+            partials = [h for h in handlers if isinstance(h, functools.partial)]
+            assert len(partials) == 1, "delete button must use a functools.partial handler"
+
+            # Invoking the handler must actually run the async delete coroutine.
+            await partials[0]()
+
+        mock_delete.assert_awaited_once_with("task-xyz")
 
 
 # ---------------------------------------------------------------------------

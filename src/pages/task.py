@@ -6,20 +6,31 @@ a grid of generated clips once processing is complete.  Error states are
 surfaced with a red banner.
 """
 
+import functools
+
 import structlog
 from nicegui import ui
 from sqlalchemy import select
 
 from src.database import get_session
 from src.models import GeneratedClip, Task
+from src.pages._util import remove_clip_files, truncate
 
 log = structlog.get_logger()
 
 _MAX_URL_DISPLAY_LEN = 60
 
+# Polling interval and the maximum wall-clock time the progress timer keeps
+# polling before giving up on an apparently stuck task.
+_POLL_INTERVAL_SECONDS = 1.0
+_MAX_POLL_SECONDS = 1800.0
+
 
 def _truncate(text: str, max_len: int = _MAX_URL_DISPLAY_LEN) -> str:
     """Truncate a string to *max_len* characters, appending '…' when clipped.
+
+    Thin wrapper over :func:`src.pages._util.truncate` preserving this page's
+    historical behaviour (the ellipsis counts toward *max_len*).
 
     Args:
         text: The string to truncate.
@@ -29,9 +40,7 @@ def _truncate(text: str, max_len: int = _MAX_URL_DISPLAY_LEN) -> str:
         The original string if it fits within *max_len*, otherwise a truncated
         version ending with '…'.
     """
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 1] + "…"
+    return truncate(text, max_len, reserve_ellipsis=True)
 
 
 def _format_seconds(seconds: float) -> str:
@@ -66,6 +75,32 @@ def _score_color(score: float | None) -> str:
     return "bg-red-200 text-red-800"
 
 
+async def delete_clip(clip_id: str) -> None:
+    """Delete a single generated clip row and its file from disk.
+
+    The clip's database row is hard-deleted and its ``.mp4`` file removed from
+    the clips directory so per-clip deletion does not leak storage. The page is
+    reloaded afterwards.
+
+    Args:
+        clip_id: Primary key of the :class:`~src.models.GeneratedClip` to remove.
+    """
+    log.info("task_page.delete_clip", clip_id=clip_id)
+    async with get_session() as session:
+        clip: GeneratedClip | None = await session.get(GeneratedClip, clip_id)
+        if clip is None:
+            log.warning("task_page.clip_not_found", clip_id=clip_id)
+            ui.navigate.reload()
+            return
+        filename = clip.filename
+        await session.delete(clip)
+        await session.commit()
+        log.info("task_page.clip_deleted", clip_id=clip_id)
+
+    remove_clip_files([filename])
+    ui.navigate.reload()
+
+
 def _render_clip_card(clip: GeneratedClip) -> None:
     """Render a single clip card inside the current NiceGUI container.
 
@@ -88,6 +123,11 @@ def _render_clip_card(clip: GeneratedClip) -> None:
                 score_pct = f"{clip.score * 100:.0f}%" if clip.score is not None else "N/A"
                 colour = _score_color(clip.score)
                 ui.badge(f"Score: {score_pct}").classes(f"text-xs px-2 py-0.5 rounded-full {colour}")
+
+                ui.button(
+                    icon="delete",
+                    on_click=functools.partial(delete_clip, clip.id),  # type: ignore[reportArgumentType]
+                ).props("flat dense color=negative").tooltip("Delete clip")
 
             # timing
             start_fmt = _format_seconds(clip.start_time)
@@ -199,9 +239,22 @@ async def render(task_id: str) -> None:
     if initial_status in ("pending", "processing"):
         progress_section.set_visibility(True)
         clips_heading.set_visibility(False)
+        poll_elapsed = {"seconds": 0.0}
 
         async def _refresh() -> None:
-            """Poll the DB for the latest task state and update the UI."""
+            """Poll the DB for the latest task state and update the UI.
+
+            A wall-clock guard stops the timer after ``_MAX_POLL_SECONDS`` so a
+            task that is stuck in ``pending``/``processing`` does not poll
+            forever.
+            """
+            poll_elapsed["seconds"] += _POLL_INTERVAL_SECONDS
+            if poll_elapsed["seconds"] >= _MAX_POLL_SECONDS:
+                poll_timer.active = False
+                status_label.text = "Stopped checking for updates — the task appears stuck. Refresh to retry."
+                log.warning("task_page.poll_timeout", task_id=task_id, elapsed=poll_elapsed["seconds"])
+                return
+
             async with get_session() as session:
                 refreshed: Task | None = await session.get(Task, task_id)
 
@@ -232,7 +285,7 @@ async def render(task_id: str) -> None:
                 case _:
                     pass  # still running — keep polling
 
-        poll_timer = ui.timer(1.0, _refresh)
+        poll_timer = ui.timer(_POLL_INTERVAL_SECONDS, _refresh)
 
     elif initial_status == "completed":
         progress_section.set_visibility(False)

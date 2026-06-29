@@ -5,6 +5,7 @@ Displays all video processing tasks ordered by creation date, with status
 badges, clip counts, per-row navigation links, and delete controls.
 """
 
+import functools
 from datetime import datetime
 
 import structlog
@@ -13,6 +14,7 @@ from sqlalchemy import func, select
 
 from src.database import get_session
 from src.models import GeneratedClip, Task
+from src.pages._util import remove_clip_files, truncate
 
 log = structlog.get_logger()
 
@@ -40,6 +42,9 @@ def _format_date(dt: datetime) -> str:
 def _truncate(text: str, max_len: int = 50) -> str:
     """Truncate a string to *max_len* characters, appending ``…`` if cut.
 
+    Thin wrapper over :func:`src.pages._util.truncate` preserving this page's
+    historical behaviour (the ellipsis is appended beyond *max_len*).
+
     Args:
         text: Source string.
         max_len: Maximum character count before truncation.
@@ -47,9 +52,7 @@ def _truncate(text: str, max_len: int = 50) -> str:
     Returns:
         Original string if short enough, otherwise a truncated version.
     """
-    if len(text) <= max_len:
-        return text
-    return text[:max_len] + "…"
+    return truncate(text, max_len)
 
 
 async def _load_tasks() -> tuple[list[Task], dict[str, int]]:
@@ -71,21 +74,29 @@ async def _load_tasks() -> tuple[list[Task], dict[str, int]]:
 
 
 async def delete_task(task_id: str) -> None:
-    """Delete a task and all its associated clips from the database.
+    """Delete a task, its clip rows, and its clip files from disk.
+
+    The task row is hard-deleted (cascading to its ``GeneratedClip`` rows),
+    and the corresponding ``.mp4`` files are removed from the clips directory
+    so deletion does not leak storage. The page is reloaded afterwards.
 
     Args:
         task_id: Primary key of the task to remove.
     """
     log.info("history.delete_task", task_id=task_id)
+    filenames: list[str] = []
     async with get_session() as session:
         task = await session.get(Task, task_id)
-        if task:
+        if task is None:
+            log.warning("history.task_not_found", task_id=task_id)
+        else:
+            result = await session.execute(select(GeneratedClip.filename).where(GeneratedClip.task_id == task_id))
+            filenames = [row[0] for row in result.all()]
             await session.delete(task)
             await session.commit()
             log.info("history.task_deleted", task_id=task_id)
-        else:
-            log.warning("history.task_not_found", task_id=task_id)
 
+    remove_clip_files(filenames)
     ui.navigate.reload()
 
 
@@ -117,7 +128,7 @@ def _render_task_row(task: Task, clip_count: int) -> None:
             ui.label(clip_label).classes("text-sm text-gray-600")
             ui.button(
                 icon="delete",
-                on_click=lambda t_id=task.id: delete_task(t_id),  # type: ignore[reportArgumentType]
+                on_click=functools.partial(delete_task, task.id),  # type: ignore[reportArgumentType]
             ).props("flat dense color=negative").tooltip("Delete task")
 
 
