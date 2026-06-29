@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.exceptions import InsufficientSegmentsError
 from src.pipeline.analyze import (
     AnalysisError,
     TranscriptSegment,
@@ -27,8 +28,7 @@ from src.pipeline.analyze import (
 # ---------------------------------------------------------------------------
 
 LONG_TRANSCRIPT = (
-    "This is a much longer transcript that easily exceeds the fifty character "
-    "minimum requirement for transcript analysis testing. " * 3
+    "This is a much longer transcript that easily exceeds the fifty character minimum requirement for transcript analysis testing. " * 3
 )
 
 
@@ -155,13 +155,45 @@ class TestValidateSegments:
     def test_mixed_segments_filtered_correctly(self):
         """Mix of valid and invalid segments — only valid ones survive."""
         segs = [
-            _make_segment(0.0, 20.0, "The first key insight is genuinely surprising."),   # valid
-            _make_segment(0.0, 5.0, "And this too short filler segment gets cut out."),    # short + filler
-            _make_segment(60.0, 90.0, "So this whole section is fascinating to watch."),   # filler
-            _make_segment(100.0, 125.0, "Here is another perfectly valid standalone clip."), # valid
+            _make_segment(0.0, 20.0, "The first key insight is genuinely surprising."),  # valid
+            _make_segment(0.0, 5.0, "And this too short filler segment gets cut out."),  # short + filler
+            _make_segment(60.0, 90.0, "So this whole section is fascinating to watch."),  # filler
+            _make_segment(100.0, 125.0, "Here is another perfectly valid standalone clip."),  # valid
         ]
         result = validate_segments(segs, 15.0, 45.0)
         assert len(result) == 2
+
+    def test_no_bound_when_max_time_none(self):
+        """Without a max_time_s bound, far-future timestamps still pass duration checks."""
+        segs = [_make_segment(300.0, 320.0, "A clip that claims to start at five minutes.")]
+        result = validate_segments(segs, 15.0, 45.0, max_time_s=None)
+        assert len(result) == 1
+
+    def test_start_beyond_bound_rejected(self):
+        """Segment starting at/after the transcript bound is rejected (H-6)."""
+        # Transcript is only ~150s long; a start at 300s is hallucinated.
+        segs = [_make_segment(300.0, 320.0, "Hallucinated clip past the end of the video.")]
+        result = validate_segments(segs, 15.0, 45.0, max_time_s=150.0)
+        assert len(result) == 0
+
+    def test_end_beyond_bound_rejected(self):
+        """Segment ending well past the transcript bound is rejected (H-6)."""
+        segs = [_make_segment(140.0, 200.0, "Starts in range but runs far past the end.")]
+        result = validate_segments(segs, 15.0, 90.0, max_time_s=150.0)
+        assert len(result) == 0
+
+    def test_within_bound_accepted(self):
+        """Segment fully within the transcript bound is accepted (H-6)."""
+        segs = [_make_segment(100.0, 130.0, "A perfectly in-range standalone clip here.")]
+        result = validate_segments(segs, 15.0, 45.0, max_time_s=150.0)
+        assert len(result) == 1
+
+    def test_end_at_bound_within_tolerance_accepted(self):
+        """End-of-video clip ending just past the bound is kept via tolerance (H-6)."""
+        # Bound 150.0; end 150.5 is within the 1.0s tolerance.
+        segs = [_make_segment(130.0, 150.5, "The final clip ends right at the video's end.")]
+        result = validate_segments(segs, 15.0, 45.0, max_time_s=150.0)
+        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +307,7 @@ class TestAnalyzeTranscript:
             TranscriptSegment(start_time=60.0, end_time=85.0, text="Here is the big reveal moment.", score=0.7),
         ]
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.llm_model = ""
@@ -286,9 +318,7 @@ class TestAnalyzeTranscript:
                 new_callable=AsyncMock,
                 return_value=mock_segments,
             ):
-                result = await analyze_transcript(
-                    LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0
-                )
+                result = await analyze_transcript(LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0)
 
         assert len(result) == 2
         # Sorted by score descending.
@@ -301,7 +331,7 @@ class TestAnalyzeTranscript:
             TranscriptSegment(start_time=5.0, end_time=25.0, text="Valuable content here now.", score=0.85),
         ]
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = False
             mock_cfg.llm_model = "groq:meta-llama/llama-4-scout-17b"
@@ -312,9 +342,7 @@ class TestAnalyzeTranscript:
                 new_callable=AsyncMock,
                 return_value=mock_segments,
             ):
-                result = await analyze_transcript(
-                    LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0
-                )
+                result = await analyze_transcript(LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0)
 
         assert len(result) == 1
         assert result[0].score == 0.85
@@ -327,51 +355,58 @@ class TestAnalyzeTranscript:
             TranscriptSegment(start_time=0.0, end_time=5.0, text="Fragment.", score=0.9),
         ]
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch(
-                "src.pipeline.analyze._analyze_with_pydantic_ai",
-                new_callable=AsyncMock,
-                return_value=mock_segments,
-            ), pytest.raises(AnalysisError, match="No valid segments found"):
-                await analyze_transcript(
-                    LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0
-                )
+            with (
+                patch(
+                    "src.pipeline.analyze._analyze_with_pydantic_ai",
+                    new_callable=AsyncMock,
+                    return_value=mock_segments,
+                ),
+                pytest.raises(AnalysisError, match="No valid segments found"),
+            ):
+                await analyze_transcript(LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0)
 
     @pytest.mark.asyncio
     async def test_llm_exception_wrapped_in_analysis_error(self):
         """Unexpected LLM exceptions are wrapped as AnalysisError."""
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch(
-                "src.pipeline.analyze._analyze_with_pydantic_ai",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("connection refused"),
-            ), pytest.raises(AnalysisError, match="LLM call failed"):
+            with (
+                patch(
+                    "src.pipeline.analyze._analyze_with_pydantic_ai",
+                    new_callable=AsyncMock,
+                    side_effect=RuntimeError("connection refused"),
+                ),
+                pytest.raises(AnalysisError, match="LLM call failed"),
+            ):
                 await analyze_transcript(LONG_TRANSCRIPT, words=[])
 
     @pytest.mark.asyncio
     async def test_analysis_error_passthrough(self):
         """AnalysisError from backend propagates unchanged."""
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.llm_model = ""
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch(
-                "src.pipeline.analyze._analyze_with_pydantic_ai",
-                new_callable=AsyncMock,
-                side_effect=AnalysisError("GROQ_API_KEY not configured"),
-            ), pytest.raises(AnalysisError, match="GROQ_API_KEY not configured"):
+            with (
+                patch(
+                    "src.pipeline.analyze._analyze_with_pydantic_ai",
+                    new_callable=AsyncMock,
+                    side_effect=AnalysisError("GROQ_API_KEY not configured"),
+                ),
+                pytest.raises(AnalysisError, match="GROQ_API_KEY not configured"),
+            ):
                 await analyze_transcript(LONG_TRANSCRIPT, words=[])
 
     @pytest.mark.asyncio
@@ -382,7 +417,7 @@ class TestAnalyzeTranscript:
             TranscriptSegment(start_time=30.0, end_time=60.0, text="Higher score clip now.", score=0.95),
         ]
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.llm_model = ""
@@ -393,12 +428,90 @@ class TestAnalyzeTranscript:
                 new_callable=AsyncMock,
                 return_value=mock_segments,
             ):
-                result = await analyze_transcript(
-                    LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0
-                )
+                result = await analyze_transcript(LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0)
 
         assert result[0].score == 0.95
         assert result[1].score == 0.5
+
+    @pytest.mark.asyncio
+    async def test_no_valid_segments_raises_insufficient_segments_error(self):
+        """When all segments are filtered out, the error is InsufficientSegmentsError (H-13)."""
+        mock_segments = [
+            TranscriptSegment(start_time=0.0, end_time=5.0, text="Fragment.", score=0.9),
+        ]
+
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.local_llm_enabled = True
+            mock_cfg.llm_model = ""
+            mock_cfg_cls.return_value = mock_cfg
+
+            with (
+                patch(
+                    "src.pipeline.analyze._analyze_with_pydantic_ai",
+                    new_callable=AsyncMock,
+                    return_value=mock_segments,
+                ),
+                pytest.raises(InsufficientSegmentsError),
+            ):
+                await analyze_transcript(LONG_TRANSCRIPT, words=[], min_length_s=15.0, max_length_s=45.0)
+
+    @pytest.mark.asyncio
+    async def test_custom_prompt_forwarded_to_user_prompt(self):
+        """custom_prompt reaches the user-turn content sent to the backend (H-5)."""
+        mock_segments = [
+            TranscriptSegment(start_time=10.0, end_time=30.0, text="Engaging content here.", score=0.9),
+        ]
+        backend = AsyncMock(return_value=mock_segments)
+
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.local_llm_enabled = True
+            mock_cfg.llm_model = ""
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch("src.pipeline.analyze._analyze_with_pydantic_ai", backend):
+                await analyze_transcript(
+                    LONG_TRANSCRIPT,
+                    words=[],
+                    min_length_s=15.0,
+                    max_length_s=45.0,
+                    custom_prompt="Prioritize dramatic confrontations.",
+                )
+
+        # _analyze_with_pydantic_ai(user_prompt, system_prompt)
+        user_prompt = backend.call_args.args[0]
+        assert "Prioritize dramatic confrontations." in user_prompt
+        assert "ADDITIONAL INSTRUCTIONS" in user_prompt
+
+    @pytest.mark.asyncio
+    async def test_out_of_bounds_segment_rejected_via_word_timing(self):
+        """A hallucinated far-future segment is dropped using the transcript bound (H-6)."""
+        # Words establish the transcript ends at ~150s.
+        words = [
+            {"text": "start", "start_ms": 0, "end_ms": 1000},
+            {"text": "end", "start_ms": 149000, "end_ms": 150000},
+        ]
+        mock_segments = [
+            TranscriptSegment(start_time=300.0, end_time=320.0, text="Hallucinated future clip text.", score=0.95),
+            TranscriptSegment(start_time=20.0, end_time=45.0, text="A genuinely in-range clip here.", score=0.8),
+        ]
+
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
+            mock_cfg = MagicMock()
+            mock_cfg.local_llm_enabled = True
+            mock_cfg.llm_model = ""
+            mock_cfg_cls.return_value = mock_cfg
+
+            with patch(
+                "src.pipeline.analyze._analyze_with_pydantic_ai",
+                new_callable=AsyncMock,
+                return_value=mock_segments,
+            ):
+                result = await analyze_transcript(LONG_TRANSCRIPT, words=words, min_length_s=15.0, max_length_s=45.0)
+
+        assert len(result) == 1
+        assert result[0].start_time == pytest.approx(20.0)
 
 
 # ---------------------------------------------------------------------------
@@ -564,7 +677,7 @@ class TestAnalyzeWithGroqStructured:
     @pytest.mark.asyncio
     async def test_missing_api_key_raises_analysis_error(self):
         """AnalysisError raised when groq_api_key is not configured."""
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.groq_api_key = None
             mock_cfg_cls.return_value = mock_cfg
@@ -600,15 +713,13 @@ class TestAnalyzeWithGroqStructured:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
 
             with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
-                result = await _analyze_with_groq_structured(
-                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                )
+                result = await _analyze_with_groq_structured("user prompt", "system prompt", "groq:meta-llama/llama-4-scout")
 
         assert len(result) == 1
         assert result[0].start_time == pytest.approx(10.0)
@@ -628,7 +739,7 @@ class TestAnalyzeWithGroqStructured:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
@@ -637,9 +748,7 @@ class TestAnalyzeWithGroqStructured:
                 patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client),
                 pytest.raises(AnalysisError, match="Empty response from Groq API"),
             ):
-                await _analyze_with_groq_structured(
-                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                )
+                await _analyze_with_groq_structured("user prompt", "system prompt", "groq:meta-llama/llama-4-scout")
 
     @pytest.mark.asyncio
     async def test_invalid_json_raises_analysis_error(self):
@@ -654,7 +763,7 @@ class TestAnalyzeWithGroqStructured:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
@@ -663,9 +772,7 @@ class TestAnalyzeWithGroqStructured:
                 patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client),
                 pytest.raises(AnalysisError, match="Invalid JSON response from Groq"),
             ):
-                await _analyze_with_groq_structured(
-                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                )
+                await _analyze_with_groq_structured("user prompt", "system prompt", "groq:meta-llama/llama-4-scout")
 
     @pytest.mark.asyncio
     async def test_bare_model_name_strips_groq_prefix(self):
@@ -685,15 +792,13 @@ class TestAnalyzeWithGroqStructured:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.groq_api_key = "test-key"
             mock_cfg_cls.return_value = mock_cfg
 
             with patch("src.pipeline.analyze.AsyncGroq", return_value=mock_client):
-                await _analyze_with_groq_structured(
-                    "user prompt", "system prompt", "groq:meta-llama/llama-4-scout"
-                )
+                await _analyze_with_groq_structured("user prompt", "system prompt", "groq:meta-llama/llama-4-scout")
 
         call_kwargs = mock_client.chat.completions.create.call_args
         assert call_kwargs.kwargs["model"] == "meta-llama/llama-4-scout"
@@ -730,7 +835,7 @@ class TestAnalyzeWithPydanticAI:
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = False
             mock_cfg.get_llm_model.return_value = "openai:gpt-4o"
@@ -759,7 +864,7 @@ class TestAnalyzeWithPydanticAI:
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = False
             mock_cfg.get_llm_model.return_value = "openai:gpt-4o"
@@ -783,7 +888,7 @@ class TestAnalyzeWithPydanticAI:
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
 
-        with patch("src.pipeline.analyze.Config") as mock_cfg_cls:
+        with patch("src.pipeline.analyze.get_config") as mock_cfg_cls:
             mock_cfg = MagicMock()
             mock_cfg.local_llm_enabled = True
             mock_cfg.local_llm_model = "local-model"
@@ -791,9 +896,11 @@ class TestAnalyzeWithPydanticAI:
             mock_cfg.local_llm_api_key = "not-needed"
             mock_cfg_cls.return_value = mock_cfg
 
-            with patch("src.pipeline.analyze.OpenAIProvider") as mock_provider_cls, \
-                 patch("src.pipeline.analyze.OpenAIModel") as mock_model_cls, \
-                 patch("src.pipeline.analyze.Agent", return_value=mock_agent):
+            with (
+                patch("src.pipeline.analyze.OpenAIProvider") as mock_provider_cls,
+                patch("src.pipeline.analyze.OpenAIModel") as mock_model_cls,
+                patch("src.pipeline.analyze.Agent", return_value=mock_agent),
+            ):
                 mock_provider_cls.return_value = MagicMock()
                 mock_model_cls.return_value = MagicMock()
                 await _analyze_with_pydantic_ai("user prompt", "system prompt")

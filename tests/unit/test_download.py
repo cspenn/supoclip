@@ -5,7 +5,6 @@ Covers:
 - validate_youtube_url with valid and invalid URLs
 - find_downloaded_file with various directory states
 - download_youtube_video with mocked yt-dlp
-- get_video_info with mocked yt-dlp
 - DownloadError raised on yt-dlp failure
 """
 
@@ -15,11 +14,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yt_dlp  # type: ignore
 
+import src.exceptions
 from src.pipeline.download import (
     DownloadError,
     _extract_video_id,
     _run_ydl_download,
-    _run_ydl_info,
     find_downloaded_file,
     validate_youtube_url,
 )
@@ -89,9 +88,7 @@ class TestExtractVideoId:
 
     def test_url_with_extra_params(self) -> None:
         """Extracts ID even when URL has extra query parameters."""
-        result = _extract_video_id(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s&list=PL123"
-        )
+        result = _extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s&list=PL123")
         assert result == "dQw4w9WgXcQ"
 
     def test_returns_none_for_empty(self) -> None:
@@ -235,55 +232,6 @@ class TestDownloadYoutubeVideo:
 
 
 # ---------------------------------------------------------------------------
-# get_video_info (mocked)
-# ---------------------------------------------------------------------------
-
-
-class TestGetVideoInfo:
-    """Tests for get_video_info with mocked yt-dlp."""
-
-    @pytest.mark.asyncio
-    async def test_returns_metadata_dict(self) -> None:
-        """Returns a dict with expected keys on success."""
-        fake_raw = {
-            "id": "dQw4w9WgXcQ",
-            "title": "Never Gonna Give You Up",
-            "description": "Official music video",
-            "duration": 212,
-            "uploader": "Rick Astley",
-            "upload_date": "20091024",
-            "view_count": 1_000_000_000,
-            "like_count": 15_000_000,
-            "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
-            "format_id": "22",
-            "resolution": "1280x720",
-            "fps": 30,
-            "filesize": None,
-        }
-
-        with patch("src.pipeline.download._run_ydl_info", return_value=fake_raw):
-            from src.pipeline.download import get_video_info
-
-            result = await get_video_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-
-        assert result["title"] == "Never Gonna Give You Up"
-        assert result["duration"] == 212
-        assert result["id"] == "dQw4w9WgXcQ"
-
-    @pytest.mark.asyncio
-    async def test_raises_download_error_on_failure(self) -> None:
-        """Raises DownloadError when yt-dlp info extraction fails."""
-        with patch(
-            "src.pipeline.download._run_ydl_info",
-            side_effect=DownloadError("network error"),
-        ):
-            from src.pipeline.download import get_video_info
-
-            with pytest.raises(DownloadError):
-                await get_video_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-
-
-# ---------------------------------------------------------------------------
 # DownloadError
 # ---------------------------------------------------------------------------
 
@@ -294,6 +242,16 @@ class TestDownloadError:
     def test_is_exception(self) -> None:
         """DownloadError is an Exception subclass."""
         assert issubclass(DownloadError, Exception)
+
+    def test_inherits_from_central_download_error(self) -> None:
+        """download.DownloadError subclasses the centralized DownloadError."""
+        assert issubclass(DownloadError, src.exceptions.DownloadError)
+        assert issubclass(DownloadError, src.exceptions.SupoClipError)
+
+    def test_central_except_site_catches_local_error(self) -> None:
+        """An ``except src.exceptions.DownloadError`` catches the local subclass."""
+        with pytest.raises(src.exceptions.DownloadError):
+            raise DownloadError("boom")
 
     def test_message_preserved(self) -> None:
         """DownloadError preserves the message string."""
@@ -358,48 +316,6 @@ class TestRunYdlDownload:
 
         with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="403 Forbidden"):
             _run_ydl_download("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
-
-
-# ---------------------------------------------------------------------------
-# _run_ydl_info — internal sync wrapper (lines 204-211)
-# ---------------------------------------------------------------------------
-
-
-class TestRunYdlInfo:
-    """Tests for _run_ydl_info, the synchronous yt-dlp metadata wrapper."""
-
-    def test_raises_download_error_when_extract_info_returns_none(self) -> None:
-        """Raises DownloadError when extract_info returns None (line 207-208)."""
-        mock_ydl = MagicMock()
-        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
-        mock_ydl.__exit__ = MagicMock(return_value=False)
-        mock_ydl.extract_info.return_value = None
-
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="No metadata returned"):
-            _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
-
-    def test_raises_download_error_on_yt_dlp_download_error(self) -> None:
-        """Converts yt_dlp.utils.DownloadError into DownloadError (lines 210-211)."""
-        mock_ydl = MagicMock()
-        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
-        mock_ydl.__exit__ = MagicMock(return_value=False)
-        mock_ydl.extract_info.side_effect = yt_dlp.utils.DownloadError("private video")
-
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl), pytest.raises(DownloadError, match="private video"):
-            _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
-
-    def test_returns_dict_on_success(self) -> None:
-        """Returns a dict when extract_info returns valid data (lines 204-209)."""
-        fake_info = {"id": "dQw4w9WgXcQ", "title": "Test Video"}
-        mock_ydl = MagicMock()
-        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
-        mock_ydl.__exit__ = MagicMock(return_value=False)
-        mock_ydl.extract_info.return_value = fake_info
-
-        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
-            result = _run_ydl_info("https://www.youtube.com/watch?v=dQw4w9WgXcQ", {})
-
-        assert result == fake_info
 
 
 # end tests/unit/test_download.py

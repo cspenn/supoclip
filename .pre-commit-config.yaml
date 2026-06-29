@@ -4,25 +4,23 @@ repos:
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-        files: ^backend/
+        files: ^(src|tests)/
       - id: ruff-format
-        files: ^backend/
+        files: ^(src|tests)/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.14.1
     hooks:
       - id: mypy
-        files: ^backend/src/
+        files: ^src/
         additional_dependencies:
-          - types-aiofiles
           - pydantic
 
   - repo: local
     hooks:
-      - id: pytest
-        name: pytest
-        entry: bash -c 'cd backend && uv run pytest tests/ -x -q'
+      - id: checkpython
+        name: checkpython quality gate
+        entry: ./checkpython.sh
         language: system
-        files: ^backend/
         pass_filenames: false
         always_run: true

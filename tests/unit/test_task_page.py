@@ -7,10 +7,13 @@ without a real event loop, browser, or database.
 The ``nicegui`` stub is registered by ``tests/unit/conftest.py`` before
 collection so that ``src.pages.task`` can be imported.
 """
+
 from __future__ import annotations
 
+import functools
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -213,6 +216,7 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count == 0
@@ -226,9 +230,26 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.video.call_count == len(clips)
+
+    @pytest.mark.asyncio
+    async def test_clip_without_transcript_skips_expansion(self, ui_stub: MagicMock) -> None:
+        """A clip with no transcript_text renders without the transcript expansion."""
+        task = _make_task(status="completed", progress=100)
+        clip = _make_clip(task.id, index=1)
+        clip.transcript_text = ""
+        session_ctx = _mock_session(task, [clip])
+
+        with patch("src.pages.task.get_session", return_value=session_ctx):
+            from src.pages.task import render
+
+            await render(task.id)
+
+        # Still renders the clip's video; just no transcript expansion branch.
+        assert ui_stub.video.call_count == 1
 
     @pytest.mark.asyncio
     async def test_progress_section_hidden(self, ui_stub: MagicMock) -> None:
@@ -256,12 +277,11 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         # At least one column must have had set_visibility called on it.
-        set_vis_calls_found = any(
-            m.set_visibility.called for m in column_instances
-        )
+        set_vis_calls_found = any(m.set_visibility.called for m in column_instances)
         assert set_vis_calls_found
 
 
@@ -285,6 +305,7 @@ class TestRenderProcessing:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count >= 1
@@ -299,6 +320,7 @@ class TestRenderProcessing:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count >= 1
@@ -324,6 +346,7 @@ class TestRenderFailed:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count == 0
@@ -358,12 +381,11 @@ class TestRenderFailed:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         # At least one card must have had set_visibility called on it.
-        set_vis_calls_found = any(
-            m.set_visibility.called for m in card_instances
-        )
+        set_vis_calls_found = any(m.set_visibility.called for m in card_instances)
         assert set_vis_calls_found
 
 
@@ -382,6 +404,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             # Must complete without raising
             await render("nonexistent-task-id-0000")
 
@@ -392,6 +415,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render("missing-task-id")
 
         assert ui_stub.timer.call_count == 0
@@ -403,6 +427,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render("missing-task-id-2")
 
         assert ui_stub.card.call_count >= 1
@@ -507,7 +532,6 @@ class TestScoreColor:
         assert "red" in _score_color(0.0)
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers for timer-callback and _show_clips tests
 # ---------------------------------------------------------------------------
@@ -605,9 +629,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_failed_none_error_message(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_failed_none_error_message(self, ui_stub: MagicMock) -> None:
         """Fallback error message is used when error_message is None."""
         processing_task = _make_task(status="processing", progress=50)
         failed_task = _make_task(status="failed", progress=50, error_message=None)
@@ -630,9 +652,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_task_missing_stops_timer(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_task_missing_stops_timer(self, ui_stub: MagicMock) -> None:
         """Timer deactivates when the task record disappears mid-poll."""
         processing_task = _make_task(status="processing", progress=50)
 
@@ -654,9 +674,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_still_processing_keeps_timer_active(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_still_processing_keeps_timer_active(self, ui_stub: MagicMock) -> None:
         """Timer stays active when the task is still processing."""
         processing_task = _make_task(
             status="processing",
@@ -689,9 +707,7 @@ class TestRefreshCallback:
 
 class TestShowClips:
     @pytest.mark.asyncio
-    async def test_show_clips_renders_correct_video_count(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_renders_correct_video_count(self, ui_stub: MagicMock) -> None:
         """_show_clips calls ui.video once per clip from the DB."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -716,9 +732,7 @@ class TestShowClips:
         assert ui_stub.video.call_count == len(clips)
 
     @pytest.mark.asyncio
-    async def test_show_clips_sets_status_label_with_clip_word(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_sets_status_label_with_clip_word(self, ui_stub: MagicMock) -> None:
         """_show_clips sets status label text containing the word clip."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -750,20 +764,11 @@ class TestShowClips:
 
             await poll_timer._callback()
 
-        texts_with_clip = [
-            m.text
-            for m in label_instances
-            if isinstance(m.text, str) and "clip" in m.text
-        ]
-        assert texts_with_clip, (
-            "Expected at least one label with clip in text after _show_clips. "
-            f"Got: {[m.text for m in label_instances]}"
-        )
+        texts_with_clip = [m.text for m in label_instances if isinstance(m.text, str) and "clip" in m.text]
+        assert texts_with_clip, f"Expected at least one label with clip in text after _show_clips. Got: {[m.text for m in label_instances]}"
 
     @pytest.mark.asyncio
-    async def test_show_clips_uses_plural_for_multiple_clips(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_uses_plural_for_multiple_clips(self, ui_stub: MagicMock) -> None:
         """_show_clips uses clips plural when count is not 1."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -795,12 +800,167 @@ class TestShowClips:
 
             await poll_timer._callback()
 
-        texts_with_clips = [
-            m.text
-            for m in label_instances
-            if isinstance(m.text, str) and "clips" in m.text
-        ]
-        assert texts_with_clips, (
-            "Expected clips plural in at least one label text after _show_clips"
+        texts_with_clips = [m.text for m in label_instances if isinstance(m.text, str) and "clips" in m.text]
+        assert texts_with_clips, "Expected clips plural in at least one label text after _show_clips"
+
+
+# ---------------------------------------------------------------------------
+# Tests: poll-timeout guard
+# ---------------------------------------------------------------------------
+
+
+class TestPollTimeout:
+    """The polling timer must stop after the maximum poll duration is reached."""
+
+    @pytest.mark.asyncio
+    async def test_timer_stops_after_max_poll_seconds(self, ui_stub: MagicMock) -> None:
+        """The guard deactivates the timer once elapsed time hits the cap."""
+        processing_task = _make_task(status="processing", progress=50)
+
+        # Keep returning a still-processing task so only the guard can stop it.
+        factory = _make_session_factory(
+            _make_session_ctx(processing_task),
+            _make_session_ctx(processing_task),
+            _make_session_ctx(processing_task),
         )
+
+        with (
+            patch("src.pages.task.get_session", side_effect=factory),
+            # Shrink the cap so two 1.0s polls trip the guard.
+            patch("src.pages.task._MAX_POLL_SECONDS", 2.0),
+        ):
+            from src.pages.task import render
+
+            await render(processing_task.id)
+
+            poll_timer = ui_stub._timer_instances[0]  # type: ignore[attr-defined]
+
+            await poll_timer._callback()
+            assert poll_timer.active is True  # 1.0s elapsed, below cap
+
+            await poll_timer._callback()
+
+        assert poll_timer.active is False  # 2.0s elapsed, guard fired
+
+    @pytest.mark.asyncio
+    async def test_timeout_sets_status_message(self, ui_stub: MagicMock) -> None:
+        """When the guard fires it updates the status label with a notice."""
+        processing_task = _make_task(status="processing", progress=50)
+
+        label_instances: list[MagicMock] = []
+        original_effect = ui_stub.label.side_effect
+
+        def _tracking_label(*args: object, **kwargs: object) -> MagicMock:
+            m = original_effect(*args, **kwargs) if original_effect else MagicMock()
+            label_instances.append(m)
+            return m  # type: ignore[return-value]
+
+        ui_stub.label.side_effect = _tracking_label
+
+        factory = _make_session_factory(_make_session_ctx(processing_task))
+
+        with (
+            patch("src.pages.task.get_session", side_effect=factory),
+            patch("src.pages.task._MAX_POLL_SECONDS", 1.0),
+        ):
+            from src.pages.task import render
+
+            await render(processing_task.id)
+
+            poll_timer = ui_stub._timer_instances[0]  # type: ignore[attr-defined]
+            await poll_timer._callback()
+
+        stuck_texts = [m.text for m in label_instances if isinstance(m.text, str) and "stuck" in m.text]
+        assert stuck_texts, "expected the status label to mention the task is stuck"
+
+
+# ---------------------------------------------------------------------------
+# Tests: delete_clip()
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteClip:
+    """Per-clip delete removes the DB row and the clip file from disk."""
+
+    @pytest.mark.asyncio
+    async def test_deletes_row_and_file(self, ui_stub: MagicMock, tmp_path: Path) -> None:
+        """delete_clip() deletes the clip row and removes its .mp4 from disk."""
+        clips_dir = tmp_path / "clips"
+        clips_dir.mkdir()
+        clip_file = clips_dir / "clip_001.mp4"
+        clip_file.write_bytes(b"x")
+
+        clip = _make_clip("task-1", index=1)  # filename -> clip_001.mp4
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=clip)
+        session.delete = AsyncMock()
+        session.commit = AsyncMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+
+        with (
+            patch("src.pages.task.get_session", return_value=ctx),
+            patch("src.pages._util.get_config", return_value=cfg),
+        ):
+            from src.pages.task import delete_clip
+
+            await delete_clip(clip.id)
+
+        assert not clip_file.exists()
+        session.delete.assert_awaited_once_with(clip)
+        session.commit.assert_awaited_once()
+        ui_stub.navigate.reload.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_clip_reloads_without_delete(self, ui_stub: MagicMock) -> None:
+        """delete_clip() is a no-op delete (still reloads) when the clip is gone."""
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=None)
+        session.delete = AsyncMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("src.pages.task.get_session", return_value=ctx):
+            from src.pages.task import delete_clip
+
+            await delete_clip("missing-clip")
+
+        session.delete.assert_not_awaited()
+        ui_stub.navigate.reload.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_clip_card_delete_button_runs_coroutine(self, ui_stub: MagicMock) -> None:
+        """The clip card's delete button on_click awaits delete_clip with the id."""
+        from src.pages import task as task_mod
+
+        clip = _make_clip("task-1", index=2)
+        captured: list[dict] = []
+
+        def capture_button(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(dict(kwargs))
+            m = MagicMock()
+            m.classes.return_value = m
+            m.props.return_value = m
+            m.tooltip.return_value = m
+            return m
+
+        ui_stub.button.side_effect = capture_button
+
+        with patch.object(task_mod, "delete_clip", new=AsyncMock()) as mock_delete:
+            task_mod._render_clip_card(clip)
+
+            handlers = [kw.get("on_click") for kw in captured if kw.get("on_click") is not None]
+            partials = [h for h in handlers if isinstance(h, functools.partial)]
+            assert len(partials) == 1, "clip card must wire a functools.partial delete handler"
+
+            await partials[0]()
+
+        mock_delete.assert_awaited_once_with(clip.id)
+
+
 # end tests/unit/test_task_page.py

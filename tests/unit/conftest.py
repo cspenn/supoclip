@@ -6,6 +6,7 @@ module is collected, so that ``src/pages/*.py`` (which do ``from nicegui
 import ui``) can be imported without the real NiceGUI package being installed
 in the test environment.
 """
+
 from __future__ import annotations
 
 import sys

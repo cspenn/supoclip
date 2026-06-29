@@ -1,5 +1,6 @@
 # start tests/unit/test_models.py
 """Unit tests for SQLAlchemy ORM models (Task, GeneratedClip, UserPreferences)."""
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -35,6 +36,7 @@ async def session() -> AsyncSession:
 # Task tests
 # ---------------------------------------------------------------------------
 
+
 class TestTask:
     """Tests for the Task ORM model."""
 
@@ -69,7 +71,7 @@ class TestTask:
         assert task.progress == 0
 
     async def test_nullable_fields_accept_none(self, session: AsyncSession) -> None:
-        """Optional fields (title, settings_json, error_message, progress_message) accept None."""
+        """Optional fields (settings_json, error_message, progress_message) accept None."""
         task = Task(
             source_url="https://youtu.be/abc123",
             source_type="youtube",
@@ -80,10 +82,20 @@ class TestTask:
         await session.commit()
         await session.refresh(task)
 
-        assert task.title is None
         assert task.settings_json is None
         assert task.error_message is None
         assert task.progress_message is None
+
+    def test_datetime_columns_declare_timezone(self) -> None:
+        """DateTime columns are declared with timezone=True (M-8).
+
+        SQLite does not persist tz info on round-trip, so this asserts the
+        schema declaration directly rather than a stored value.
+        """
+        assert Task.__table__.c.created_at.type.timezone is True
+        assert Task.__table__.c.updated_at.type.timezone is True
+        assert GeneratedClip.__table__.c.created_at.type.timezone is True
+        assert UserPreferences.__table__.c.updated_at.type.timezone is True
 
     async def test_timestamps_set_on_creation(self, session: AsyncSession) -> None:
         """created_at and updated_at are set when a Task is created."""
@@ -108,6 +120,7 @@ class TestTask:
 # ---------------------------------------------------------------------------
 # GeneratedClip tests
 # ---------------------------------------------------------------------------
+
 
 class TestGeneratedClip:
     """Tests for the GeneratedClip ORM model."""
@@ -197,6 +210,7 @@ class TestGeneratedClip:
 # ---------------------------------------------------------------------------
 # UserPreferences tests
 # ---------------------------------------------------------------------------
+
 
 class TestUserPreferences:
     """Tests for the UserPreferences singleton ORM model."""
@@ -314,6 +328,7 @@ class TestUserPreferences:
 # Cascade delete tests
 # ---------------------------------------------------------------------------
 
+
 class TestCascadeDelete:
     """Tests verifying cascade delete from Task to GeneratedClip."""
 
@@ -324,12 +339,8 @@ class TestCascadeDelete:
         await session.commit()
         await session.refresh(task)
 
-        clip_a = GeneratedClip(
-            task_id=task.id, filename="a.mp4", start_time=0.0, end_time=10.0, duration=10.0
-        )
-        clip_b = GeneratedClip(
-            task_id=task.id, filename="b.mp4", start_time=15.0, end_time=30.0, duration=15.0
-        )
+        clip_a = GeneratedClip(task_id=task.id, filename="a.mp4", start_time=0.0, end_time=10.0, duration=10.0)
+        clip_b = GeneratedClip(task_id=task.id, filename="b.mp4", start_time=15.0, end_time=30.0, duration=15.0)
         session.add_all([clip_a, clip_b])
         await session.commit()
 
@@ -340,9 +351,9 @@ class TestCascadeDelete:
         # Clips should be gone
         from sqlalchemy import select
 
-        result = await session.execute(
-            select(GeneratedClip).where(GeneratedClip.task_id == task_id)
-        )
+        result = await session.execute(select(GeneratedClip).where(GeneratedClip.task_id == task_id))
         remaining = result.scalars().all()
         assert remaining == []
+
+
 # end tests/unit/test_models.py

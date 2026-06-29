@@ -8,27 +8,40 @@ Covers:
 - Clip failures handled gracefully (individual clips skipped, task not failed)
 - All-clips-fail scenario sets task to 'failed'
 - Task status is updated in the DB at each stage
+- error_message column is populated on failure
 - YouTube URL triggers download; local path skips download
 - Missing/non-existent local file returns error in result
 - Download failure returns error in result
 - Transcription failure returns error in result
 - AI analysis failure returns error in result
 - Broken progress callback does not abort the pipeline
+- Clip generation concurrency is bounded by max_workers
+- Re-processing a task does not create duplicate clip rows
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.pipeline.analyze import TranscriptSegment
+from src.pipeline.clip import ClipOptions
 from src.pipeline.clip import TranscriptSegment as ClipTranscriptSegment
 from src.services.video_service import (
     ProcessingRequest,
     ProcessingResult,
+    _delete_existing_clips,
     _generate_clips_concurrently,
+    _list_transition_files,
+    _options_for_clip,
+    _positive_number,
+    _save_generated_clip,
+    _select_transition,
+    _transition_pool,
     _update_task_status,
     process_video,
 )
@@ -39,10 +52,7 @@ from src.services.video_service import (
 
 YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-LONG_TRANSCRIPT = (
-    "This is a much longer transcript that easily exceeds "
-    "the fifty character minimum requirement. " * 3
-)
+LONG_TRANSCRIPT = "This is a much longer transcript that easily exceeds the fifty character minimum requirement. " * 3
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +68,7 @@ def _make_segment(
     title: str = "Great Clip",
 ) -> TranscriptSegment:
     """Return a TranscriptSegment with sensible defaults."""
-    return TranscriptSegment(
-        start_time=start, end_time=end, text=text, score=score, title=title
-    )
+    return TranscriptSegment(start_time=start, end_time=end, text=text, score=score, title=title)
 
 
 def _make_request(
@@ -70,6 +78,25 @@ def _make_request(
 ) -> ProcessingRequest:
     """Return a ProcessingRequest with sensible defaults."""
     return ProcessingRequest(source=source, task_id=task_id, **kwargs)
+
+
+def _make_cfg(tmp_path: Path, max_workers: int = 4) -> MagicMock:
+    """Return a mock config exposing temp_dir and max_workers.
+
+    Used to patch ``src.services.video_service.get_config``. ``max_workers``
+    must be a real int so the bounding semaphore can be constructed.
+
+    Args:
+        tmp_path: Directory used as the configured temp_dir.
+        max_workers: Concurrency bound surfaced to the service.
+
+    Returns:
+        A MagicMock standing in for the Config singleton.
+    """
+    cfg = MagicMock()
+    cfg.temp_dir = str(tmp_path)
+    cfg.max_workers = max_workers
+    return cfg
 
 
 _SENTINEL = object()
@@ -210,9 +237,7 @@ class TestUpdateTaskStatus:
         mock_task = MagicMock()
         mock_session = _make_mock_session(mock_task)
 
-        with patch(
-            "src.services.video_service.get_session", new=mock_session
-        ):
+        with patch("src.services.video_service.get_session", new=mock_session):
             await _update_task_status("t1", "processing", 50, "Half done")
 
         assert mock_task.status == "processing"
@@ -225,27 +250,46 @@ class TestUpdateTaskStatus:
         # Pass None so session.get() returns None (no task found).
         mock_session_factory = _make_mock_session(None)
 
-        with patch(
-            "src.services.video_service.get_session", new=mock_session_factory
-        ):
+        with patch("src.services.video_service.get_session", new=mock_session_factory):
             await _update_task_status("missing", "processing", 50)
         # No assertion on commit — test just verifies no exception is raised.
 
     @pytest.mark.asyncio
     async def test_error_stored_in_progress_message(self) -> None:
-        """When error kwarg is provided, it is stored in progress_message."""
+        """When error kwarg is provided, it is mirrored into progress_message."""
         mock_task = MagicMock()
         mock_session = _make_mock_session(mock_task)
 
-        with patch(
-            "src.services.video_service.get_session", new=mock_session
-        ):
-            await _update_task_status(
-                "t1", "failed", 0, error="Download failed badly"
-            )
+        with patch("src.services.video_service.get_session", new=mock_session):
+            await _update_task_status("t1", "failed", 0, error="Download failed badly")
 
         assert mock_task.status == "failed"
         assert mock_task.progress_message == "Download failed badly"
+
+    @pytest.mark.asyncio
+    async def test_error_written_to_error_message_column(self) -> None:
+        """When error kwarg is provided, it is persisted to error_message (H-7)."""
+        mock_task = MagicMock()
+        mock_session = _make_mock_session(mock_task)
+
+        with patch("src.services.video_service.get_session", new=mock_session):
+            await _update_task_status("t1", "failed", 0, error="ffmpeg exploded")
+
+        assert mock_task.error_message == "ffmpeg exploded"
+
+    @pytest.mark.asyncio
+    async def test_error_message_not_touched_on_success(self) -> None:
+        """A successful (no error) update never writes to error_message."""
+        mock_task = MagicMock()
+        # Start from a known sentinel so we can detect any unintended write.
+        mock_task.error_message = None
+        mock_session = _make_mock_session(mock_task)
+
+        with patch("src.services.video_service.get_session", new=mock_session):
+            await _update_task_status("t1", "completed", 100, "Complete")
+
+        assert mock_task.error_message is None
+        assert mock_task.progress_message == "Complete"
 
 
 # ---------------------------------------------------------------------------
@@ -257,9 +301,7 @@ class TestGenerateClipsConcurrently:
     """Tests for _generate_clips_concurrently()."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_pipeline_clip_missing(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_returns_empty_when_pipeline_clip_missing(self, tmp_path: Path) -> None:
         """Returns empty list when src.pipeline.clip is not importable."""
         with patch.dict("sys.modules", {"src.pipeline.clip": None}):
             result = await _generate_clips_concurrently(
@@ -286,7 +328,13 @@ class TestGenerateClipsConcurrently:
         mock_module.ClipGenerationError = Exception
         mock_module.TranscriptSegment = ClipTranscriptSegment
 
-        with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
             result = await _generate_clips_concurrently(
                 source_video=tmp_path / "video.mp4",
                 segments=[seg1, seg2],
@@ -320,7 +368,13 @@ class TestGenerateClipsConcurrently:
         mock_module.ClipGenerationError = _ClipErr
         mock_module.TranscriptSegment = ClipTranscriptSegment
 
-        with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
             result = await _generate_clips_concurrently(
                 source_video=tmp_path / "video.mp4",
                 segments=[seg1, seg2],
@@ -350,7 +404,13 @@ class TestGenerateClipsConcurrently:
         def cb(pct: int, msg: str) -> None:
             progress_calls.append((pct, msg))
 
-        with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
             await _generate_clips_concurrently(
                 source_video=tmp_path / "video.mp4",
                 segments=[seg],
@@ -367,9 +427,7 @@ class TestGenerateClipsConcurrently:
         assert "1/1" in msg
 
     @pytest.mark.asyncio
-    async def test_unexpected_exception_in_clip_is_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unexpected_exception_in_clip_is_skipped(self, tmp_path: Path) -> None:
         """Unexpected exceptions (not ClipGenerationError) are also swallowed."""
         seg = _make_segment()
 
@@ -381,7 +439,13 @@ class TestGenerateClipsConcurrently:
         mock_module.ClipGenerationError = ValueError  # different from OSError
         mock_module.TranscriptSegment = ClipTranscriptSegment
 
-        with patch.dict("sys.modules", {"src.pipeline.clip": mock_module}):
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
             result = await _generate_clips_concurrently(
                 source_video=tmp_path / "video.mp4",
                 segments=[seg],
@@ -392,6 +456,101 @@ class TestGenerateClipsConcurrently:
             )
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_concurrency_is_bounded_by_max_workers(self, tmp_path: Path) -> None:
+        """No more than max_workers clips run generate_clip concurrently (H-10)."""
+        max_workers = 2
+        seg_count = 6
+        segments = [_make_segment(start=float(i * 100), end=float(i * 100 + 20)) for i in range(seg_count)]
+
+        current = 0
+        peak = 0
+        counter_lock = asyncio.Lock()
+
+        async def slow_generate(source_video, segment, words, output_path, options):
+            nonlocal current, peak
+            async with counter_lock:
+                current += 1
+                peak = max(peak, current)
+            # Hold the slot long enough that, if unbounded, all would overlap.
+            await asyncio.sleep(0.02)
+            async with counter_lock:
+                current -= 1
+            output_path.touch()
+
+        mock_module = MagicMock()
+        mock_module.generate_clip = slow_generate
+        mock_module.ClipGenerationError = Exception
+        mock_module.TranscriptSegment = ClipTranscriptSegment
+
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path, max_workers=max_workers),
+            ),
+        ):
+            result = await _generate_clips_concurrently(
+                source_video=tmp_path / "video.mp4",
+                segments=segments,
+                words=[],
+                task_id="t1",
+                clip_options=None,
+                clips_dir=tmp_path,
+            )
+
+        assert len(result) == seg_count
+        assert peak <= max_workers, f"peak concurrency {peak} exceeded {max_workers}"
+        # Sanity: with 6 segments and a real semaphore, concurrency must have
+        # actually reached the bound (otherwise the test proves nothing).
+        assert peak == max_workers
+
+
+# ---------------------------------------------------------------------------
+# Clip persistence idempotency
+# ---------------------------------------------------------------------------
+
+
+class TestClipPersistenceIdempotency:
+    """Tests for idempotent clip persistence (M-13) against a real database."""
+
+    @pytest.mark.asyncio
+    async def test_reprocessing_does_not_duplicate_clips(self, tmp_path: Path) -> None:
+        """Re-running delete+save for a task leaves exactly one clip row."""
+        from sqlalchemy import select
+
+        from src.database import close_db, get_session, init_db
+        from src.models import GeneratedClip, Task
+
+        db_url = f"sqlite+aiosqlite:///{tmp_path / 'idempotency.db'}"
+        await close_db()
+        await init_db(db_url)
+        try:
+            async with get_session() as session:
+                session.add(
+                    Task(
+                        id="dup-task",
+                        source_url="https://example.com/v",
+                        source_type="youtube",
+                    )
+                )
+
+            seg = _make_segment()
+            clip_path = Path("dup-task_clip_01.mp4")
+
+            # Two full processing passes for the same task.
+            for _ in range(2):
+                await _delete_existing_clips("dup-task")
+                await _save_generated_clip("dup-task", clip_path, seg, 0)
+
+            async with get_session() as session:
+                rows = (await session.execute(select(GeneratedClip).where(GeneratedClip.task_id == "dup-task"))).scalars().all()
+
+            assert len(rows) == 1
+            assert rows[0].filename == "dup-task_clip_01.mp4"
+        finally:
+            await close_db()
 
 
 # ---------------------------------------------------------------------------
@@ -432,9 +591,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=True
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=True),
             patch(
                 "src.services.video_service.download_youtube_video",
                 new_callable=AsyncMock,
@@ -452,15 +609,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=YOUTUBE_URL, task_id="t1")
-            )
+            result = await process_video(_make_request(source=YOUTUBE_URL, task_id="t1"))
 
         assert result.error is None
         assert len(result.clips) == 2
@@ -493,9 +647,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -508,15 +660,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t2")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t2"))
 
         assert result.error is None
         assert len(result.clips) == 1
@@ -524,9 +673,7 @@ class TestProcessVideo:
     # ---- Progress callback ----
 
     @pytest.mark.asyncio
-    async def test_progress_callback_called_at_key_stages(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_progress_callback_called_at_key_stages(self, tmp_path: Path) -> None:
         """Progress callback is called with 0, 10, 20, 40, 50 and 100."""
         fake_video = tmp_path / "video.mp4"
         fake_video.touch()
@@ -556,9 +703,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=True
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=True),
             patch(
                 "src.services.video_service.download_youtube_video",
                 new_callable=AsyncMock,
@@ -576,12 +721,11 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
             await process_video(
                 _make_request(source=YOUTUBE_URL, task_id="t3"),
                 progress_callback=cb,
@@ -609,23 +753,18 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=True
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=True),
             patch(
                 "src.services.video_service.download_youtube_video",
                 new_callable=AsyncMock,
                 side_effect=DownloadError("Network timeout"),
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=YOUTUBE_URL, task_id="t4")
-            )
+            result = await process_video(_make_request(source=YOUTUBE_URL, task_id="t4"))
 
         assert result.error is not None
         assert "Network timeout" in result.error
@@ -642,18 +781,13 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=missing, task_id="t5")
-            )
+            result = await process_video(_make_request(source=missing, task_id="t5"))
 
         assert result.error is not None
         assert "not found" in result.error.lower()
@@ -666,9 +800,7 @@ class TestProcessVideo:
         mock_session = _make_mock_session()
 
         mock_transcribe = MagicMock()
-        mock_transcribe.transcribe_video = MagicMock(
-            side_effect=RuntimeError("parakeet OOM")
-        )
+        mock_transcribe.transcribe_video = MagicMock(side_effect=RuntimeError("parakeet OOM"))
         mock_transcribe.format_transcript_text = MagicMock(return_value="")
 
         with (
@@ -676,19 +808,14 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch.dict("sys.modules", {"src.pipeline.transcribe": mock_transcribe}),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t6")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t6"))
 
         assert result.error is not None
         assert "parakeet OOM" in result.error
@@ -712,24 +839,19 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
                 side_effect=AnalysisError("No segments found"),
             ),
             patch.dict("sys.modules", {"src.pipeline.transcribe": mock_transcribe}),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t7")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t7"))
 
         assert result.error is not None
         assert "No segments found" in result.error
@@ -764,9 +886,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -779,15 +899,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t8")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t8"))
 
         assert result.error is not None
         assert result.clips == []
@@ -825,9 +942,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -840,15 +955,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t9")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t9"))
 
         assert result.error is None
         assert len(result.clips) == 1
@@ -884,9 +996,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -899,15 +1009,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t10")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t10"))
 
         assert result.error is None
         # task.status is set to 'completed' by the last _update_task_status call.
@@ -916,9 +1023,7 @@ class TestProcessVideo:
     # ---- Defensive callback handling ----
 
     @pytest.mark.asyncio
-    async def test_broken_progress_callback_does_not_abort_pipeline(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_broken_progress_callback_does_not_abort_pipeline(self, tmp_path: Path) -> None:
         """A progress callback that raises does not abort the pipeline."""
         fake_video = tmp_path / "video.mp4"
         fake_video.touch()
@@ -947,9 +1052,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -962,12 +1065,11 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
             # Must not raise despite bad_cb raising ValueError on every call.
             result = await process_video(
                 _make_request(source=str(fake_video), task_id="t11"),
@@ -1005,9 +1107,7 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -1020,15 +1120,12 @@ class TestProcessVideo:
                     "src.pipeline.clip": mock_clip_module,
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t12")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t12"))
 
         assert result.error is None
         meta = result.clip_metadata[0]
@@ -1038,20 +1135,18 @@ class TestProcessVideo:
         assert meta["score"] == 0.88
         assert meta["title"] == "Insight"
 
-
     # ---- ImportError fallback paths (lazy imports) ----
 
     @pytest.mark.asyncio
-    async def test_transcribe_import_error_returns_error_in_result(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_transcribe_import_error_returns_error_in_result(self, tmp_path: Path) -> None:
         """When src.pipeline.transcribe cannot be imported, error is returned.
 
-        Lines 333-335 in src/services/video_service.py handle the ImportError
-        from the transcribe module import. This test verifies that:
+        The ImportError from the transcribe module import is converted to a
+        RuntimeError and surfaced in the result. This test verifies that:
         1. The error message is set correctly in the task status
         2. The result contains the error message
         3. No clips are generated
+        4. error_message is persisted on the failing task (H-7)
         """
         fake_video = tmp_path / "video.mp4"
         fake_video.touch()
@@ -1065,22 +1160,14 @@ class TestProcessVideo:
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch.dict("sys.modules", {"src.pipeline.transcribe": None}),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
-
-            # The import inside process_video should fail, raising ImportError
-            # which is caught and converted to RuntimeError, then caught by the
-            # outer exception handler to return a ProcessingResult with error.
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t_transcribe_err")
-            )
+            result = await process_video(_make_request(source=str(fake_video), task_id="t_transcribe_err"))
 
         assert result.error is not None
         assert "Transcription pipeline module not available" in result.error
@@ -1089,18 +1176,16 @@ class TestProcessVideo:
         assert mock_task.status == "failed"
         assert mock_task.progress == 20
         assert mock_task.progress_message == "Transcription pipeline module not available"
+        assert mock_task.error_message == "Transcription pipeline module not available"
 
     @pytest.mark.asyncio
-    async def test_clip_import_error_uses_object_fallback(self, tmp_path: Path) -> None:
-        """When src.pipeline.clip cannot be imported, ClipOptions is None.
+    async def test_clip_import_error_uses_none_options_fallback(self, tmp_path: Path) -> None:
+        """When src.pipeline.clip cannot be imported, generation yields no clips.
 
-        Lines 366-367 in src/services/video_service.py handle the ImportError
-        from the clip module import. When ClipOptions is None, the code uses
-        object() as clip_options. This test verifies that:
-        1. The import error is caught silently
-        2. ClipOptions is set to None
-        3. clip_options becomes object()
-        4. The pipeline continues (returns empty clips list if clip generation also fails)
+        When the clip module is unavailable, ``ClipOptions`` resolves to None
+        and ``_generate_clips_concurrently`` returns ``[]`` (it also fails to
+        import the clip module). With segments present but no clips generated,
+        the pipeline fails with "All clip generations failed".
         """
         fake_video = tmp_path / "video.mp4"
         fake_video.touch()
@@ -1112,19 +1197,12 @@ class TestProcessVideo:
         mock_transcribe.transcribe_video = MagicMock(return_value=mock_transcription)
         mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
 
-        # Simulate src.pipeline.clip being unavailable by mocking it as None.
-        # When ClipOptions import fails, clip_options becomes object().
-        # Then _generate_clips_concurrently is called with object() as options.
-        # Inside _generate_clips_concurrently, it tries to import src.pipeline.clip again.
-        # If that also fails, it returns [].
         with (
             patch(
                 "src.services.video_service.get_session",
                 new=mock_session,
             ),
-            patch(
-                "src.services.video_service.validate_youtube_url", return_value=False
-            ),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
             patch(
                 "src.services.video_service.analyze_transcript",
                 new_callable=AsyncMock,
@@ -1137,23 +1215,207 @@ class TestProcessVideo:
                     "src.pipeline.clip": None,  # Simulate import failure
                 },
             ),
-            patch("src.services.video_service.Config") as mock_cfg_cls,
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.temp_dir = str(tmp_path)
-            mock_cfg_cls.return_value = mock_cfg
+            result = await process_video(_make_request(source=str(fake_video), task_id="t_clip_err"))
 
-            result = await process_video(
-                _make_request(source=str(fake_video), task_id="t_clip_err")
-            )
-
-        # Since clip module is unavailable, ClipOptions is None, so object() is used.
-        # Then _generate_clips_concurrently returns [] (because clip module is also None).
-        # The pipeline fails with "All clip generations failed" error because
-        # segments exist but no clips were generated.
         assert result.error is not None
         assert "All clip generations failed" in result.error
         assert result.clips == []
+
+
+# ---------------------------------------------------------------------------
+# Transition helpers (M-4: round-robin fade transitions)
+# ---------------------------------------------------------------------------
+
+
+class TestPositiveNumber:
+    """Tests for the _positive_number defensive coercion helper."""
+
+    def test_non_number_returns_default(self) -> None:
+        """A non-numeric value (e.g. a mock attribute) falls back to default."""
+        assert _positive_number(object(), 1800) == 1800.0
+
+    def test_zero_or_negative_returns_default(self) -> None:
+        """Zero and negatives are not positive, so the default is used."""
+        assert _positive_number(0, 5.0) == 5.0
+        assert _positive_number(-3, 5.0) == 5.0
+
+    def test_positive_number_is_returned_as_float(self) -> None:
+        """A positive int/float is returned as a float."""
+        assert _positive_number(2, 9.0) == 2.0
+        assert _positive_number(1.5, 9.0) == 1.5
+
+
+class TestListTransitionFiles:
+    """Tests for _list_transition_files directory scanning."""
+
+    def test_missing_directory_returns_empty(self, tmp_path: Path) -> None:
+        """A non-existent directory yields an empty list."""
+        assert _list_transition_files(tmp_path / "nope") == []
+
+    def test_returns_sorted_mp4_only(self, tmp_path: Path) -> None:
+        """Only .mp4 files are returned, sorted by name."""
+        (tmp_path / "b.mp4").touch()
+        (tmp_path / "a.mp4").touch()
+        (tmp_path / "notes.txt").touch()
+        result = _list_transition_files(tmp_path)
+        assert [p.name for p in result] == ["a.mp4", "b.mp4"]
+
+
+class TestSelectTransition:
+    """Tests for the round-robin _select_transition helper."""
+
+    def test_empty_pool_returns_none(self) -> None:
+        """No transitions available yields None."""
+        assert _select_transition(0, []) is None
+
+    def test_round_robin_cycles(self) -> None:
+        """Selection cycles through the pool by clip index (N clips, M files)."""
+        files = [Path("a.mp4"), Path("b.mp4"), Path("c.mp4")]
+        assigned = [_select_transition(i, files) for i in range(7)]
+        assert assigned == [
+            files[0],
+            files[1],
+            files[2],
+            files[0],
+            files[1],
+            files[2],
+            files[0],
+        ]
+
+
+class TestTransitionPool:
+    """Tests for _transition_pool config resolution."""
+
+    def test_empty_when_no_dir(self) -> None:
+        """A config without a transitions directory yields an empty pool."""
+        assert _transition_pool(SimpleNamespace(TRANSITIONS_DIR=Path("/nope/here"))) == []
+
+    def test_lists_transitions_from_dir(self, tmp_path: Path) -> None:
+        """Every .mp4 in TRANSITIONS_DIR joins the round-robin pool."""
+        (tmp_path / "b.mp4").touch()
+        (tmp_path / "a.mp4").touch()
+        cfg = SimpleNamespace(TRANSITIONS_DIR=tmp_path)
+        assert [p.name for p in _transition_pool(cfg)] == ["a.mp4", "b.mp4"]
+
+
+class TestOptionsForClip:
+    """Tests for the per-clip _options_for_clip transition assignment."""
+
+    def test_none_base_returns_none(self) -> None:
+        """A None base (clip module unavailable) passes through unchanged."""
+        assert _options_for_clip(None, 0, [Path("a.mp4")]) is None
+
+    def test_no_transitions_returns_base_unchanged(self) -> None:
+        """An empty transition pool leaves the base options unchanged."""
+        base = ClipOptions()
+        assert _options_for_clip(base, 0, []) is base
+
+    def test_assigns_transition_when_selected(self) -> None:
+        """When a transition is selected, a copy carrying its path is returned."""
+        base = ClipOptions(output_resolution="720p")
+        result = _options_for_clip(base, 0, [Path("a.mp4")])
+        assert result is not base
+        assert result is not None
+        assert result.transition_path == Path("a.mp4")
+        # Other fields are preserved.
+        assert result.output_resolution == "720p"
+
+    def test_round_robin_assigns_per_index(self) -> None:
+        """Different clip indices receive transitions cycling through the pool."""
+        base = ClipOptions()
+        pool = [Path("a.mp4"), Path("b.mp4")]
+        paths = [_options_for_clip(base, i, pool).transition_path for i in range(3)]  # type: ignore[union-attr]
+        assert paths == [Path("a.mp4"), Path("b.mp4"), Path("a.mp4")]
+
+
+class TestConcurrentTransitionWiring:
+    """The round-robin transition reaches generate_clip via _generate_clips_concurrently."""
+
+    @pytest.mark.asyncio
+    async def test_transition_assigned_to_each_clip(self, tmp_path: Path) -> None:
+        """With transitions configured, each clip receives a transition path."""
+        (tmp_path / "t.mp4").touch()
+        seg = _make_segment()
+        captured_transitions: list[object] = []
+
+        async def fake_generate(source_video, segment, words, output_path, options):
+            captured_transitions.append(options.transition_path)
+            output_path.touch()
+
+        mock_module = MagicMock()
+        mock_module.generate_clip = fake_generate
+        mock_module.ClipGenerationError = Exception
+        mock_module.TranscriptSegment = ClipTranscriptSegment
+
+        cfg = SimpleNamespace(
+            temp_dir=str(tmp_path),
+            max_workers=2,
+            TRANSITIONS_DIR=tmp_path,
+        )
+
+        with (
+            patch.dict("sys.modules", {"src.pipeline.clip": mock_module}),
+            patch("src.services.video_service.get_config", return_value=cfg),
+        ):
+            result = await _generate_clips_concurrently(
+                source_video=tmp_path / "video.mp4",
+                segments=[seg],
+                words=[],
+                task_id="t1",
+                clip_options=ClipOptions(),
+                clips_dir=tmp_path,
+            )
+
+        assert len(result) == 1
+        assert captured_transitions == [tmp_path / "t.mp4"]
+
+
+# ---------------------------------------------------------------------------
+# Transcription timeout (M-3)
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptionTimeout:
+    """Tests for the transcription wall-clock timeout."""
+
+    @pytest.mark.asyncio
+    async def test_transcription_timeout_fails_loudly(self, tmp_path: Path) -> None:
+        """A transcription timeout surfaces a clear error and fails the task."""
+        fake_video = tmp_path / "video.mp4"
+        fake_video.touch()
+        mock_task = MagicMock()
+        mock_session = _make_mock_session(mock_task)
+
+        mock_transcribe = MagicMock()
+        mock_transcribe.transcribe_video = MagicMock(return_value=[])
+        mock_transcribe.format_transcript_text = MagicMock(return_value=LONG_TRANSCRIPT)
+
+        def _raise_timeout(coro, timeout=None):
+            # Close the wrapped coroutine to avoid "never awaited" warnings.
+            coro.close()
+            raise TimeoutError
+
+        with (
+            patch("src.services.video_service.get_session", new=mock_session),
+            patch("src.services.video_service.validate_youtube_url", return_value=False),
+            patch.dict("sys.modules", {"src.pipeline.transcribe": mock_transcribe}),
+            patch("asyncio.wait_for", side_effect=_raise_timeout),
+            patch(
+                "src.services.video_service.get_config",
+                return_value=_make_cfg(tmp_path),
+            ),
+        ):
+            result = await process_video(_make_request(source=str(fake_video), task_id="t_timeout"))
+
+        assert result.error is not None
+        assert "Transcription timed out" in result.error
+        assert mock_task.status == "failed"
+        assert mock_task.progress == 20
 
 
 # end tests/unit/test_video_service.py

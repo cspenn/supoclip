@@ -1,20 +1,28 @@
 # start tests/unit/test_clip.py
 """Unit tests for src/pipeline/clip.py."""
 
+import shutil
 import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.exceptions import ClipGenerationError
 from src.pipeline.clip import (
-    ClipGenerationError,
     ClipOptions,
     TranscriptSegment,
     _find_fonts_dir,
     _get_video_dimensions,
+    _parse_ffprobe_dimensions,
+    _prepend_transition,
+    _probe_duration,
+    _probe_video_fps,
+    _resolve_transition,
     _run_ffmpeg,
+    _run_ffprobe,
+    _video_has_audio,
+    build_concat_command,
     build_ffmpeg_command,
     filter_words_for_segment,
     generate_clip,
@@ -28,14 +36,15 @@ from src.pipeline.subtitles import SubtitleStyle
 _SAMPLE_WORDS: list[dict] = [
     {"text": "Hello", "start_ms": 10000, "end_ms": 10400},
     {"text": "world", "start_ms": 10400, "end_ms": 10900},
-    {"text": "foo",   "start_ms": 20000, "end_ms": 20500},
-    {"text": "bar",   "start_ms": 30000, "end_ms": 30500},
+    {"text": "foo", "start_ms": 20000, "end_ms": 20500},
+    {"text": "bar", "start_ms": 30000, "end_ms": 30500},
 ]
 
 
 # ---------------------------------------------------------------------------
 # filter_words_for_segment
 # ---------------------------------------------------------------------------
+
 
 class TestFilterWordsForSegment:
     """Tests for filter_words_for_segment."""
@@ -103,6 +112,7 @@ class TestFilterWordsForSegment:
 # ---------------------------------------------------------------------------
 # build_ffmpeg_command
 # ---------------------------------------------------------------------------
+
 
 class TestBuildFfmpegCommand:
     """Tests for build_ffmpeg_command."""
@@ -221,17 +231,57 @@ class TestBuildFfmpegCommand:
         assert cmd[i_idx + 1] == "/src/video.mp4"
         assert cmd[-1] == "/out/clip.mp4"
 
+    def test_no_fade_filter_emitted(self) -> None:
+        """The crop/scale chain carries no fade filter (transitions mux content)."""
+        cmd = self._base_cmd()
+        vf = cmd[cmd.index("-vf") + 1]
+        assert "fade=" not in vf
+
+    # ---- logo overlay (M-4) ----
+
+    def test_logo_uses_filter_complex_not_vf(self) -> None:
+        """With a logo, the command switches to -filter_complex and a 2nd input."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png")
+        assert "-filter_complex" in cmd
+        assert "-vf" not in cmd
+        # Two -i inputs: source then logo.
+        assert cmd.count("-i") == 2
+        i_indices = [j for j, a in enumerate(cmd) if a == "-i"]
+        assert cmd[i_indices[1] + 1] == "/brand/logo.png"
+
+    def test_logo_maps_video_and_optional_audio(self) -> None:
+        """The overlaid video [vout] and optional source audio are mapped."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png")
+        assert "-map" in cmd
+        assert "[vout]" in cmd
+        assert "0:a?" in cmd
+
+    def test_logo_overlay_graph_top_right_and_scaled(self) -> None:
+        """Logo is scaled to ~18% of out_width and overlaid at top-right."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png", out_width=1000)
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "scale=180:-1" in graph  # 0.18 * 1000
+        assert "overlay=main_w-overlay_w-20:20" in graph
+
+    def test_logo_base_chain_includes_crop_scale_and_ass(self) -> None:
+        """The overlay base chain still carries crop, scale and the ass burn-in."""
+        cmd = self._base_cmd(logo_path="/brand/logo.png", ass_path="/tmp/subs.ass")
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "crop=607:1080:0:0" in graph
+        assert "scale=1080:1920" in graph
+        assert "ass=/tmp/subs.ass" in graph
+        assert "[base]" in graph
+
 
 # ---------------------------------------------------------------------------
 # generate_clip — mocked ffmpeg
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateClip:
     """Tests for generate_clip using mocked subprocess."""
 
-    def _make_segment(
-        self, start_s: float = 10.0, end_s: float = 40.0
-    ) -> TranscriptSegment:
+    def _make_segment(self, start_s: float = 10.0, end_s: float = 40.0) -> TranscriptSegment:
         return TranscriptSegment(start_s=start_s, end_s=end_s, text="test segment")
 
     def _success_proc(self) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
@@ -361,6 +411,31 @@ class TestGenerateClip:
         mock_write_ass.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_no_ass_when_style_set_but_no_words_in_segment(self, tmp_path: Path) -> None:
+        """With a style but zero words overlapping the segment, no .ass is written."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment(start_s=10.0, end_s=15.0)
+        # Word sits far outside the segment window, so filtering yields nothing.
+        words = [{"text": "later", "start_ms": 90000, "end_ms": 90500}]
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip.write_ass_file") as mock_write_ass,
+            patch("src.pipeline.clip._run_ffmpeg", return_value=self._success_proc()),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=words,
+                output_path=out,
+                options=ClipOptions(subtitle_style=SubtitleStyle()),
+            )
+
+        mock_write_ass.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_nonzero_exit_code_raises(self, tmp_path: Path) -> None:
         """Any non-zero return code (e.g. 2, 127) raises ClipGenerationError."""
         out = tmp_path / "clip.mp4"
@@ -383,6 +458,66 @@ class TestGenerateClip:
                     words=[],
                     output_path=out,
                 )
+
+    @pytest.mark.asyncio
+    async def test_logo_passed_through_when_file_exists(self, tmp_path: Path) -> None:
+        """An existing logo file flows into the ffmpeg command as an overlay."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment()
+        logo = Path(__file__).parent.parent / "fixtures" / "sample_logo.png"
+        assert logo.exists()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(logo_path=logo),
+            )
+
+        cmd = captured["cmd"]
+        assert "-filter_complex" in cmd
+        assert str(logo) in cmd
+
+    @pytest.mark.asyncio
+    async def test_logo_skipped_when_file_missing(self, tmp_path: Path) -> None:
+        """A non-existent logo path is ignored; the simple -vf path is used."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(logo_path=tmp_path / "missing_logo.png"),
+            )
+
+        cmd = captured["cmd"]
+        assert "-vf" in cmd
+        assert "-filter_complex" not in cmd
 
     @pytest.mark.asyncio
     async def test_output_parent_dirs_created(self, tmp_path: Path) -> None:
@@ -409,6 +544,7 @@ class TestGenerateClip:
 # ---------------------------------------------------------------------------
 # TranscriptSegment dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestTranscriptSegment:
     """Sanity tests for the TranscriptSegment dataclass."""
@@ -455,80 +591,108 @@ class TestRunFfmpeg:
             shell=False,
             capture_output=True,
             check=False,
+            timeout=300,
         )
         assert result is fake_proc
 
+    def test_timeout_raises_clip_generation_error(self) -> None:
+        """A ffmpeg timeout is converted into a loud ClipGenerationError (M-3)."""
+        with (
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["ffmpeg"], timeout=300),
+            ),
+            pytest.raises(ClipGenerationError, match="timed out"),
+        ):
+            _run_ffmpeg(["ffmpeg", "-i", "in.mp4", "out.mp4"])
+
 
 # ---------------------------------------------------------------------------
-# _get_video_dimensions — lines 392-410
+# _parse_ffprobe_dimensions
+# ---------------------------------------------------------------------------
+
+
+class TestParseFfprobeDimensions:
+    """Tests for parsing ffprobe JSON into (width, height)."""
+
+    def test_parses_valid_json(self) -> None:
+        """Well-formed ffprobe JSON yields the integer dimensions."""
+        out = b'{"streams":[{"width":1280,"height":720}]}'
+        assert _parse_ffprobe_dimensions(out) == (1280, 720)
+
+    def test_raises_on_malformed_json(self) -> None:
+        """Non-JSON output fails loudly with ClipGenerationError."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b"not json at all")
+
+    def test_raises_on_empty_streams(self) -> None:
+        """An empty streams array (no video stream) fails loudly."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[]}')
+
+    def test_raises_on_missing_keys(self) -> None:
+        """Missing width/height keys fail loudly."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[{"width":1280}]}')
+
+    def test_raises_on_zero_dimensions(self) -> None:
+        """Zero dimensions are rejected (no silent bad crop)."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[{"width":0,"height":0}]}')
+
+
+# ---------------------------------------------------------------------------
+# _get_video_dimensions — ffprobe-backed
 # ---------------------------------------------------------------------------
 
 
 class TestGetVideoDimensions:
-    """Tests for _get_video_dimensions private helper."""
+    """Tests for the ffprobe-backed _get_video_dimensions helper."""
 
-    def test_returns_fallback_when_cv2_not_installed(self, tmp_path: Path) -> None:
-        """Returns (1920, 1080) when cv2 cannot be imported."""
+    def _proc(self, returncode: int, stdout: bytes = b"", stderr: bytes = b"") -> MagicMock:
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = returncode
+        proc.stdout = stdout
+        proc.stderr = stderr
+        return proc
+
+    def test_returns_dimensions_from_ffprobe(self, tmp_path: Path) -> None:
+        """Parses (width, height) from a successful ffprobe call."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+        proc = self._proc(0, stdout=b'{"streams":[{"width":640,"height":480}]}')
+
+        with patch("subprocess.run", return_value=proc):
+            assert _get_video_dimensions(video) == (640, 480)
+
+    def test_raises_when_ffprobe_nonzero(self, tmp_path: Path) -> None:
+        """A non-zero ffprobe exit raises ClipGenerationError (no fallback)."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+        proc = self._proc(1, stderr=b"corrupt file")
+
+        with (
+            patch("subprocess.run", return_value=proc),
+            pytest.raises(ClipGenerationError, match="ffprobe failed"),
+        ):
+            _get_video_dimensions(video)
+
+    def test_raises_when_ffprobe_not_installed(self, tmp_path: Path) -> None:
+        """A missing ffprobe binary raises ClipGenerationError."""
         video = tmp_path / "video.mp4"
         video.touch()
 
-        # Simulate cv2 not being importable
-        with patch.dict(sys.modules, {"cv2": None}):
-            result = _get_video_dimensions(video)
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("no ffprobe")),
+            pytest.raises(ClipGenerationError, match="could not be executed"),
+        ):
+            _get_video_dimensions(video)
 
-        assert result == (1920, 1080)
-
-    def test_returns_dimensions_from_cv2_when_available(self, tmp_path: Path) -> None:
-        """Returns (width, height) from cv2.VideoCapture when cv2 is present."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.side_effect = lambda prop: (
-            1280.0 if prop == mock_cv2.CAP_PROP_FRAME_WIDTH else 720.0
-        )
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1280, 720)
-        mock_cap.release.assert_called_once()
-
-    def test_returns_fallback_when_cv2_returns_zero_dimensions(
-        self, tmp_path: Path
-    ) -> None:
-        """Returns (1920, 1080) when cv2 reports width=0 or height=0."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.return_value = 0.0  # Both width and height are zero
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1920, 1080)
-        mock_cap.release.assert_called_once()
-
-    def test_returns_fallback_on_cv2_exception(self, tmp_path: Path) -> None:
-        """Returns (1920, 1080) when cv2.VideoCapture.get raises an exception."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.side_effect = RuntimeError("cv2 internal error")
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1920, 1080)
-        mock_cap.release.assert_called_once()
+    @pytest.mark.skipif(not shutil.which("ffprobe"), reason="ffprobe not installed")
+    def test_real_sample_video_dimensions(self) -> None:
+        """The committed fixture is a real 720x1280 portrait clip."""
+        fixture = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
+        assert _get_video_dimensions(fixture) == (720, 1280)
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +730,374 @@ class TestFindFontsDir:
             result = _find_fonts_dir()
 
         assert result == fonts_dir
+
+
+# ---------------------------------------------------------------------------
+# build_concat_command — transition muxing
+# ---------------------------------------------------------------------------
+
+
+class TestBuildConcatCommand:
+    """Tests for the transition+main concat command builder."""
+
+    def _cmd(self, **kwargs) -> list[str]:  # type: ignore[no-untyped-def]
+        defaults = dict(
+            transition_path="/t/trans.mp4",
+            main_path="/c/clip.main.mp4",
+            output_path="/c/clip.mp4",
+            out_width=720,
+            out_height=1280,
+            fps=24.0,
+            transition_silence_s=None,
+            main_silence_s=None,
+        )
+        defaults.update(kwargs)
+        return build_concat_command(**defaults)  # type: ignore[arg-type]
+
+    def test_two_inputs_transition_then_main(self) -> None:
+        """The first two -i inputs are the transition then the main clip."""
+        cmd = self._cmd()
+        i_indices = [j for j, a in enumerate(cmd) if a == "-i"]
+        assert cmd[i_indices[0] + 1] == "/t/trans.mp4"
+        assert cmd[i_indices[1] + 1] == "/c/clip.main.mp4"
+
+    def test_output_is_last_argument(self) -> None:
+        """The destination path is the final argument."""
+        assert self._cmd(output_path="/c/final.mp4")[-1] == "/c/final.mp4"
+
+    def test_normalises_transition_to_main_geometry(self) -> None:
+        """The transition is scaled to WxH, given square SAR, fps and yuv420p."""
+        cmd = self._cmd(out_width=1080, out_height=1920, fps=30.0)
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "[0:v]scale=1080:1920,setsar=1,fps=30.0,format=yuv420p[tv]" in graph
+        assert "[1:v]setsar=1,format=yuv420p[mv]" in graph
+        assert "concat=n=2:v=1:a=1[v][a]" in graph
+
+    def test_maps_concatenated_streams(self) -> None:
+        """The concatenated video and audio outputs are explicitly mapped."""
+        cmd = self._cmd()
+        assert "-map" in cmd
+        assert "[v]" in cmd
+        assert "[a]" in cmd
+
+    def test_real_audio_used_when_no_silence(self) -> None:
+        """With both silence durations None, the source audio streams are used."""
+        cmd = self._cmd(transition_silence_s=None, main_silence_s=None)
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        # No extra lavfi silent inputs beyond the two real videos.
+        assert "anullsrc" not in cmd
+        assert "[tv][0:a][mv][1:a]concat" in graph
+
+    def test_silent_audio_synthesised_for_both_when_requested(self) -> None:
+        """When both clips lack audio, two silent lavfi inputs are appended."""
+        cmd = self._cmd(transition_silence_s=0.5, main_silence_s=2.0)
+        # Two extra lavfi inputs (inputs 2 and 3).
+        assert cmd.count("lavfi") == 2
+        assert cmd.count("anullsrc=channel_layout=stereo:sample_rate=44100") == 2
+        # Durations are bound to the correct inputs.
+        assert "-t" in cmd
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "[tv][2:a][mv][3:a]concat" in graph
+
+    def test_silent_transition_real_main_audio(self) -> None:
+        """A silent transition + audio-bearing main uses input 2 then main's 1:a."""
+        cmd = self._cmd(transition_silence_s=0.5, main_silence_s=None)
+        assert cmd.count("lavfi") == 1
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "[tv][2:a][mv][1:a]concat" in graph
+
+
+# ---------------------------------------------------------------------------
+# _resolve_transition
+# ---------------------------------------------------------------------------
+
+
+class TestResolveTransition:
+    """Tests for resolving a configured transition path."""
+
+    def test_none_returns_none(self) -> None:
+        """An unset transition path resolves to None."""
+        assert _resolve_transition(None) is None
+
+    def test_existing_file_returns_path(self, tmp_path: Path) -> None:
+        """An existing transition file resolves to its Path."""
+        trans = tmp_path / "swoosh.mp4"
+        trans.touch()
+        assert _resolve_transition(trans) == trans
+
+    def test_missing_file_returns_none(self, tmp_path: Path) -> None:
+        """A configured-but-missing transition file resolves to None (no-op)."""
+        assert _resolve_transition(tmp_path / "missing.mp4") is None
+
+
+# ---------------------------------------------------------------------------
+# ffprobe-backed probe helpers
+# ---------------------------------------------------------------------------
+
+
+class TestRunFfprobe:
+    """Tests for the shared _run_ffprobe error-handling helper."""
+
+    def _proc(self, returncode: int, stdout: bytes = b"", stderr: bytes = b"") -> MagicMock:
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = returncode
+        proc.stdout = stdout
+        proc.stderr = stderr
+        return proc
+
+    def test_returns_stdout_on_success(self) -> None:
+        """A zero-exit ffprobe returns its stdout bytes."""
+        with patch("subprocess.run", return_value=self._proc(0, stdout=b"data")):
+            assert _run_ffprobe(["ffprobe", "-version"]) == b"data"
+
+    def test_raises_on_nonzero_exit(self) -> None:
+        """A non-zero ffprobe exit fails loudly."""
+        with (
+            patch("subprocess.run", return_value=self._proc(1, stderr=b"boom")),
+            pytest.raises(ClipGenerationError, match="ffprobe failed"),
+        ):
+            _run_ffprobe(["ffprobe", "x"])
+
+    def test_raises_when_not_installed(self) -> None:
+        """A missing ffprobe binary fails loudly."""
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("no ffprobe")),
+            pytest.raises(ClipGenerationError, match="could not be executed"),
+        ):
+            _run_ffprobe(["ffprobe", "x"])
+
+
+class TestProbeDuration:
+    """Tests for _probe_duration parsing."""
+
+    def test_parses_duration(self, tmp_path: Path) -> None:
+        """Well-formed ffprobe output yields a float duration."""
+        with patch("src.pipeline.clip._run_ffprobe", return_value=b"2.500000\n"):
+            assert _probe_duration(tmp_path / "v.mp4") == pytest.approx(2.5)
+
+    def test_raises_on_unparseable_duration(self, tmp_path: Path) -> None:
+        """Non-numeric duration output fails loudly."""
+        with (
+            patch("src.pipeline.clip._run_ffprobe", return_value=b"N/A"),
+            pytest.raises(ClipGenerationError, match="could not parse ffprobe duration"),
+        ):
+            _probe_duration(tmp_path / "v.mp4")
+
+
+class TestVideoHasAudio:
+    """Tests for _video_has_audio detection."""
+
+    def test_true_when_audio_stream_present(self, tmp_path: Path) -> None:
+        """Non-empty ffprobe output means an audio stream exists."""
+        with patch("src.pipeline.clip._run_ffprobe", return_value=b"1\n"):
+            assert _video_has_audio(tmp_path / "v.mp4") is True
+
+    def test_false_when_no_audio_stream(self, tmp_path: Path) -> None:
+        """Empty ffprobe output means no audio stream."""
+        with patch("src.pipeline.clip._run_ffprobe", return_value=b"\n"):
+            assert _video_has_audio(tmp_path / "v.mp4") is False
+
+
+class TestProbeVideoFps:
+    """Tests for _probe_video_fps parsing of r_frame_rate."""
+
+    def test_parses_rational(self, tmp_path: Path) -> None:
+        """A num/den rational is divided into frames per second."""
+        with patch("src.pipeline.clip._run_ffprobe", return_value=b"24/1\n"):
+            assert _probe_video_fps(tmp_path / "v.mp4") == pytest.approx(24.0)
+
+    def test_parses_bare_integer(self, tmp_path: Path) -> None:
+        """A value with no denominator is treated as /1."""
+        with patch("src.pipeline.clip._run_ffprobe", return_value=b"30\n"):
+            assert _probe_video_fps(tmp_path / "v.mp4") == pytest.approx(30.0)
+
+    def test_raises_on_unparseable_fps(self, tmp_path: Path) -> None:
+        """A non-numeric rational fails loudly."""
+        with (
+            patch("src.pipeline.clip._run_ffprobe", return_value=b"x/y"),
+            pytest.raises(ClipGenerationError, match="could not parse ffprobe fps"),
+        ):
+            _probe_video_fps(tmp_path / "v.mp4")
+
+    def test_raises_on_zero_denominator(self, tmp_path: Path) -> None:
+        """A zero denominator (e.g. 0/0) fails loudly instead of dividing by zero."""
+        with (
+            patch("src.pipeline.clip._run_ffprobe", return_value=b"24/0"),
+            pytest.raises(ClipGenerationError, match="zero fps denominator"),
+        ):
+            _probe_video_fps(tmp_path / "v.mp4")
+
+
+# ---------------------------------------------------------------------------
+# _prepend_transition — concat orchestration
+# ---------------------------------------------------------------------------
+
+
+class TestPrependTransition:
+    """Tests for the _prepend_transition concat orchestrator."""
+
+    def _success_proc(self) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = 0
+        proc.stderr = b""
+        return proc
+
+    def _failure_proc(self) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = 1
+        proc.stderr = b"concat blew up"
+        return proc
+
+    def test_silent_branch_probes_durations_and_unlinks(self, tmp_path: Path) -> None:
+        """When both clips lack audio, durations are probed and the main removed."""
+        transition = tmp_path / "trans.mp4"
+        transition.touch()
+        main = tmp_path / "clip.main.mp4"
+        main.touch()
+        out = tmp_path / "clip.mp4"
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip._probe_video_fps", return_value=24.0),
+            patch("src.pipeline.clip._video_has_audio", side_effect=[False, False]),
+            patch("src.pipeline.clip._probe_duration", side_effect=[0.5, 2.0]) as mock_dur,
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            _prepend_transition(transition, main, out, 720, 1280)
+
+        assert mock_dur.call_count == 2
+        # Two synthesised silent inputs (both clips lacked audio).
+        assert captured["cmd"].count("lavfi") == 2
+        assert not main.exists(), "intermediate main clip should be removed"
+
+    def test_audio_branch_skips_duration_probe(self, tmp_path: Path) -> None:
+        """When both clips have audio, no silence durations are probed."""
+        transition = tmp_path / "trans.mp4"
+        transition.touch()
+        main = tmp_path / "clip.main.mp4"
+        main.touch()
+        out = tmp_path / "clip.mp4"
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        with (
+            patch("src.pipeline.clip._probe_video_fps", return_value=24.0),
+            patch("src.pipeline.clip._video_has_audio", side_effect=[True, True]),
+            patch("src.pipeline.clip._probe_duration") as mock_dur,
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+        ):
+            _prepend_transition(transition, main, out, 720, 1280)
+
+        mock_dur.assert_not_called()
+        assert "lavfi" not in captured["cmd"]
+
+    def test_failure_raises_and_still_unlinks(self, tmp_path: Path) -> None:
+        """A non-zero concat exit raises ClipGenerationError and removes the main."""
+        transition = tmp_path / "trans.mp4"
+        transition.touch()
+        main = tmp_path / "clip.main.mp4"
+        main.touch()
+        out = tmp_path / "clip.mp4"
+
+        with (
+            patch("src.pipeline.clip._probe_video_fps", return_value=24.0),
+            patch("src.pipeline.clip._video_has_audio", side_effect=[True, True]),
+            patch("src.pipeline.clip._run_ffmpeg", return_value=self._failure_proc()),
+            pytest.raises(ClipGenerationError, match="transition concat failed"),
+        ):
+            _prepend_transition(transition, main, out, 720, 1280)
+
+        assert not main.exists(), "intermediate main clip should be removed even on failure"
+
+
+# ---------------------------------------------------------------------------
+# generate_clip — transition wiring
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateClipTransition:
+    """Tests for the transition branch of generate_clip."""
+
+    def _make_segment(self, start_s: float = 10.0, end_s: float = 40.0) -> TranscriptSegment:
+        return TranscriptSegment(start_s=start_s, end_s=end_s, text="test segment")
+
+    def _success_proc(self) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = 0
+        proc.stderr = b""
+        return proc
+
+    @pytest.mark.asyncio
+    async def test_transition_renders_main_intermediate_then_muxes(self, tmp_path: Path) -> None:
+        """An existing transition renders to a .main intermediate then is prepended."""
+        out = tmp_path / "clip.mp4"
+        transition = tmp_path / "swoosh.mp4"
+        transition.touch()
+        segment = self._make_segment()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        mux = MagicMock()
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+            patch("src.pipeline.clip._prepend_transition", mux),
+        ):
+            result = await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(transition_path=transition),
+            )
+
+        assert result == out
+        # The main pass writes to the intermediate file, not the final output.
+        intermediate = tmp_path / "clip.main.mp4"
+        assert captured["cmd"][-1] == str(intermediate)
+        mux.assert_called_once_with(transition, intermediate, out, 1080, 1920)
+
+    @pytest.mark.asyncio
+    async def test_missing_transition_is_single_pass_no_op(self, tmp_path: Path) -> None:
+        """A missing transition file renders straight to the output with no mux."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment()
+        captured: dict[str, list[str]] = {}
+
+        def capture(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+            captured["cmd"] = cmd
+            return self._success_proc()
+
+        mux = MagicMock()
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip._run_ffmpeg", side_effect=capture),
+            patch("src.pipeline.clip._prepend_transition", mux),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=[],
+                output_path=out,
+                options=ClipOptions(transition_path=tmp_path / "missing.mp4"),
+            )
+
+        assert captured["cmd"][-1] == str(out)
+        mux.assert_not_called()
 
 
 # end tests/unit/test_clip.py

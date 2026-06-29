@@ -3,13 +3,14 @@
 
 Three tables only — all Better Auth / User / Source / SystemFont complexity removed.
 """
+
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.database import Base
+from src.db_base import Base
 
 
 def _new_uuid() -> str:
@@ -43,7 +44,6 @@ class Task(Base):
         status: One of ``'pending'``, ``'processing'``, ``'completed'``, ``'failed'``.
         progress: Integer 0-100 representing completion percentage.
         progress_message: Human-readable status message (nullable).
-        title: User-editable task title (nullable).
         settings_json: JSON blob of processing settings used (nullable).
         error_message: Error detail when status is ``'failed'`` (nullable).
         created_at: UTC datetime when the row was created.
@@ -53,34 +53,19 @@ class Task(Base):
 
     __tablename__ = "tasks"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=_new_uuid
-    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
-    source_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=text("'youtube'")
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=text("'pending'")
-    )
-    progress: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'youtube'"))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'pending'"))
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     progress_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    title: Mapped[str | None] = mapped_column(Text, nullable=True)
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=_utcnow
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=_utcnow, onupdate=_utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
     # Relationships
-    clips: Mapped[list["GeneratedClip"]] = relationship(
-        "GeneratedClip", back_populates="task", cascade="all, delete-orphan"
-    )
+    clips: Mapped[list["GeneratedClip"]] = relationship("GeneratedClip", back_populates="task", cascade="all, delete-orphan")
 
 
 class GeneratedClip(Base):
@@ -105,12 +90,8 @@ class GeneratedClip(Base):
 
     __tablename__ = "generated_clips"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=_new_uuid
-    )
-    task_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
-    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     start_time: Mapped[float] = mapped_column(Float, nullable=False)
     end_time: Mapped[float] = mapped_column(Float, nullable=False)
@@ -118,9 +99,7 @@ class GeneratedClip(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=_utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="clips")
@@ -152,39 +131,19 @@ class UserPreferences(Base):
     __tablename__ = "user_preferences"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
-    font_family: Mapped[str] = mapped_column(
-        String(100), nullable=False, server_default=text("'Arial'")
-    )
-    font_size: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("24")
-    )
-    font_color: Mapped[str] = mapped_column(
-        String(7), nullable=False, server_default=text("'#FFFFFF'")
-    )
-    font_stroke_color: Mapped[str] = mapped_column(
-        String(7), nullable=False, server_default=text("'#000000'")
-    )
-    font_stroke_width: Mapped[float] = mapped_column(
-        Float, nullable=False, server_default=text("2.0")
-    )
-    font_shadow_offset: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("1")
-    )
-    subtitle_position_y: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("75")
-    )
-    min_clip_length: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("15")
-    )
-    max_clip_length: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("45")
-    )
-    output_resolution: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default=text("'1080p'")
-    )
+    font_family: Mapped[str] = mapped_column(String(100), nullable=False, server_default=text("'Arial'"))
+    font_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("24"))
+    font_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default=text("'#FFFFFF'"))
+    font_stroke_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default=text("'#000000'"))
+    font_stroke_width: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("2.0"))
+    font_shadow_offset: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    subtitle_position_y: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("75"))
+    min_clip_length: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("15"))
+    max_clip_length: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("45"))
+    output_resolution: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'1080p'"))
     ai_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     logo_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=_utcnow, onupdate=_utcnow
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+
 # end src/models.py

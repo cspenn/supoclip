@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import src.exceptions
 from src.pipeline.transcribe import (
     _CACHE_VERSION,
     TranscriptionError,
@@ -29,6 +30,14 @@ class TestMergeBpeTokens:
     def test_empty_input_returns_empty(self) -> None:
         """Empty token list yields empty word list."""
         assert merge_bpe_tokens([]) == []
+
+    def test_all_whitespace_tokens_yield_no_words(self) -> None:
+        """Tokens that are all blank are dropped, so nothing is flushed at the end."""
+        tokens = [
+            {"text": "  ", "start": 0.0, "end": 0.2},
+            {"text": "", "start": 0.2, "end": 0.4},
+        ]
+        assert merge_bpe_tokens(tokens) == []
 
     def test_single_whole_word(self) -> None:
         """A single token with no sub-word marker is returned as-is."""
@@ -99,6 +108,25 @@ class TestMergeBpeTokens:
         assert words[0]["end_ms"] == 2250
         assert isinstance(words[0]["start_ms"], int)
         assert isinstance(words[0]["end_ms"], int)
+
+
+# ---------------------------------------------------------------------------
+# TranscriptionError inheritance
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptionErrorInheritance:
+    """Tests for the centralized exception inheritance of TranscriptionError."""
+
+    def test_inherits_from_central_transcription_error(self) -> None:
+        """transcribe.TranscriptionError subclasses the centralized one."""
+        assert issubclass(TranscriptionError, src.exceptions.TranscriptionError)
+        assert issubclass(TranscriptionError, src.exceptions.SupoClipError)
+
+    def test_central_except_site_catches_local_error(self) -> None:
+        """An ``except src.exceptions.TranscriptionError`` catches the local subclass."""
+        with pytest.raises(src.exceptions.TranscriptionError):
+            raise TranscriptionError("boom")
 
 
 # ---------------------------------------------------------------------------
@@ -255,9 +283,7 @@ class TestTranscribeVideo:
 
         assert result == cached_words
 
-    def test_raises_transcription_error_when_parakeet_unavailable(
-        self, tmp_path: Path
-    ) -> None:
+    def test_raises_transcription_error_when_parakeet_unavailable(self, tmp_path: Path) -> None:
         """TranscriptionError raised if parakeet is not installed and no cache."""
         video = tmp_path / "test.mp4"
         video.touch()
@@ -322,9 +348,7 @@ class TestTranscribeVideo:
 
         assert result == expected_words
 
-    def test_raises_transcription_error_on_parakeet_exception(
-        self, tmp_path: Path
-    ) -> None:
+    def test_raises_transcription_error_on_parakeet_exception(self, tmp_path: Path) -> None:
         """TranscriptionError is raised when parakeet raises during transcription.
 
         Covers lines 289-290: the ``except Exception`` handler inside

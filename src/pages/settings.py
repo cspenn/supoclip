@@ -4,6 +4,7 @@
 Provides the UI for configuring font, clip, AI, and logo preferences.
 All settings are persisted to the UserPreferences singleton row (id=1).
 """
+
 from __future__ import annotations
 
 import re
@@ -16,8 +17,13 @@ from nicegui import ui
 from src.config import Config, get_config
 from src.database import get_session
 from src.models import UserPreferences
+from src.pipeline.subtitles import SubtitleStyle
 
 log = structlog.get_logger()
+
+# Output-resolution preset -> video height in pixels (used for subtitle MarginV).
+_RESOLUTION_HEIGHTS: dict[str, int] = {"480p": 854, "720p": 1280, "1080p": 1920}
+_DEFAULT_VIDEO_HEIGHT: int = 1920
 
 # ---------------------------------------------------------------------------
 # Hex color validation
@@ -43,6 +49,37 @@ def is_valid_hex_color(value: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _extract_font_family(ttf_path: Path) -> str | None:
+    """Extract the internal font family name from a single TTF file.
+
+    Prefers nameID 1 (Family name) and falls back to nameID 4 (Full name).
+    Records whose ``toUnicode()`` decoding fails are skipped so a later
+    record with the same nameID can still supply the name.
+
+    Args:
+        ttf_path: Path to a ``*.ttf`` file to inspect.
+
+    Returns:
+        The decoded font family name, or ``None`` when the file cannot be
+        parsed or no usable name record is present.
+    """
+    try:
+        name_table = TTFont(str(ttf_path))["name"]
+    except Exception:
+        log.warning("settings.discover_fonts.parse_error", path=str(ttf_path))
+        return None
+
+    for name_id in (1, 4):
+        for record in name_table.names:
+            if record.nameID != name_id:
+                continue
+            try:
+                return str(record.toUnicode())
+            except Exception:
+                continue
+    return None
+
+
 def _discover_fonts(
     fonts_dir: Path = Config.FONTS_DIR,
     current_value: str | None = None,
@@ -63,25 +100,9 @@ def _discover_fonts(
     """
     names: list[str] = []
     for ttf_path in fonts_dir.glob("*.ttf"):
-        try:
-            font = TTFont(str(ttf_path))
-            name_table = font["name"]
-            family: str | None = None
-            # Prefer nameID 1 (Family name), fall back to nameID 4 (Full name)
-            for name_id in (1, 4):
-                for record in name_table.names:
-                    if record.nameID == name_id:
-                        try:
-                            family = record.toUnicode()
-                            break
-                        except Exception:
-                            continue
-                if family:
-                    break
-            if family:
-                names.append(family)
-        except Exception:
-            log.warning("settings.discover_fonts.parse_error", path=str(ttf_path))
+        family = _extract_font_family(ttf_path)
+        if family:
+            names.append(family)
 
     names = sorted(set(names))
     if not names:
@@ -204,6 +225,46 @@ def _build_phone_html(
 
 
 # ---------------------------------------------------------------------------
+# Preferences -> pipeline style mapping
+# ---------------------------------------------------------------------------
+
+
+def subtitle_style_from_prefs(
+    prefs: UserPreferences,
+    output_resolution: str | None = None,
+) -> SubtitleStyle:
+    """Map persisted ``UserPreferences`` onto a pipeline ``SubtitleStyle``.
+
+    This is the seam that the audit's C-1 finding identified as missing: the
+    Settings page persists a full subtitle style, but nothing converted it into
+    the ``SubtitleStyle`` the clip pipeline consumes, so every clip rendered
+    with ``subtitle_style=None`` and no captions.
+
+    Args:
+        prefs: The persisted user preferences row.
+        output_resolution: Resolution preset whose height drives the subtitle
+            ``MarginV`` math. Falls back to ``prefs.output_resolution`` when not
+            given.
+
+    Returns:
+        A ``SubtitleStyle`` carrying the user's font, size, colors, stroke,
+        shadow and vertical position.
+    """
+    resolution = output_resolution or prefs.output_resolution
+    video_height = _RESOLUTION_HEIGHTS.get(resolution, _DEFAULT_VIDEO_HEIGHT)
+    return SubtitleStyle(
+        font_family=prefs.font_family,
+        font_size=prefs.font_size,
+        font_color=prefs.font_color,
+        outline_color=prefs.font_stroke_color,
+        outline_width=prefs.font_stroke_width,
+        shadow_depth=float(prefs.font_shadow_offset),
+        position_y_pct=prefs.subtitle_position_y,
+        video_height=video_height,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 
@@ -299,9 +360,7 @@ async def render() -> None:
             ).classes("w-full")
 
             size_label = ui.label(f"Font Size: {prefs.font_size}pt").classes("mt-4")
-            font_size = ui.slider(min=8, max=72, value=prefs.font_size, step=1).classes(
-                "w-full"
-            )
+            font_size = ui.slider(min=8, max=72, value=prefs.font_size, step=1).classes("w-full")
 
             font_color = ui.color_input(
                 label="Font Color",
@@ -313,26 +372,14 @@ async def render() -> None:
                 value=prefs.font_stroke_color,
             ).classes("w-full mt-4")
 
-            stroke_label = ui.label(
-                f"Stroke Width: {prefs.font_stroke_width:.1f}"
-            ).classes("mt-4")
-            stroke_width = ui.slider(
-                min=0, max=8, value=prefs.font_stroke_width, step=0.5
-            ).classes("w-full")
+            stroke_label = ui.label(f"Stroke Width: {prefs.font_stroke_width:.1f}").classes("mt-4")
+            stroke_width = ui.slider(min=0, max=8, value=prefs.font_stroke_width, step=0.5).classes("w-full")
 
-            shadow_label = ui.label(
-                f"Shadow Offset: {prefs.font_shadow_offset}px"
-            ).classes("mt-4")
-            shadow_offset = ui.slider(
-                min=0, max=8, value=prefs.font_shadow_offset, step=1
-            ).classes("w-full")
+            shadow_label = ui.label(f"Shadow Offset: {prefs.font_shadow_offset}px").classes("mt-4")
+            shadow_offset = ui.slider(min=0, max=8, value=prefs.font_shadow_offset, step=1).classes("w-full")
 
-            subtitle_label = ui.label(
-                f"Subtitle Y Position: {prefs.subtitle_position_y}% from top"
-            ).classes("mt-4")
-            subtitle_y = ui.slider(
-                min=50, max=95, value=prefs.subtitle_position_y, step=1
-            ).classes("w-full")
+            subtitle_label = ui.label(f"Subtitle Y Position: {prefs.subtitle_position_y}% from top").classes("mt-4")
+            subtitle_y = ui.slider(min=50, max=95, value=prefs.subtitle_position_y, step=1).classes("w-full")
 
             # Live preview
             ui.label("Preview").classes("mt-6 text-sm font-semibold text-gray-500")
@@ -345,19 +392,11 @@ async def render() -> None:
         with ui.card().classes("w-full"):
             ui.label("Clip Settings").classes("text-xl font-semibold mb-4")
 
-            min_label = ui.label(f"Min Clip Length: {prefs.min_clip_length}s").classes(
-                "mt-2"
-            )
-            min_clip = ui.slider(
-                min=10, max=60, value=prefs.min_clip_length, step=1
-            ).classes("w-full")
+            min_label = ui.label(f"Min Clip Length: {prefs.min_clip_length}s").classes("mt-2")
+            min_clip = ui.slider(min=10, max=60, value=prefs.min_clip_length, step=1).classes("w-full")
 
-            max_label = ui.label(f"Max Clip Length: {prefs.max_clip_length}s").classes(
-                "mt-4"
-            )
-            max_clip = ui.slider(
-                min=10, max=90, value=prefs.max_clip_length, step=1
-            ).classes("w-full")
+            max_label = ui.label(f"Max Clip Length: {prefs.max_clip_length}s").classes("mt-4")
+            max_clip = ui.slider(min=10, max=90, value=prefs.max_clip_length, step=1).classes("w-full")
 
             output_resolution = ui.select(
                 label="Output Resolution",
@@ -371,11 +410,15 @@ async def render() -> None:
         with ui.card().classes("w-full"):
             ui.label("AI Settings").classes("text-xl font-semibold mb-4")
 
-            ai_prompt = ui.textarea(
-                label="Custom AI Prompt",
-                value=prefs.ai_prompt or "",
-                placeholder="Leave blank to use the default prompt…",
-            ).classes("w-full").props("rows=6")
+            ai_prompt = (
+                ui.textarea(
+                    label="Custom AI Prompt",
+                    value=prefs.ai_prompt or "",
+                    placeholder="Leave blank to use the default prompt…",
+                )
+                .classes("w-full")
+                .props("rows=6")
+            )
 
         # ------------------------------------------------------------------ #
         # Logo settings
@@ -383,9 +426,7 @@ async def render() -> None:
         with ui.card().classes("w-full"):
             ui.label("Logo").classes("text-xl font-semibold mb-4")
 
-            logo_display = ui.label(
-                f"Current logo: {prefs.logo_path or 'None'}"
-            ).classes("text-sm text-gray-500")
+            logo_display = ui.label(f"Current logo: {prefs.logo_path or 'None'}").classes("text-sm text-gray-500")
 
             def handle_logo_upload(e: object) -> None:
                 """Persist the uploaded logo file and update the display label.
@@ -419,9 +460,7 @@ async def render() -> None:
                 logo_display.text = "Current logo: None"
                 log.info("settings.logo_cleared")
 
-            ui.button("Clear Logo", on_click=clear_logo).classes(
-                "mt-2 bg-gray-500 text-white"
-            )
+            ui.button("Clear Logo", on_click=clear_logo).classes("mt-2 bg-gray-500 text-white")
 
         # ------------------------------------------------------------------ #
         # Save / Reset buttons
@@ -498,12 +537,8 @@ async def render() -> None:
                 _update_preview()
                 ui.notify("Settings reset to defaults.", color="info")
 
-            ui.button("Save Settings", on_click=save).classes(
-                "bg-green-600 text-white flex-1"
-            )
-            ui.button("Reset to Defaults", on_click=reset).classes(
-                "bg-gray-500 text-white flex-1"
-            )
+            ui.button("Save Settings", on_click=save).classes("bg-green-600 text-white flex-1")
+            ui.button("Reset to Defaults", on_click=reset).classes("bg-gray-500 text-white flex-1")
 
     # ---------------------------------------------------------------------- #
     # Reactive wiring — define after all widget references exist
@@ -544,4 +579,6 @@ async def render() -> None:
 
     # Initialise preview with saved values
     _update_preview()
+
+
 # end src/pages/settings.py

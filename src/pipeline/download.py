@@ -6,24 +6,22 @@ stamina-based retry logic and async-safe thread offloading.
 """
 
 import asyncio
-import logging
 import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import stamina
+import structlog
 import yt_dlp  # type: ignore
 
-logger = logging.getLogger(__name__)
+from src.exceptions import DownloadError as BaseDownloadError
+
+logger = structlog.get_logger(__name__)
 
 VALID_VIDEO_EXTENSIONS = frozenset({".mp4", ".mkv", ".webm"})
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/131.0.0.0 Safari/537.36"
-)
+_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 _YDL_HTTP_HEADERS: dict[str, str] = {
     "User-Agent": _USER_AGENT,
@@ -45,7 +43,7 @@ _YOUTUBE_ID_PATTERNS = (
 )
 
 
-class DownloadError(Exception):
+class DownloadError(BaseDownloadError):
     """Raised when video download fails."""
 
 
@@ -108,9 +106,9 @@ def _extract_video_id(url: str) -> str | None:
     for pattern in _YOUTUBE_ID_PATTERNS:
         match = re.search(pattern, url, re.IGNORECASE)
         if match:
-            video_id = match.group(1)
-            if len(video_id) == 11:
-                return video_id
+            # Every pattern's capture group enforces exactly 11 chars, so a
+            # match is already a valid id — no redundant length re-check.
+            return match.group(1)
 
     try:
         parsed = urlparse(url)
@@ -120,7 +118,7 @@ def _extract_video_id(url: str) -> str | None:
             if ids and len(ids[0]) == 11:
                 return ids[0]
     except Exception as exc:
-        logger.warning("Error parsing YouTube URL query parameters: %s", exc)
+        logger.warning("download.url_parse_failed", error=str(exc))
 
     return None
 
@@ -154,21 +152,17 @@ def find_downloaded_file(output_dir: Path, base_stem: str | None = None) -> Path
             candidate = output_dir / f"{base_stem}{ext}"
             if candidate.is_file():
                 size_mb = candidate.stat().st_size // (1024 * 1024)
-                logger.info("Found video file: %s (%dMB)", candidate.name, size_mb)
+                logger.info("download.file_found", name=candidate.name, size_mb=size_mb)
                 return candidate
         return None
 
-    video_files = [
-        p
-        for p in output_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in VALID_VIDEO_EXTENSIONS
-    ]
+    video_files = [p for p in output_dir.iterdir() if p.is_file() and p.suffix.lower() in VALID_VIDEO_EXTENSIONS]
     if not video_files:
         return None
 
     most_recent = max(video_files, key=lambda p: p.stat().st_mtime)
     size_mb = most_recent.stat().st_size // (1024 * 1024)
-    logger.info("Found video file: %s (%dMB)", most_recent.name, size_mb)
+    logger.info("download.file_found", name=most_recent.name, size_mb=size_mb)
     return most_recent
 
 
@@ -185,29 +179,6 @@ def _run_ydl_download(url: str, ydl_opts: dict[str, Any]) -> None:
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
             ydl.download([url])
-    except yt_dlp.utils.DownloadError as exc:  # type: ignore[reportAttributeAccessIssue]
-        raise DownloadError(str(exc)) from exc
-
-
-def _run_ydl_info(url: str, ydl_opts: dict[str, Any]) -> dict[str, Any]:
-    """Fetch video metadata synchronously via yt-dlp.
-
-    Args:
-        url: YouTube URL to query.
-        ydl_opts: yt-dlp options dict.
-
-    Returns:
-        Raw info dict from yt-dlp.
-
-    Raises:
-        DownloadError: If metadata extraction fails.
-    """
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
-            raw = ydl.extract_info(url, download=False)
-            if raw is None:
-                raise DownloadError(f"No metadata returned for URL: {url}")
-            return dict(raw)
     except yt_dlp.utils.DownloadError as exc:  # type: ignore[reportAttributeAccessIssue]
         raise DownloadError(str(exc)) from exc
 
@@ -239,7 +210,7 @@ async def download_youtube_video(
     if not video_id:
         raise DownloadError(f"Could not extract video ID from URL: {url}")
 
-    logger.info("Starting YouTube download: %s (id=%s)", url, video_id)
+    logger.info("download.start", url=url, video_id=video_id)
 
     ydl_opts = _build_ydl_opts(output_path, video_id)
     await asyncio.to_thread(_run_ydl_download, url, ydl_opts)
@@ -248,55 +219,8 @@ async def download_youtube_video(
     if not file_path:
         raise DownloadError(f"No video file found after download of: {url}")
 
-    logger.info("Download complete: %s", file_path)
+    logger.info("download.complete", path=str(file_path))
     return file_path
-
-
-@stamina.retry(on=DownloadError, attempts=3, wait_initial=1.0, wait_max=4.0)
-async def get_video_info(url: str) -> dict[str, Any]:
-    """Fetch YouTube video metadata without downloading.
-
-    Args:
-        url: YouTube video URL.
-
-    Returns:
-        Dict with 'title', 'duration', 'thumbnail', 'description' keys
-        plus additional metadata fields from yt-dlp.
-
-    Raises:
-        DownloadError: If metadata fetch fails.
-    """
-    ydl_opts: dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "socket_timeout": 30,
-        "http_headers": _YDL_HTTP_HEADERS,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "web"],
-            }
-        },
-        "nocheckcertificate": False,
-    }
-
-    raw = await asyncio.to_thread(_run_ydl_info, url, ydl_opts)
-
-    return {
-        "id": raw.get("id"),
-        "title": raw.get("title"),
-        "description": raw.get("description", ""),
-        "duration": raw.get("duration"),
-        "uploader": raw.get("uploader"),
-        "upload_date": raw.get("upload_date"),
-        "view_count": raw.get("view_count"),
-        "like_count": raw.get("like_count"),
-        "thumbnail": raw.get("thumbnail"),
-        "format_id": raw.get("format_id"),
-        "resolution": raw.get("resolution"),
-        "fps": raw.get("fps"),
-        "filesize": raw.get("filesize"),
-    }
 
 
 # end src/pipeline/download.py
