@@ -34,9 +34,10 @@ Content creators need to repurpose long-form videos (podcasts, interviews, tutor
 
 ### 4. Video Generation
 - **Format**: 9:16 vertical (short-form standard)
-- **Smart cropping**: Face-centered using MediaPipe (primary), OpenCV DNN (fallback), Haar cascade (last resort)
-- **Subtitles**: Word-level synchronized via pysubs2 + ffmpeg ASS filter; customizable font/size/color/stroke/shadow/position
-- **Transitions**: Optional intro/outro effects from MP4 templates
+- **Smart cropping**: Face-centered using MediaPipe Tasks API only; falls back to center crop when no face is detected. There are no OpenCV DNN or Haar cascade fallbacks.
+- **Subtitles**: Karaoke/context-line style — the active (current) word is highlighted in the primary color, while neighboring words are dimmed. Per-word timing from parakeet-mlx; positioned ~75% down the frame. Generated via pysubs2 ASS files burned in by ffmpeg (requires ffmpeg built with libass). Customizable font family, size, color, stroke, and shadow.
+- **Transitions**: Transition MP4 files placed in `transitions/` are selected round-robin and their content is muxed (concatenated) to the front of each generated clip.
+- **Logo overlay**: A branding logo (configured in user preferences) is composited at the top-right corner of each clip.
 - **Encoding**: H.264 via ffmpeg, even dimensions enforced
 
 ### 5. Real-Time Progress
@@ -49,11 +50,27 @@ Content creators need to repurpose long-form videos (podcasts, interviews, tutor
 - System font discovery
 
 ### 7. Settings Persistence
-- User preferences (fonts, clip lengths, AI prompt, logo, resolution) persisted across sessions
+- User preferences persisted across sessions: font family, size, color, stroke, shadow, subtitle position, clip lengths, resolution, AI prompt, and logo. Note: content mode and VLM settings are environment configuration (`.env`), not Settings UI.
 
 ### 8. Task History and Clip Management
 - View past processing jobs and their generated clips
 - Download or delete individual clips
+
+### 9. Vision-Aware Clipping (optional)
+
+SupoClip can optionally use a multimodal LLM (VLM) — distinct from the text-analysis LLM and **off by default** — to add visual intelligence without changing the deterministic pipeline when disabled.
+
+- **Content mode** (`single` / `duo` / `multi`, configured via environment): selects the framing strategy. For `duo` and `multi` modes, the VLM identifies the active speaker per clip so the 9:16 crop frames whoever is talking, rather than applying a generic face crop. This is the key differentiator for multi-speaker, interview, and podcast content.
+- **Engagement re-ranking**: the VLM scores each candidate segment's visual engagement, fused with the transcript relevance score, to re-order which clips are produced first.
+- **Thumbnail / hook-frame selection**: the VLM picks the most visually compelling frame per clip as its thumbnail. When the VLM is disabled, the thumbnail falls back to the deterministic segment-midpoint frame.
+- **Determinism and safety**: every vision feature is off by default. If the VLM is unreachable or disabled, the pipeline degrades gracefully to today's deterministic behavior. The deterministic pipeline is entirely unchanged when the VLM is off.
+
+### 10. Deterministic Quality Utilities (optional)
+
+Cheap ffmpeg-based post-processing utilities, off by default, requiring no VLM:
+
+- **Scene-cut detection**: snaps a clip's start timestamp to the nearest visual scene cut, avoiding mid-motion entry frames.
+- **Dark-segment filtering**: drops candidate segments whose average luminance falls below a threshold, preventing encoding of unusable dark footage.
 
 ## Non-Functional Requirements
 
@@ -80,6 +97,8 @@ supoclip/
 ├── fonts/         Custom TTF font files
 └── transitions/   Transition effect MP4 templates
 ```
+
+A mandatory quality gate (`./checkpython.sh`) enforces zero errors across lint (ruff), type-checking (mypy + pyright), security (bandit), complexity (radon/xenon), import-cycle (grimp), and 100%-passing tests (pytest, including real-output ffmpeg integration tests) before any commit.
 
 ## Architecture Migration
 

@@ -20,7 +20,9 @@ SupoClip is a self-hosted, open-source alternative to OpusClip. It runs entirely
 - **Smart cropping** — face-centered 9:16 framing via MediaPipe, falls back to center crop
 - **Word-level subtitles** — burned in with pysubs2 + ffmpeg ASS filter, fully customizable
 - **Custom fonts** — drop any TTF into `fonts/`, pick it in the Settings UI
-- **Transition effects** — drop MP4 clips into `transitions/`, applied round-robin
+- **Transition effects** — drop MP4 clips into `transitions/`, muxed round-robin to the front of each generated clip
+- **Logo overlay** — configure a logo image in Settings; applied top-right on every clip
+- **Vision-aware clipping (optional)** — enable a VLM for active-speaker framing, engagement re-ranking, and smart thumbnail selection (off by default; see Configuration)
 - **Task history** — persistent tracking of every job with status and clip viewer
 - **No watermarks** — your content, your clips
 
@@ -29,7 +31,13 @@ SupoClip is a self-hosted, open-source alternative to OpusClip. It runs entirely
 ## Requirements
 
 - Python 3.12+
-- ffmpeg (`brew install ffmpeg`)
+- ffmpeg **built with libass** (the `ass`/`subtitles` filters are required for subtitle burn-in). Homebrew's default ffmpeg omits libass; on macOS install the community tap instead:
+  ```bash
+  brew tap homebrew-ffmpeg/ffmpeg
+  brew install homebrew-ffmpeg/ffmpeg/ffmpeg
+  # Verify libass is present:
+  ffmpeg -filters | grep -E 'subtitles| ass '
+  ```
 - `uv` package manager (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - macOS with Apple Silicon (required for parakeet-mlx local transcription)
 
@@ -54,8 +62,6 @@ python -m src.main
 ```
 
 Opens at **http://localhost:8008**
-
-API docs (Swagger UI) available at **http://localhost:8008/docs**
 
 ---
 
@@ -84,6 +90,40 @@ GROQ_API_KEY=gsk_...
 ```
 
 Cloud LLMs are faster for clip selection but send transcript text to the provider.
+
+### Vision-aware clipping (optional)
+
+All vision features are **disabled by default** and use a separate multimodal model (VLM) distinct from the text LLM.
+
+```dotenv
+# Enable VLM features
+VLM_ENABLED=true
+VLM_MODEL=<vision-capable model on your OpenAI-compatible endpoint>
+
+# VLM_BASE_URL and VLM_API_KEY fall back to LOCAL_LLM_BASE_URL / LOCAL_LLM_API_KEY if not set
+VLM_BASE_URL=http://localhost:6969/v1
+VLM_API_KEY=
+
+# For reasoning VLMs increase the token budget (default 1024)
+VLM_MAX_TOKENS=4096
+
+# Content mode: single (default) | duo | multi
+# In duo/multi mode the VLM crops to the active speaker instead of a generic face crop
+CONTENT_MODE=duo
+
+# Re-rank clips by a fused transcript+visual score (default false)
+VLM_RERANK_ENABLED=true
+
+# Deterministic quality filters (no VLM required)
+QUALITY_DARK_FILTER_ENABLED=true   # skip segments that are too dark
+SCENE_SNAP_ENABLED=true            # snap clip boundaries to scene cuts
+```
+
+> **Note:** Not all multimodal server builds actually perceive images. Verify yours first:
+> ```bash
+> uv run --no-sync python -m tests.e2e.vision_spike <path/to/video>
+> ```
+> See `docs/plans/vlm-enhancement.md` for full details.
 
 ### Transcription
 
@@ -114,7 +154,7 @@ fc-query fonts/MyFont.ttf | grep family
 
 ## Adding Transition Effects
 
-Drop any `.mp4` file into the `transitions/` directory. Transitions are picked up automatically and applied in round-robin order across generated clips.
+Drop any `.mp4` file into the `transitions/` directory. The transition clip's video content is concatenated to the front of each generated clip in round-robin order — no restart needed.
 
 ---
 
@@ -128,8 +168,10 @@ SupoClip is a single all-Python application — one process, one event loop, no 
 | Transcription | parakeet-mlx (local, Apple Silicon, word-level timing) |
 | AI analysis | Pydantic AI + Groq structured outputs (local or cloud LLM) |
 | Video processing | ffmpeg (subprocess, no MoviePy) |
-| Subtitles | pysubs2 → ASS files → ffmpeg `ass` filter |
-| Face detection | MediaPipe (center crop fallback if no face found) |
+| Subtitles | pysubs2 → ASS files → ffmpeg `ass` filter (requires libass) |
+| Face detection | MediaPipe only (center crop fallback if no face found) |
+| Vision (optional) | Multimodal VLM via OpenAI-compatible endpoint — active-speaker framing, engagement re-ranking, smart thumbnails |
+| Quality (optional) | Deterministic ffmpeg scene detection + brightness filtering (no VLM needed) |
 | Storage | SQLite via SQLAlchemy async + aiosqlite |
 
 ### Pipeline
@@ -139,7 +181,18 @@ Video input (URL or upload)
   → Download (yt-dlp, YouTube only)
   → Transcribe (parakeet-mlx → word list with timestamps)
   → Analyze (LLM → 3–7 segments with start/end/title/score)
-  → Generate clips (ffmpeg: trim → 9:16 crop → subtitle burn → H.264)
+  → [optional] VLM engagement re-rank (fused transcript + visual score)
+  → [optional] Deterministic quality filter (dark-segment skip, scene-cut snap)
+  → Generate clips per segment:
+        ffmpeg: trim
+          → 9:16 crop (face-centered via MediaPipe;
+                        VLM active-speaker for duo/multi;
+                        center fallback)
+          → karaoke subtitle burn-in (ASS via libass)
+          → [optional] logo overlay (top-right)
+          → [optional] transition clip mux (round-robin, prepended)
+          → H.264 encode
+  → Per-clip thumbnail (VLM best-frame or midpoint fallback)
   → Save to DB + serve from /clips/
 ```
 
@@ -150,12 +203,15 @@ src/
   main.py              # FastAPI + NiceGUI entry point, lifespan
   config.py            # Pydantic BaseSettings (reads .env)
   database.py          # SQLAlchemy async engine + session
+  db_base.py           # SQLAlchemy declarative Base
   models.py            # Task, GeneratedClip, UserPreferences
+  exceptions.py        # SupoClipError hierarchy
   pages/
     home.py            # URL input, file upload, start processing
     task.py            # Real-time progress, clip viewer, downloads
     history.py         # All past tasks with status
     settings.py        # Font, subtitle style, AI prompt preferences
+    _util.py           # Shared page helpers
   pipeline/
     download.py        # yt-dlp YouTube download
     transcribe.py      # parakeet-mlx transcription + caching
@@ -163,13 +219,16 @@ src/
     clip.py            # ffmpeg clip generation with filtergraph
     subtitles.py       # pysubs2 ASS subtitle file generation
     face_detect.py     # MediaPipe face detection, crop box calculation
+    vision.py          # VLM active-speaker framing, engagement, thumbnails
+    quality.py         # Deterministic scene detection + brightness filter
   services/
     video_service.py   # Pipeline orchestration, progress reporting
 fonts/                 # Drop TTF files here for custom fonts
 transitions/           # Drop MP4 files here for transition effects
 tests/
-  unit/                # 430 unit tests, 100% coverage
-  integration/         # 9 integration tests (real DB, mocked externals)
+  unit/                # Unit tests, 100% line+branch coverage
+  integration/         # Integration tests (real DB, mocked externals)
+  e2e/                 # Manual smoke + vision spike runners (not in gate)
 ```
 
 ---
@@ -177,18 +236,19 @@ tests/
 ## Development
 
 ```bash
-# Run tests (coverage enforced at 100%)
-uv run pytest
+# Full quality gate — run this before every commit
+./checkpython.sh
 
-# Lint
-uv run ruff check src/
-
-# Type check
-uv run mypy src/
-uv run pyright src/
+# What it runs (in order):
+#   ruff check + ruff format
+#   mypy + pyright
+#   bandit (security)
+#   radon / xenon (complexity)
+#   deptry + grimp (import cycle check)
+#   pytest with 100% line+branch coverage (~719 tests, including real-output ffmpeg integration tests)
 ```
 
-All contributions must pass `uv run pytest` (100% coverage required) and `uv run ruff check src/` with zero errors.
+All contributions must pass `./checkpython.sh` with zero errors and 100% passing tests.
 
 ---
 

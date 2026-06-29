@@ -2,9 +2,9 @@
 
 # SupoClip Technical Specification — "Clean Consolidation" Redesign
 
-**Version:** 1.0
-**Date:** 2026-03-17
-**Status:** Approved for Implementation
+**Version:** 1.1
+**Date:** 2026-06-29
+**Status:** Living document — updated to reflect current codebase
 
 ---
 
@@ -23,6 +23,7 @@
 11. [AI Integration](#11-ai-integration)
 12. [Development Standards](#12-development-standards)
 13. [Testing Strategy](#13-testing-strategy)
+14. [Vision-Aware Clipping](#14-vision-aware-clipping)
 
 ---
 
@@ -57,9 +58,12 @@ supoclip/
 │   ├── __init__.py
 │   ├── main.py              # NiceGUI + FastAPI app entry point; orchestration only
 │   ├── config.py            # Pydantic BaseSettings; all env/config loading
-│   ├── database.py          # SQLAlchemy async engine, session factory, Base
+│   ├── db_base.py           # DeclarativeBase only — prevents import cycle
+│   ├── database.py          # SQLAlchemy async engine, session factory (imports Base from db_base)
+│   ├── exceptions.py        # SupoClipError hierarchy
 │   ├── models.py            # SQLAlchemy ORM models (3 tables)
 │   ├── pages/               # NiceGUI UI pages (one file per route)
+│   │   ├── _util.py         # Shared page helpers (truncate, remove_clip_files)
 │   │   ├── home.py          # URL input, file upload, start processing
 │   │   ├── task.py          # Real-time progress, clip viewer, download
 │   │   ├── history.py       # Task list with status badges
@@ -70,14 +74,17 @@ supoclip/
 │   │   ├── analyze.py       # Unified Pydantic AI clip selection
 │   │   ├── clip.py          # ffmpeg trim, 9:16 crop, H.264 encode
 │   │   ├── subtitles.py     # pysubs2 ASS subtitle file generation
-│   │   └── face_detect.py   # MediaPipe face detection; center crop fallback
+│   │   ├── face_detect.py   # MediaPipe face detection; center crop fallback
+│   │   ├── vision.py        # VLM multimodal orchestration (active speaker, engagement, thumbnails)
+│   │   └── quality.py       # Deterministic ffmpeg quality utilities (scene snap, brightness)
 │   └── services/
 │       └── video_service.py # Orchestrates pipeline stages; asyncio.TaskGroup
 ├── fonts/                   # Bundled TTF font files
 ├── transitions/             # Optional transition effect MP4 files
 ├── tests/
-│   ├── unit/
-│   └── integration/
+│   ├── unit/                # Pytest-collected unit tests (mocked I/O)
+│   ├── integration/         # Pytest-collected integration tests (real ffmpeg output)
+│   └── e2e/                 # Manual smoke tests (NOT pytest-collected; see §13.2)
 ├── docs/
 ├── pyproject.toml           # uv-managed; ruff, mypy, pytest config
 └── .pre-commit-config.yaml
@@ -152,8 +159,17 @@ supoclip/
 | Tool | Version | Purpose |
 |---|---|---|
 | Python | 3.12 preferred, 3.11 minimum | Runtime |
-| ffmpeg | Latest stable | Video processing, subtitle rendering, encoding |
+| ffmpeg | Latest stable — must be built with **libass** | Video processing, subtitle rendering, encoding |
 | uv | Latest | Package manager (pip and poetry are banned) |
+
+**Important:** The `ass=` and `subtitles=` ffmpeg filters require libass support compiled into ffmpeg. The system ffmpeg shipped by Homebrew core (`brew install ffmpeg`) lacks libass on many macOS setups, causing subtitle burn-in to silently fail. Use the community tap instead:
+
+```bash
+brew tap homebrew-ffmpeg/ffmpeg
+brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-libass
+```
+
+Verify libass is available: `ffmpeg -filters 2>&1 | grep ass` — must show `ass` and `subtitles` entries.
 
 ---
 
@@ -195,13 +211,18 @@ See Section 8 for the complete list of fields and defaults.
 
 ### 4.3 `src/database.py`
 
-**Purpose:** SQLAlchemy async engine, session factory, and declarative base.
+**Purpose:** SQLAlchemy async engine, session factory, and lazy schema initialisation.
+
+**Note on import structure:** `Base` (the `DeclarativeBase` subclass) is defined in `src/db_base.py` and re-exported from `database.py` so existing callers using `from src.database import Base` continue to work. This indirection breaks the import cycle that would occur if `database.py` imported `models.py` directly at module level.
 
 **Exports:**
-- `Base` — `DeclarativeBase` subclass; all ORM models inherit from it
-- `AsyncSessionLocal` — `async_sessionmaker` factory
-- `init_db()` — async function; creates all tables via `Base.metadata.create_all`
-- `get_session()` — async context manager yielding `AsyncSession`
+- `Base` — re-exported from `src.db_base`; all ORM models inherit from it
+- `init_db(database_url: str)` — async; creates all tables via `Base.metadata.create_all`, then calls `_add_missing_columns`
+- `get_session()` — async context manager yielding `AsyncSession`; auto-commits on exit, rolls back on exception
+- `get_engine()` — returns the active `AsyncEngine`; raises `RuntimeError` if `init_db()` has not been called
+- `close_db()` — async; disposes the engine on application shutdown
+
+**Additive migration:** After `create_all`, `init_db` calls `_add_missing_columns(connection)`. This function inspects each existing table and issues `ALTER TABLE "{table}" ADD COLUMN "{column}" {type}` for any column present in the ORM model but absent in the live table. This handles nullable columns added after initial deployment without a migration framework. New NOT NULL columns require a server default to be safe under SQLite.
 
 **Pattern:**
 ```python
@@ -301,7 +322,7 @@ def save_cache(video_path: Path, data: TranscriptData) -> None:
 **Implementation notes:**
 - parakeet-mlx runs synchronously on Apple Silicon; wrap in `asyncio.to_thread`
 - Cache file is JSON; deserialised via Pydantic model, not raw dict access
-- If word reconstruction via LLM is enabled (`config.reconstruct_words_with_llm`), sends the raw word list to the configured LLM to fix sub-word tokens before returning
+- Sub-word token cleanup is handled in the transcription layer itself; there is no `reconstruct_words_with_llm` configuration knob
 
 ---
 
@@ -311,20 +332,32 @@ def save_cache(video_path: Path, data: TranscriptData) -> None:
 
 **Key function:**
 ```python
-async def select_segments(
-    transcript: TranscriptData,
-    settings: ClipSettings,
-) -> list[ClipSegment]:
-    """Analyse transcript and return ranked clip segments."""
+async def analyze_transcript(
+    transcript_text: str,
+    words: list[dict],
+    min_length_s: float = 15.0,
+    max_length_s: float = 45.0,
+    custom_prompt: str | None = None,
+) -> list[TranscriptSegment]:
+    """Select the best clips from a video transcript."""
 ```
 
 **Inputs:**
-- `transcript: TranscriptData` from `transcribe.py`
-- `settings: ClipSettings` — min/max duration, target count, custom system prompt override
+- `transcript_text: str` — full transcript as plain text
+- `words: list[dict]` — word-level timing data `[{"text", "start_ms", "end_ms"}, ...]` used to derive an upper time bound for hallucination rejection
+- `min_length_s` / `max_length_s` — clip duration constraints in seconds
+- `custom_prompt: str | None` — appended to the default system prompt when provided
 
-**Outputs:** `list[ClipSegment]`, sorted by descending `score`
+**Outputs:** `list[TranscriptSegment]`, sorted by descending `score`
 
-**`ClipSegment` fields:** `start_ms: int`, `end_ms: int`, `title: str`, `transcript_text: str`, `score: float`, `reasoning: str`
+**`TranscriptSegment` fields (Pydantic `BaseModel`, `strict=True`, `extra="forbid"`):**
+- `start_time: float` — clip start in seconds
+- `end_time: float` — clip end in seconds
+- `text: str` — verbatim transcript text
+- `score: float` — relevance score in [0.0, 1.0], default 0.8
+- `title: str` — suggested clip title, default `""`
+
+**Internal `_RawSegment`:** The LLM receives and returns timestamps in `MM:SS.mmm` string format. `_raw_segments_to_transcript_segments()` parses them to float seconds before constructing `TranscriptSegment` objects. The `reasoning` field is accepted by `_RawSegment` (extra-ignore) but is not propagated to the public `TranscriptSegment`.
 
 See Section 11 for full AI integration specification.
 
@@ -332,28 +365,58 @@ See Section 11 for full AI integration specification.
 
 ### 4.12 `src/pipeline/clip.py`
 
-**Purpose:** Produce a final MP4 clip for a given `ClipSegment`. Orchestrates face detection, crops, subtitle file path, and a single ffmpeg subprocess call.
+**Purpose:** Produce a final MP4 clip for a given segment. Orchestrates face detection, crops, subtitle generation, and a single ffmpeg subprocess call per clip. Optionally prepends a transition clip via a two-pass concat command.
 
-**Key function:**
+**Key functions:**
 ```python
-async def build_clip(
+async def generate_clip(
     source_video: Path,
-    segment: ClipSegment,
-    subtitle_file: Path,
+    segment: TranscriptSegment,
+    words: list[dict],
     output_path: Path,
-    settings: RenderSettings,
+    options: ClipOptions | None = None,
 ) -> Path:
     """Render one clip; return output path."""
+
+def build_ffmpeg_command(
+    source_video: Path,
+    segment: TranscriptSegment,
+    crop_box: tuple[int, int, int, int],
+    output_path: Path,
+    options: ClipOptions,
+    video_width: int,
+    video_height: int,
+    ass_path: Path | None,
+) -> list[str]:
+    """Build the ffmpeg argument list for a clip (no transition)."""
+
+def build_concat_command(
+    transition_path: Path,
+    clip_path: Path,
+    output_path: Path,
+) -> list[str]:
+    """Build the ffmpeg concat command to prepend a transition clip."""
 ```
 
-**Inputs:**
-- `source_video` — full-length downloaded video
-- `segment` — timing and text from `analyze.py`
-- `subtitle_file` — `.ass` file from `subtitles.py`
-- `output_path` — where to write the output MP4
-- `settings: RenderSettings` — resolution, logo path/position, font dir, encoding preset
+**`ClipOptions` fields:**
+- `output_resolution: str` — e.g. `"1080p"` (default) or `"720p"`
+- `subtitle_style: SubtitleStyle | None` — ASS subtitle styling; `None` = no subtitles
+- `logo_path: str | Path | None` — path to branding overlay image; `None` = no logo
+- `transition_path: str | Path | None` — transition MP4 prepended to the clip; `None` = no transition
+- `active_speaker_side: str | None` — `"left"/"right"/"center"` from VLM; overrides face-based crop
 
-**Outputs:** `Path` to the rendered MP4
+**Resolution presets:**
+
+| Setting | Output Width | Output Height |
+|---|---|---|
+| `720p` | 720 | 1280 |
+| `1080p` | 1080 | 1920 |
+
+Default is `1080p`. Logo width is scaled to ~18% of output width (`_LOGO_WIDTH_FRACTION = 0.18`).
+
+**Video dimensions:** probed via `ffprobe` (JSON output). `cv2` is NOT used for dimension probing.
+
+**Timeout:** ffmpeg is killed after `config.ffmpeg_timeout_s` seconds (default 300). The timeout is applied via `asyncio.wait_for` wrapping the `asyncio.to_thread` call.
 
 See Section 10 for ffmpeg filter chain details.
 
@@ -389,67 +452,214 @@ See Section 9 for the full subtitle system specification.
 
 ### 4.14 `src/pipeline/face_detect.py`
 
-**Purpose:** Sample frames from a video segment and return a crop rectangle that keeps detected faces centred in a 9:16 frame.
+**Purpose:** Detect faces in video frames and return a crop rectangle that keeps the primary face centred in a 9:16 frame.
 
-**Key function:**
+**Key functions:**
 ```python
-async def get_crop_rect(
-    video_path: Path,
+def detect_face_center(frame: np.ndarray) -> tuple[int, int] | None:
+    """Return (cx, cy) of the largest detected face, or None."""
+
+def detect_face_center_multi(
+    video_path: str | Path,
     start_s: float,
     end_s: float,
-    target_width: int,
-    target_height: int,
-) -> CropRect:
-    """Return (x, y, w, h) crop rectangle for 9:16 framing."""
+    samples: int = 10,
+) -> tuple[int, int] | None:
+    """Sample multiple frames, aggregate face centres, return median (cx, cy) or None."""
+
+def calculate_crop_box(
+    frame_width: int,
+    frame_height: int,
+    face_center: tuple[int, int] | None,
+    target_width: int = 1080,
+    target_height: int = 1920,
+) -> tuple[int, int, int, int]:
+    """Return (x, y, crop_w, crop_h) in source-video pixels for 9:16 framing."""
+
+def get_representative_frame(
+    video_path: str | Path,
+    timestamp_s: float,
+) -> np.ndarray | None:
+    """Extract a single frame via cv2; returns None if cv2 is unavailable."""
 ```
 
-**Inputs:** Video path, segment start/end in seconds, target output dimensions
-**Outputs:** `CropRect(x=int, y=int, w=int, h=int)` — coordinates in source video pixels
+**Face detector:** MediaPipe Tasks API — `mediapipe.tasks.python.vision.FaceDetector` backed by the BlazeFace short-range `.tflite` model. The model is downloaded once and cached to `{temp_dir}/models/blaze_face_short_range.tflite`. The detector instance is cached via `@lru_cache(maxsize=1)`.
 
-**Implementation notes:**
-- Samples up to 10 evenly spaced frames within the segment using ffmpeg `select` filter
-- Runs MediaPipe face detection on each frame
-- Aggregates face bounding boxes across frames; takes the median x-centre
-- If MediaPipe detects no face in any sampled frame: returns a centre crop with no further fallback
-- Ensures `w` and `h` are even numbers (H.264 requirement)
-- Runs synchronous MediaPipe calls in `asyncio.to_thread`
+**No OpenCV DNN or Haar fallback.** cv2 is used only in `get_representative_frame()` for frame extraction (optional soft import; returns `None` if cv2 is absent). Face detection uses MediaPipe exclusively.
+
+**Multi-frame aggregation:** `detect_face_center_multi` samples `samples` (default 10) evenly-spaced timestamps, extracts frames, runs `detect_face_center` on each, then takes the median x-coordinate and median y-coordinate across all frames with a detection. This produces a stable crop position that does not jump between individual frames.
+
+**Fallback:** If no face is detected in any sampled frame, or if MediaPipe is unavailable, the crop is centred in the frame (horizontal midpoint, vertical top-aligned to preserve the upper body).
 
 ---
 
 ### 4.15 `src/services/video_service.py`
 
-**Purpose:** Orchestrates the full pipeline from a submitted job to finished clips. Called by the NiceGUI task page and the background task runner.
+**Purpose:** Orchestrates the full pipeline from a submitted job to finished clips. UI-agnostic — progress is reported via a plain callable so this module works with NiceGUI, tests, or any other caller.
 
 **Key function:**
 ```python
 async def process_video(
-    task_id: str,
-    source_path: Path | str,
-    settings: JobSettings,
-    progress_callback: Callable[[int, str], Awaitable[None]],
-) -> list[GeneratedClip]:
-    """Run full pipeline; update task progress; return clips."""
+    request: ProcessingRequest,
+    progress_callback: ProgressCallback | None = None,
+) -> ProcessingResult:
+    """Run full pipeline; return ProcessingResult with clip paths and metadata."""
 ```
 
-**Inputs:**
-- `task_id` — UUID string for the Task row to update
-- `source_path` — local file path or YouTube/video URL
-- `settings` — merged task + user preferences
-- `progress_callback` — async function called with `(percent: int, message: str)` to push progress to the UI
-
-**Outputs:** List of `GeneratedClip` ORM objects (persisted to DB before returning)
+**`ProcessingRequest` fields:**
+- `source: str` — YouTube URL or absolute local file path
+- `task_id: str` — Database Task UUID
+- `min_clip_length: int` — minimum clip seconds (default 15)
+- `max_clip_length: int` — maximum clip seconds (default 45)
+- `output_resolution: str` — e.g. `"1080p"` (default)
+- `subtitle_style: SubtitleStyle | None`
+- `logo_path: Path | None`
+- `custom_prompt: str | None`
+- `content_mode: str` — `"single"` (default) / `"duo"` / `"multi"` — drives framing strategy
 
 **Pipeline stages and progress checkpoints:**
 
 | Stage | Progress % | Message |
 |---|---|---|
-| Download (if URL) | 5–20 | "Downloading video..." |
-| Transcribe | 20–50 | "Transcribing audio..." |
-| Analyse | 50–60 | "Selecting best segments..." |
-| Render clips (per clip) | 60–95 | "Rendering clip N of M..." |
-| Save to database | 95–100 | "Saving clips..." |
+| Preparing | 0 | "Preparing..." |
+| Download (YouTube URL only) | 10 | "Downloading video..." |
+| Transcribe | 20 | "Transcribing..." |
+| Analyse | 40 | "Analyzing transcript..." |
+| Generate clips (updated per clip) | 50–100 | "Generating clips..." / "Generated clip N/M" |
+| Complete | 100 | "Complete" |
 
-**Concurrency:** Clip rendering uses `asyncio.TaskGroup` to render up to `config.max_workers` clips in parallel.
+**Optional pipeline stages** (called between Analyse and Generate, both are no-ops when disabled):
+- `_rerank_by_engagement(source_video, segments)` — VLM engagement re-ranking; skipped when `vlm_rerank_enabled=False` (default)
+- `_apply_quality_filters(source_video, segments)` — dark-segment filter + scene-start snapping; skipped when both `quality_dark_filter_enabled` and `scene_snap_enabled` are `False` (defaults)
+
+**Per-clip extras** (both called inside `_generate_clips_concurrently`):
+- `_resolve_active_speaker_side(source_video, start_s, end_s, content_mode)` — VLM active-speaker detection for `duo`/`multi` content; no-op for `single`
+- `_generate_thumbnail(source_video, segment, clip_path, clips_dir)` — writes `{clip_stem}.jpg` alongside the clip; persisted to `GeneratedClip.thumbnail_filename`
+
+**Concurrency:** Clip rendering uses `asyncio.TaskGroup` bounded by an `asyncio.Semaphore(max_workers)` so no more than `config.max_workers` ffmpeg subprocesses run at once.
+
+**Task status values:** `'pending'` → `'processing'` → `'completed'` (or `'failed'`). Errors are written to `Task.error_message` (not embedded in `settings_json`).
+
+---
+
+### 4.16 `src/pipeline/vision.py`
+
+**Purpose:** VLM (Vision Language Model) multimodal orchestration. Provides active-speaker detection, engagement scoring, thumbnail selection, and frame extraction utilities. All entry points degrade gracefully to `None`/midpoint when the VLM is disabled (`vlm_enabled=False`, the default).
+
+**Determinism boundary:** Pure helpers (frame sampling, base64 encoding, JSON parsing, score fusion, thumbnail writing) are deterministic and gate-tested without any VLM. The VLM HTTP call is isolated in `_vlm_chat(frames_b64, prompt, cfg)` which is the sole e2e seam.
+
+**Public entry points (all call `asyncio.to_thread` internally when used in the pipeline):**
+```python
+def detect_active_speaker(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    config=None,
+) -> ActiveSpeaker | None:
+    """Return side ('left'/'right'/'center') + confidence, or None when VLM off."""
+
+def score_engagement(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    config=None,
+) -> float | None:
+    """Return a 0.0–1.0 engagement score from the VLM, or None."""
+
+def select_best_frame_timestamp(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    config=None,
+) -> float:
+    """Return the VLM-selected best frame timestamp; falls back to segment midpoint."""
+```
+
+**`ActiveSpeaker` dataclass:** `side: str`, `confidence: float`
+
+**Pure helpers (gate-tested):**
+- `sample_timestamps(start_s, end_s, samples) -> list[float]` — evenly-spaced timestamps
+- `extract_frame_b64(video_path, timestamp_s, max_dim) -> str | None` — ffmpeg → JPEG → base64
+- `extract_json(content: str) -> dict | None` — handles reasoning VLMs (finds the LAST JSON object)
+- `parse_active_speaker(content) -> ActiveSpeaker | None`
+- `parse_engagement(content) -> float | None`
+- `fuse_scores(transcript_score, engagement, transcript_weight, visual_weight) -> float`
+- `parse_frame_index(content, count) -> int | None`
+- `write_thumbnail(video_path, timestamp_s, dest, max_dim) -> Path | None`
+- `build_vlm_payload(frames_b64, prompt, cfg) -> dict` — constructs OpenAI-compatible vision chat-completion payload with `data:image/jpeg;base64,{f}` image_url parts
+
+**VLM configuration:** The VLM model, endpoint, and API key are separate from the text-analysis LLM. `config.get_vlm_base_url()` and `config.get_vlm_api_key()` fall back to the local LLM values when no VLM-specific values are set. See §8.5 for the full VLM config group.
+
+---
+
+### 4.17 `src/pipeline/quality.py`
+
+**Purpose:** Deterministic visual-quality utilities using ffmpeg and Pillow only — no VLM. Implements cheap, gate-testable quality gates over sampled frames.
+
+**Key functions:**
+```python
+def detect_scene_timestamps(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    threshold: float,
+) -> list[float]:
+    """Return absolute timestamps of visual scene cuts within [start_s, end_s].
+    Uses ffmpeg select='gt(scene,...)' + showinfo, parses pts_time from stderr."""
+
+def snap_start_to_scene(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    threshold: float,
+    window_s: float,
+) -> float:
+    """Snap clip start back to the nearest scene cut within window_s; returns start_s unchanged if none found."""
+
+def frame_brightness(
+    video_path: str | Path,
+    timestamp_s: float,
+    max_dim: int,
+) -> float | None:
+    """Return mean luma (0–255) of one frame via Pillow, or None on failure."""
+
+def segment_mean_brightness(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    samples: int,
+    max_dim: int,
+) -> float | None:
+    """Return mean brightness across sampled frames of a segment."""
+
+def is_segment_too_dark(
+    video_path: str | Path,
+    start_s: float,
+    end_s: float,
+    samples: int,
+    max_dim: int,
+    min_brightness: float,
+) -> bool:
+    """Return True when segment mean luma is below min_brightness. Fail-open: unreadable frames → not too dark."""
+```
+
+**Design note:** `quality.py` imports `extract_frame_b64` and `sample_timestamps` from `src.pipeline.vision` (the deterministic pure helpers, not the VLM entry points). All features are off by default — see §8.6 for the quality config group.
+
+---
+
+### 4.18 `src/pages/_util.py`
+
+**Purpose:** Shared utilities used across multiple NiceGUI page modules.
+
+**Functions:**
+```python
+def truncate(text: str, max_len: int, *, reserve_ellipsis: bool = False) -> str:
+    """Truncate text to max_len characters; optionally append '...'."""
+
+def remove_clip_files(filenames: Iterable[str]) -> None:
+    """Best-effort removal of clip files from {config.temp_dir}/clips/.
+    Logs warnings on individual failures; never raises."""
+```
 
 ---
 
@@ -467,18 +677,18 @@ video_service.process_video(task_id, url, settings, callback)
   │
   ├─► pipeline/download.py
   │     yt-dlp downloads video → temp/{task_id}/source.mp4
-  │     progress: 5% → 20%
+  │     progress: 0% → 10%
   │
   ├─► pipeline/transcribe.py
   │     parakeet-mlx transcribes → TranscriptData (words + timestamps)
   │     cache written to temp/{task_id}/source.mp4.transcript_cache.json
-  │     progress: 20% → 50%
+  │     progress: 10% → 20%
   │
   ├─► pipeline/analyze.py
-  │     LLM reads transcript → list[ClipSegment] (3–7 segments)
-  │     progress: 50% → 60%
+  │     LLM reads transcript → list[TranscriptSegment] (3–7 segments)
+  │     progress: 20% → 40%
   │
-  └─► For each ClipSegment (parallel via TaskGroup):
+  └─► For each TranscriptSegment (parallel via TaskGroup):
         │
         ├─► pipeline/face_detect.py
         │     Sample frames → CropRect (x, y, w, h)
@@ -492,9 +702,9 @@ video_service.process_video(task_id, url, settings, callback)
         │     → temp/clips/{task_id}_clip_{n}.mp4
         │
         └─► Persist GeneratedClip row to database
-              progress: 60% → 95% (increments per clip)
+              progress: 50% → 100% (increments per clip)
 
-Task status set to "done"; progress: 100%
+Task status set to "completed"; progress: 100%
 NiceGUI page updates via WebSocket push
 ```
 
@@ -504,7 +714,7 @@ Same as 5.1, except the `download.py` stage is skipped. The uploaded file is sav
 
 ### 5.3 Error Handling in the Pipeline
 
-Any exception raised in a pipeline stage is caught in `video_service.py`. The task status is set to `"failed"` and the error message is stored in `Task.settings_json["error"]`. The progress callback is called with `(0, "Error: {message}")`. The exception is re-raised so structlog captures the full traceback.
+Any exception raised in a pipeline stage is caught in `video_service.py`. The task status is set to `"failed"` and the error message is stored in `Task.error_message` (a dedicated nullable Text column, not embedded in `settings_json`). The exception is logged at ERROR level with `exc_info=True` by structlog. `process_video` returns a `ProcessingResult` with `error` set rather than re-raising, so the caller always receives a structured result.
 
 ---
 
@@ -527,9 +737,9 @@ All pages are implemented as async functions decorated with `@ui.page(path)` in 
 | Font family selector | `ui.select` | Options populated from `fonts/` directory scan at page load |
 | Font size slider | `ui.slider` | Range 12–72; default 24 |
 | Font colour picker | `ui.color_input` | Default `#FFFFFF` |
-| Clip length range | Two `ui.number` inputs | Min and max seconds; default 10–45 |
-| Target clip count | `ui.number` | Default 5; range 1–10 |
-| Output resolution | `ui.select` | Options: `720p`, `1080p`; default `720p` |
+| Clip length range | Two `ui.number` inputs | Min and max seconds; default 15–45 (from `DEFAULT_MIN_CLIP_LENGTH` / `DEFAULT_MAX_CLIP_LENGTH`) |
+| Target clip count | `ui.number` | Default 7 (from `MAX_CLIPS`); range 1–`MAX_CLIPS` |
+| Output resolution | `ui.select` | Options: `720p`, `1080p`; default `1080p` |
 | Submit button | `ui.button` | Disabled while a job is running; triggers `process_video` coroutine |
 | Loading spinner | `ui.spinner` | Shown while job is enqueued |
 
@@ -549,10 +759,10 @@ All pages are implemented as async functions decorated with `@ui.page(path)` in 
 | Component | Type | Behaviour |
 |---|---|---|
 | Task title | `ui.label` | Source title or URL, loaded from DB |
-| Status badge | `ui.badge` | Colour-coded: grey (pending), blue (processing), green (done), red (failed) |
+| Status badge | `ui.badge` | Colour-coded: grey (pending), blue (processing), green (completed), red (failed) |
 | Progress bar | `ui.linear_progress` | Value 0.0–1.0; updated via WebSocket |
 | Progress message | `ui.label` | e.g., "Rendering clip 2 of 5..." |
-| Clip grid | `ui.grid` | Rendered after status = "done" |
+| Clip grid | `ui.grid` | Rendered after status = "completed" |
 | Per-clip card | `ui.card` | Contains video player, title, timestamps, download button |
 | Video player | `ui.video` | Served from `/clips/{filename}` static route |
 | Download button | `ui.button` | Links to `/clips/{filename}` with `Content-Disposition: attachment` |
@@ -562,7 +772,7 @@ All pages are implemented as async functions decorated with `@ui.page(path)` in 
 The `progress_callback` passed to `video_service.process_video` calls `ui.update()` on the progress bar and message label. NiceGUI pushes the DOM mutation to the browser via WebSocket. No polling.
 
 **Error state:**
-If `task.status == "failed"`, show the error message from `task.settings_json["error"]` in a red alert card.
+If `task.status == "failed"`, show the error message from `task.error_message` in a red alert card.
 
 ### 6.3 History Page (`/history`)
 
@@ -594,13 +804,15 @@ If `task.status == "failed"`, show the error message from `task.settings_json["e
 | Default font family | `ui.select` | `UserPreferences.font_family` |
 | Default font size | `ui.slider` | `UserPreferences.font_size` |
 | Default font colour | `ui.color_input` | `UserPreferences.font_color` |
-| Min clip length | `ui.number` | `UserPreferences.clip_min_s` |
-| Target clip length | `ui.number` | `UserPreferences.clip_target_s` |
-| Max clip length | `ui.number` | `UserPreferences.clip_max_s` |
-| Custom AI prompt | `ui.textarea` | `UserPreferences.custom_ai_prompt`; empty = use default |
-| Logo upload | `ui.upload` | Saves file to `temp/logo.png`; `UserPreferences.logo_path` |
-| Logo corner | `ui.select` | Options: top-left, top-right, bottom-left, bottom-right |
-| Output resolution | `ui.select` | Options: `720p` (1080×1920), `1080p` (2160×3840 — note: 2160w × 3840h) |
+| Stroke colour | `ui.color_input` | `UserPreferences.font_stroke_color` |
+| Stroke width | `ui.number` | `UserPreferences.font_stroke_width` |
+| Shadow offset | `ui.number` | `UserPreferences.font_shadow_offset` |
+| Subtitle vertical position | `ui.slider` | `UserPreferences.subtitle_position_y` (0–100 % from top; default 75) |
+| Min clip length | `ui.number` | `UserPreferences.min_clip_length` |
+| Max clip length | `ui.number` | `UserPreferences.max_clip_length` |
+| Custom AI prompt | `ui.textarea` | `UserPreferences.ai_prompt`; empty = use default |
+| Logo upload | `ui.upload` | Saves file path; `UserPreferences.logo_path` |
+| Output resolution | `ui.select` | Options: `720p` (720×1280), `1080p` (1080×1920); default `1080p` |
 | Save button | `ui.button` | Upserts the singleton `UserPreferences` row |
 
 ---
@@ -616,18 +828,21 @@ Represents one processing job — from video input to finished clips.
 | Column | Type | Nullable | Default | Description |
 |---|---|---|---|---|
 | `id` | VARCHAR(36) | NO | uuid4() | Primary key |
-| `source_url` | TEXT | YES | NULL | YouTube URL or uploaded filename |
-| `source_type` | VARCHAR(20) | NO | — | `'youtube'`, `'upload'`, `'url'` |
-| `status` | VARCHAR(20) | NO | `'pending'` | `'pending'`, `'processing'`, `'done'`, `'failed'` |
+| `source_url` | TEXT | NO | — | YouTube URL or uploaded filename (NOT NULL) |
+| `source_type` | VARCHAR(20) | NO | `'youtube'` | `'youtube'` or `'upload'` |
+| `status` | VARCHAR(20) | NO | `'pending'` | `'pending'`, `'processing'`, `'completed'`, `'failed'` |
 | `progress` | INTEGER | NO | `0` | 0–100 percent |
-| `progress_message` | TEXT | YES | NULL | Current stage description |
-| `settings_json` | JSON | YES | NULL | Snapshot of job settings at submit time; also stores `error` key on failure |
+| `progress_message` | TEXT | YES | NULL | Current stage description shown in UI |
+| `settings_json` | TEXT | YES | NULL | Snapshot of job settings at submit time |
+| `error_message` | TEXT | YES | NULL | Human-readable error detail when `status = 'failed'` |
 | `created_at` | DATETIME | NO | now() | |
 | `updated_at` | DATETIME | NO | now() | Auto-updated on row change |
 
 **Constraints:**
-- `status IN ('pending', 'processing', 'done', 'failed')`
-- `source_type IN ('youtube', 'upload', 'url')`
+- `status IN ('pending', 'processing', 'completed', 'failed')`
+- `source_type IN ('youtube', 'upload')`
+
+**Note:** Task failure is recorded in `error_message`, not as a key inside `settings_json`.
 
 ### 7.2 `generated_clips`
 
@@ -637,16 +852,17 @@ One row per output clip file.
 |---|---|---|---|---|
 | `id` | VARCHAR(36) | NO | uuid4() | Primary key |
 | `task_id` | VARCHAR(36) | NO | — | FK → `tasks.id` ON DELETE CASCADE |
-| `filename` | VARCHAR(255) | NO | — | Output MP4 filename (no path) |
-| `start_time` | VARCHAR(20) | NO | — | `MM:SS.mmm` format |
-| `end_time` | VARCHAR(20) | NO | — | `MM:SS.mmm` format |
-| `title` | VARCHAR(255) | YES | NULL | AI-generated clip title |
+| `filename` | VARCHAR(255) | NO | — | Output MP4 filename (no path; served from `/clips/`) |
+| `start_time` | FLOAT | NO | — | Start offset in source video, **seconds** |
+| `end_time` | FLOAT | NO | — | End offset in source video, **seconds** |
+| `duration` | FLOAT | NO | — | Computed `end_time − start_time` in seconds |
+| `title` | TEXT | YES | NULL | AI-generated clip title |
 | `transcript_text` | TEXT | YES | NULL | Verbatim transcript for this segment |
-| `score` | FLOAT | NO | — | AI relevance score 0.0–1.0 |
-| `reasoning` | TEXT | YES | NULL | AI explanation of segment selection |
-| `clip_order` | INTEGER | NO | — | Display order within the task |
+| `score` | FLOAT | YES | NULL | AI relevance score 0.0–1.0 (nullable) |
+| `thumbnail_filename` | VARCHAR(255) | YES | NULL | JPEG thumbnail filename served from `/clips/` |
 | `created_at` | DATETIME | NO | now() | |
-| `updated_at` | DATETIME | NO | now() | Auto-updated on row change |
+
+**Note:** `start_time` and `end_time` are stored as seconds (Float), not formatted strings. There is no `reasoning`, `clip_order`, or `updated_at` column in this table.
 
 ### 7.3 `user_preferences`
 
@@ -655,22 +871,24 @@ Singleton table — always exactly one row (created on first app start).
 | Column | Type | Nullable | Default | Description |
 |---|---|---|---|---|
 | `id` | INTEGER | NO | 1 | Fixed primary key; always 1 |
-| `font_family` | VARCHAR(100) | NO | `'TikTokSans-Regular'` | Font file stem from `fonts/` |
+| `font_family` | VARCHAR(100) | NO | `'Arial'` | Font internal family name (must match TTF in `fonts/`) |
 | `font_size` | INTEGER | NO | `24` | Points |
-| `font_color` | VARCHAR(7) | NO | `'#FFFFFF'` | Hex colour code |
-| `clip_min_s` | INTEGER | NO | `10` | Minimum clip duration seconds |
-| `clip_target_s` | INTEGER | NO | `30` | Target clip duration seconds |
-| `clip_max_s` | INTEGER | NO | `45` | Maximum clip duration seconds |
-| `target_clip_count` | INTEGER | NO | `5` | How many clips to request from AI |
-| `custom_ai_prompt` | TEXT | YES | NULL | Appended to system prompt; NULL = use default |
-| `logo_path` | VARCHAR(500) | YES | NULL | Absolute path to logo image |
-| `logo_position` | VARCHAR(20) | NO | `'top-right'` | `'top-left'`, `'top-right'`, `'bottom-left'`, `'bottom-right'` |
-| `output_resolution` | VARCHAR(10) | NO | `'720p'` | `'720p'` or `'1080p'` |
+| `font_color` | VARCHAR(7) | NO | `'#FFFFFF'` | Subtitle text colour `#RRGGBB` |
+| `font_stroke_color` | VARCHAR(7) | NO | `'#000000'` | Subtitle stroke (outline) colour `#RRGGBB` |
+| `font_stroke_width` | FLOAT | NO | `2.0` | Stroke width in ASS units |
+| `font_shadow_offset` | INTEGER | NO | `1` | Drop-shadow offset in pixels |
+| `subtitle_position_y` | INTEGER | NO | `75` | Vertical position as % from top (75 = lower-middle) |
+| `min_clip_length` | INTEGER | NO | `15` | Minimum clip duration in seconds |
+| `max_clip_length` | INTEGER | NO | `45` | Maximum clip duration in seconds |
+| `output_resolution` | VARCHAR(10) | NO | `'1080p'` | `'720p'` or `'1080p'` |
+| `ai_prompt` | TEXT | YES | NULL | Custom system prompt override; NULL = use default |
+| `logo_path` | TEXT | YES | NULL | Absolute path to logo image file |
 | `updated_at` | DATETIME | NO | now() | Auto-updated on row change |
 
 **Constraints:**
-- `logo_position IN ('top-left', 'top-right', 'bottom-left', 'bottom-right')`
 - `output_resolution IN ('720p', '1080p')`
+
+**Note:** There is no `clip_target_s`, `target_clip_count`, `custom_ai_prompt`, or `logo_position` column. Logo position is not persisted; logos are always placed at the top-right corner (see §10.5).
 
 ---
 
@@ -692,24 +910,25 @@ All configuration is loaded by `src/config.py` via `pydantic-settings`. Values c
 | `ANTHROPIC_API_KEY` | str | `""` | Anthropic API key |
 | `GOOGLE_API_KEY` | str | `""` | Google API key |
 
-LLM selection priority: local (if `LOCAL_LLM_ENABLED=true`) → cloud (if `LLM_MODEL` + matching API key set) → raise `ValueError`.
+LLM selection priority: local (if `LOCAL_LLM_ENABLED=true`) → cloud (if `LLM_MODEL` + matching API key set) → raise `ConfigurationError`.
 
 ### 8.2 Transcription Configuration
 
 | Env Var | Type | Default | Description |
 |---|---|---|---|
 | `PARAKEET_MODEL` | str | `mlx-community/parakeet-tdt-0.6b-v2` | HuggingFace model ID for parakeet-mlx |
-| `RECONSTRUCT_WORDS_WITH_LLM` | bool | `true` | Fix sub-word tokens via LLM post-processing |
 
 ### 8.3 Video Processing Configuration
 
 | Env Var | Type | Default | Description |
 |---|---|---|---|
-| `TEMP_DIR` | str | `temp` | Root directory for downloads, clip output, uploads |
-| `MAX_VIDEO_DURATION` | int | `3600` | Seconds; reject downloads longer than this |
-| `MAX_CLIPS` | int | `10` | Hard ceiling on clips per task |
+| `TEMP_DIR` | str | `./temp` | Root directory for downloads, clip output, uploads |
+| `MAX_VIDEO_DURATION` | int | `0` | Seconds; `0` = no limit; reject downloads longer than this when > 0 |
+| `MAX_CLIPS` | int | `7` | Hard ceiling on clips per task |
 | `FFMPEG_PRESET` | str | `fast` | libx264 preset: `ultrafast`, `fast`, `medium`, `slow` |
 | `FFMPEG_CRF` | int | `23` | libx264 CRF quality; lower = better quality + larger file |
+| `DEFAULT_MIN_CLIP_LENGTH` | int | `15` | Default minimum clip duration in seconds |
+| `DEFAULT_MAX_CLIP_LENGTH` | int | `45` | Default maximum clip duration in seconds |
 
 ### 8.4 Application Configuration
 
@@ -717,10 +936,44 @@ LLM selection priority: local (if `LOCAL_LLM_ENABLED=true`) → cloud (if `LLM_M
 |---|---|---|---|
 | `DATABASE_URL` | str | `sqlite+aiosqlite:///./supoclip.db` | SQLAlchemy connection string |
 | `HOST` | str | `0.0.0.0` | Bind address for uvicorn |
-| `PORT` | int | `8008` | Bind port |
 | `MAX_WORKERS` | int | `2` | Parallel clip rendering tasks |
 | `LOG_LEVEL` | str | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `LOG_DIR` | str | `logs` | Directory for structlog file output |
+| `LOG_DIR` | Path | `./logs` | Directory for structlog file output |
+
+### 8.5 Vision / VLM Configuration
+
+The VLM (Vision Language Model) is a separate model from the text-analysis LLM and is **off by default**. All VLM features degrade gracefully to `None`/no-op when disabled.
+
+| Env Var | Type | Default | Description |
+|---|---|---|---|
+| `CONTENT_MODE` | str | `single` | `single`/`duo`/`multi`; drives framing/speaker-detection strategy |
+| `VLM_ENABLED` | bool | `false` | Enable VLM calls (active speaker, engagement scoring, thumbnail selection) |
+| `VLM_MODEL` | str | `""` | VLM model identifier; empty = use local LLM model |
+| `VLM_BASE_URL` | str | `""` | VLM endpoint; empty = fall back to `LOCAL_LLM_BASE_URL` |
+| `VLM_API_KEY` | str | `""` | VLM API key; empty = fall back to `LOCAL_LLM_API_KEY` |
+| `VLM_MAX_TOKENS` | int | `1024` | Max output tokens; raise for reasoning VLMs (e.g. Qwen) |
+| `VLM_FRAMES_PER_CLIP` | int | `5` | Frames sampled per clip for VLM analysis |
+| `VLM_IMAGE_MAX_DIM` | int | `768` | Maximum JPEG dimension sent to VLM |
+| `VLM_TIMEOUT_S` | float | `180.0` | HTTP timeout for each VLM call |
+| `VLM_RERANK_ENABLED` | bool | `false` | Re-order segments by transcript+visual fused score |
+| `VLM_TRANSCRIPT_WEIGHT` | float | `0.7` | Weight of transcript relevance in fused score |
+| `VLM_VISUAL_WEIGHT` | float | `0.3` | Weight of VLM engagement score in fused score |
+
+**Endpoint fallback:** `Config.get_vlm_base_url()` returns `VLM_BASE_URL` when set, otherwise `LOCAL_LLM_BASE_URL`. `Config.get_vlm_api_key()` behaves identically for the API key. This lets a single local server serve both the text LLM and the VLM without separate configuration.
+
+### 8.6 Quality Configuration
+
+Deterministic ffmpeg/Pillow quality utilities. All features are **off by default**; enabling them adds no VLM cost.
+
+| Env Var | Type | Default | Description |
+|---|---|---|---|
+| `QUALITY_PROBE_DIM` | int | `320` | Frame width for brightness probing (smaller = faster) |
+| `QUALITY_DARK_FILTER_ENABLED` | bool | `false` | Drop segments whose mean luma is below the floor |
+| `QUALITY_MIN_BRIGHTNESS` | float | `16.0` | Minimum mean luma (0–255); segments below this are dropped |
+| `QUALITY_BRIGHTNESS_SAMPLES` | int | `3` | Frames sampled per segment for brightness measurement |
+| `SCENE_SNAP_ENABLED` | bool | `false` | Snap clip start to nearest scene cut |
+| `SCENE_THRESHOLD` | float | `0.4` | Scene-change sensitivity (0–1; higher = fewer cuts detected) |
+| `SCENE_SNAP_WINDOW_S` | float | `2.0` | How far before the proposed start to look for a cut |
 
 ---
 
@@ -822,8 +1075,10 @@ All video operations are performed by a single ffmpeg subprocess call per clip. 
 
 | Setting | Output Width | Output Height | Aspect Ratio |
 |---|---|---|---|
-| `720p` | 1080 | 1920 | 9:16 |
-| `1080p` | 2160 | 3840 | 9:16 |
+| `720p` | 720 | 1280 | 9:16 |
+| `1080p` | 1080 | 1920 | 9:16 |
+
+Default resolution is `1080p`. These are portrait (vertical) dimensions suited for TikTok/Reels/Shorts.
 
 All dimensions are forced to even numbers (H.264 requirement). The `round_to_even(n)` utility enforces this: `return n if n % 2 == 0 else n - 1`.
 
@@ -859,7 +1114,7 @@ crop={w}:{h}:{x}:{y},scale={out_w}:{out_h}
 
 Where `w`, `h`, `x`, `y` come from `face_detect.get_crop_rect()` and `out_w`/`out_h` are the target resolution.
 
-Example for 720p output with a 1920×1080 source:
+Example for 1080p output with a 1920×1080 source:
 ```
 crop=608:1080:656:0,scale=1080:1920
 ```
@@ -930,7 +1185,7 @@ The old codebase had two AI modules:
 - `ai.py` (551 lines): Pydantic AI agent; routed to local LLM or cloud
 - `ai_structured.py` (461 lines): Groq structured outputs path; partially duplicated prompt and validation logic
 
-These are merged into `src/pipeline/analyze.py` (~250 lines). There is one system prompt, one validation pipeline, and one public entry point (`select_segments`). Routing to Groq structured outputs vs. Pydantic AI is done by inspecting the model string in config.
+These are merged into `src/pipeline/analyze.py` (~250 lines). There is one system prompt, one validation pipeline, and one public entry point (`analyze_transcript`). Routing to Groq structured outputs vs. Pydantic AI is done by inspecting the model string in config.
 
 ### 11.2 System Prompt
 
@@ -940,60 +1195,58 @@ The system prompt instructs the LLM to:
 2. Apply the **Clean Start Rule**: never begin a clip with a filler or transitional word ("And", "But", "So", "Well", "Um", "Uh", "Like", "You know"). If the natural segment start is a weak word, adjust forward to the first strong word.
 3. Return timestamps in `MM:SS.mmm` format with millisecond precision, matching the transcript's word timing
 4. Return the verbatim transcript text for each segment (no paraphrasing)
-5. Provide a title and reasoning for each selection
+5. Provide a title for each selection (a `reasoning` field is accepted but not propagated to `TranscriptSegment`)
 
-The system prompt is a module-level constant. If `UserPreferences.custom_ai_prompt` is non-null, it is appended to the standard prompt as an additional instruction block.
+The system prompt is built by `build_system_prompt(min_length_s, max_length_s, custom_prompt)`. If `UserPreferences.ai_prompt` is non-null, it is passed as `custom_prompt` and appended to the standard prompt as an additional instruction block.
 
 ### 11.3 Output Schema
 
-The LLM is asked to return a JSON array. Each element matches `ClipSegment`:
+The LLM returns a JSON object with `most_relevant_segments` matching `_RawAnalysis` / `_RawSegment` (internal models). Each raw segment uses string timestamps in `MM:SS.mmm` format. These are parsed by `_raw_segments_to_transcript_segments()` into the public `TranscriptSegment` Pydantic model:
 
 ```python
-@dataclass(slots=True)
-class ClipSegment:
-    start_time: str      # MM:SS.mmm
-    end_time: str        # MM:SS.mmm
-    title: str
-    text: str            # verbatim transcript
-    score: float         # 0.0–1.0
-    reasoning: str
+class TranscriptSegment(BaseModel):
+    """A selected clip segment from the AI analysis."""
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    start_time: float   # seconds (parsed from MM:SS.mmm)
+    end_time: float     # seconds (parsed from MM:SS.mmm)
+    text: str           # verbatim transcript text
+    score: float        # relevance score 0.0–1.0, default 0.8
+    title: str          # suggested clip title, default ""
 ```
 
-Pydantic validation enforces:
-- `start_time != end_time`
-- Duration (end − start) >= `settings.clip_min_s`
-- Duration (end − start) <= `settings.clip_max_s`
-- `score` is in [0.0, 1.0]
+`validate_segments()` enforces:
+- `end_time > start_time` (duration > 0)
+- Duration >= `min_length_s`
+- Duration <= `max_length_s`
+- `start_time` / `end_time` within transcript time bound (hallucination guard)
+- Text does not start with a filler/transitional word
 
-Segments failing validation are logged and dropped. If fewer than one valid segment remains, `select_segments` raises `InsufficientSegmentsError`.
+Segments failing validation are logged and dropped. If no valid segments remain, `analyze_transcript` raises `InsufficientSegmentsError`.
 
 ### 11.4 Model Routing
 
+`_should_use_structured_output(model_string)` returns `True` when the model string contains both `"groq:"` and `"llama"`. On that path, `_analyze_with_groq_structured` calls the Groq API directly with `response_format={"type": "json_schema", ...}` using the `_RawAnalysis.model_json_schema()`. On all other paths (local LLM, OpenAI, Anthropic), `_analyze_with_pydantic_ai` builds a Pydantic AI `Agent` with `output_type=_RawAnalysis`:
+
 ```python
-def _build_agent(config: Config) -> Agent:
-    """Return a Pydantic AI agent configured for the active LLM."""
-    model = config.get_llm_model()
-    return Agent(model=model, result_type=list[ClipSegment])
+agent: Agent[None, _RawAnalysis] = Agent(
+    model=llm_model,
+    output_type=_RawAnalysis,
+    system_prompt=system_prompt,
+)
 ```
 
-`Config.get_llm_model()` returns:
-- An `OpenAIModel` pointing at the local LLM endpoint when `LOCAL_LLM_ENABLED=true`
-- A pydantic-ai model string (e.g., `"groq:llama-4-scout-17b"`) when using a cloud LLM
-
-For Groq structured outputs specifically (model string starts with `groq:`), pydantic-ai's Groq provider uses the Groq structured outputs API which enforces schema compliance in the response. For all other providers, pydantic-ai falls back to prompt-based JSON extraction with retry.
+When `LOCAL_LLM_ENABLED=true`, `llm_model` is an `OpenAIModel` pointing at `local_llm_base_url` with `local_llm_api_key`. For cloud models, `cfg.get_llm_model()` returns the configured pydantic-ai model string.
 
 ### 11.5 Retry and Validation
 
+Both `_analyze_with_groq_structured` and `_analyze_with_pydantic_ai` are decorated with:
+
 ```python
 @stamina.retry(on=Exception, attempts=3, wait_initial=2.0, wait_max=10.0)
-async def select_segments(
-    transcript: TranscriptData,
-    settings: ClipSettings,
-) -> list[ClipSegment]:
-    ...
 ```
 
-`stamina` provides exponential backoff retries. The inner validation loop re-attempts the LLM call if the returned segments all fail validation (e.g., all timestamps are identical).
+`stamina` provides exponential backoff retries. After each backend call, `validate_segments()` filters the results. If all segments are rejected (e.g., all timestamps are identical or hallucinated), `analyze_transcript` raises `InsufficientSegmentsError` — the backend is not retried a second time for validation failures; the retry is at the HTTP call level only.
 
 ---
 
@@ -1048,9 +1301,16 @@ Production output is JSON (one object per line). Development output uses structl
 
 ### 12.5 Error Handling
 
-- Define a custom exception hierarchy in `src/exceptions.py`: `SupoClipError` as base; `DownloadError`, `TranscriptionError`, `AnalysisError`, `RenderError`, `InsufficientSegmentsError` as subclasses.
+- `src/exceptions.py` defines the full hierarchy:
+  - `SupoClipError` (base)
+    - `DownloadError`
+    - `TranscriptionError`
+    - `AnalysisError`
+      - `InsufficientSegmentsError`
+    - `ClipGenerationError`
+    - `ConfigurationError`
 - Raise the most specific exception at the point of failure.
-- Catch broad exceptions only at the pipeline orchestration level (`video_service.py`), log the full traceback with structlog, and translate to task status `"failed"`.
+- Catch broad exceptions only at the pipeline orchestration level (`video_service.py`), log the full traceback with structlog, and set task status to `"completed"` or `"failed"` accordingly.
 - Never catch and suppress exceptions silently.
 
 ### 12.6 Subprocess Safety
@@ -1067,7 +1327,7 @@ proc = await asyncio.to_thread(
 )
 if proc.returncode != 0:
     log.error("ffmpeg.failed", stderr=proc.stderr)
-    raise RenderError(f"ffmpeg exited {proc.returncode}")
+    raise ClipGenerationError(f"ffmpeg exited {proc.returncode}")
 ```
 
 ### 12.7 Pydantic Models
@@ -1100,23 +1360,43 @@ class ClipSettings(BaseModel):
 
 ### 13.2 Test Structure
 
+719 tests total (confirmed by `uv run pytest tests/unit tests/integration --collect-only -q`).
+
 ```
 tests/
-├── unit/
-│   ├── pipeline/
-│   │   ├── test_download.py
-│   │   ├── test_transcribe.py
-│   │   ├── test_analyze.py
-│   │   ├── test_clip.py
-│   │   ├── test_subtitles.py
-│   │   └── test_face_detect.py
+├── unit/                         # Pytest-collected; all I/O mocked
+│   ├── test_analyze.py
+│   ├── test_clip.py
 │   ├── test_config.py
+│   ├── test_database.py
+│   ├── test_download.py
+│   ├── test_face_detect.py
+│   ├── test_history.py
+│   ├── test_home.py
+│   ├── test_main.py
 │   ├── test_models.py
-│   └── test_video_service.py
-└── integration/
-    ├── test_pipeline_end_to_end.py
-    └── test_nicegui_pages.py
+│   ├── test_pages_util.py
+│   ├── test_quality.py
+│   ├── test_settings.py
+│   ├── test_subtitles.py
+│   ├── test_task_page.py
+│   ├── test_transcribe.py
+│   ├── test_video_service.py
+│   └── test_vision.py
+├── integration/                  # Pytest-collected; uses real ffmpeg
+│   ├── test_clips_route.py
+│   ├── test_pipeline_e2e.py
+│   ├── test_pipeline_failures.py
+│   ├── test_pipeline_real_output.py
+│   ├── test_settings_persistence.py
+│   └── test_settings_pipeline_wiring.py
+└── e2e/                          # NOT pytest-collected; manual smoke tests
+    ├── smoke_pipeline.py
+    ├── vision_features.py
+    └── vision_spike.py
 ```
+
+**e2e tests** are standalone scripts in `tests/e2e/` that are explicitly excluded from the pytest collection. They require a running local LLM and/or VLM and produce real output files. They are not included in the coverage gate.
 
 ### 13.3 Unit Testing Guidelines
 
@@ -1127,7 +1407,7 @@ tests/
 
 **Models (`test_models.py`):**
 - Test all Pydantic model validations (strict mode rejects coercion; `extra="forbid"` rejects unknown fields)
-- Test `ClipSegment` validation rejects equal start/end times
+- Test `TranscriptSegment` validation rejects equal start/end times
 - Use `pytest.mark.parametrize` for boundary cases
 
 **Download (`test_download.py`):**
@@ -1194,10 +1474,70 @@ Before any commit, run `./checkpython.sh` which executes:
 | ruff | `ruff check src/` | Zero errors |
 | ruff | `ruff format --check src/` | Zero format violations |
 | mypy | `mypy src/` | Zero type errors |
-| pytest | `pytest tests/ --cov=src --cov-fail-under=100` | 100% coverage, 100% passing |
-| deptry | `deptry src/` | Zero unused/missing deps |
-| xenon | `xenon src/ --max-absolute B` | All files grade B or better |
+| pyright | `pyright src/` | Zero type errors |
 | bandit | `bandit -r src/` | Zero high-severity issues |
+| radon | `radon cc src/ -n C` | No function grades C or below |
+| xenon | `xenon src/ --max-absolute B --max-modules B --max-average A` | Complexity within bounds |
+| deptry | `deptry src/` | Zero unused/missing deps |
+| grimp | import-cycle check | Zero import cycles |
+| pytest | `pytest tests/unit tests/integration --cov=src --cov-branch --cov-fail-under=100` | 100% line+branch coverage, 100% passing |
+
+**Note:** `checkpython.sh` is a protected file — never modify it. The exact flags used by each tool are authoritative as written in `checkpython.sh`.
+
+---
+
+## 14. Vision-Aware Clipping
+
+Vision-aware clipping extends the core pipeline with optional VLM (Vision Language Model) capabilities that improve clip quality for multi-person content. All features are **off by default** and degrade cleanly to the deterministic baseline when disabled.
+
+### 14.1 Content Modes
+
+The `content_mode` setting (controlled by `CONTENT_MODE` env var, default `"single"`) selects the framing strategy for generated clips:
+
+| Mode | Description | Face Detection | VLM Active Speaker |
+|---|---|---|---|
+| `single` | Single speaker or object-focused content | MediaPipe face crop | Not used |
+| `duo` | Two speakers (e.g., podcast, interview) | Not used | VLM detects who is speaking |
+| `multi` | Three or more people | Not used | VLM detects who is speaking |
+
+For `duo`/`multi` content, the VLM examines sampled frames and returns an `ActiveSpeaker` result with a `side` (`"left"`, `"right"`, or `"center"`) and a `confidence` score. The `active_speaker_side` is passed to `ClipOptions` so the crop is offset toward the identified speaker rather than centred on the face or frame.
+
+### 14.2 Engagement Re-Ranking
+
+When `VLM_RERANK_ENABLED=true` (default off), the pipeline re-orders the AI-selected segments before rendering by fusing each segment's transcript relevance score with a VLM-assessed visual engagement score:
+
+```
+fused_score = transcript_weight × transcript_score + visual_weight × engagement_score
+```
+
+Default weights: `transcript_weight = 0.7`, `visual_weight = 0.3` (configurable via `VLM_TRANSCRIPT_WEIGHT`/`VLM_VISUAL_WEIGHT`). Segments are sorted by `fused_score` descending so the highest-value clip is rendered first. If the VLM call fails for a segment, that segment retains its transcript score — the VLM being unavailable never drops content.
+
+### 14.3 Thumbnail Generation
+
+After each clip is rendered, `_generate_thumbnail` selects the best representative frame:
+- **VLM on:** `select_best_frame_timestamp` samples frames and asks the VLM to pick the clearest, most expressive frame. Falls back to the segment midpoint if the VLM call fails.
+- **VLM off:** Always uses the segment midpoint.
+
+The selected frame is encoded as a JPEG and written as `{clip_stem}.jpg` in the clips directory. The filename is stored in `GeneratedClip.thumbnail_filename` and served from `/clips/{filename}`.
+
+### 14.4 Determinism Boundary
+
+The vision pipeline is designed to be gate-tested without any VLM or network:
+
+- **Deterministic (gate-tested):** `sample_timestamps`, `extract_frame_b64`, `extract_json`, `parse_active_speaker`, `parse_engagement`, `fuse_scores`, `parse_frame_index`, `write_thumbnail`, `build_vlm_payload`, and all of `src/pipeline/quality.py`.
+- **VLM seam (e2e-only):** `_vlm_chat(frames_b64, prompt, cfg)` in `vision.py` is the sole HTTP call. It is monkey-patched in unit tests; exercised only in `tests/e2e/vision_features.py` against a live VLM.
+
+This boundary means the entire vision module is 100% covered by unit tests without requiring a VLM. The e2e tests in `tests/e2e/` verify integration with real models but are not collected by the CI gate.
+
+### 14.5 Quality Filters
+
+`src/pipeline/quality.py` provides two deterministic ffmpeg-based quality gates applied after segment selection and re-ranking:
+
+1. **Dark filter** (`QUALITY_DARK_FILTER_ENABLED=true`): Segments whose sampled mean luma falls below `QUALITY_MIN_BRIGHTNESS` (default 16.0) are dropped before rendering. Unreadable frames are treated as acceptable (fail-open) so the filter never silently removes content due to probe errors.
+
+2. **Scene snap** (`SCENE_SNAP_ENABLED=true`): Each clip's start is pulled back to the nearest visual scene cut within `SCENE_SNAP_WINDOW_S` (default 2.0 s). This avoids clips that begin mid-shot. The scene-detection threshold (`SCENE_THRESHOLD`, default 0.4) controls sensitivity.
+
+Both features are independent and can be enabled separately.
 
 ---
 
