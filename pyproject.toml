@@ -83,10 +83,11 @@ supoclip = "src.main:main"
 [tool.bandit]
 # Justified, intentional patterns for this local ffmpeg/desktop app:
 #   B104 — HOST defaults to 0.0.0.0 so the local UI is reachable on the LAN.
-#   B404/B603 — subprocess (ffmpeg/ffprobe) is the core video engine; calls use
-#               argument lists with shell=False and no untrusted-string interpolation.
+#   B404/B603/B607 — subprocess (ffmpeg/ffprobe) is the core video engine; calls
+#               use argument lists with shell=False, no untrusted-string interpolation,
+#               and resolve the binary via PATH (the project's established convention).
 #   B112 — try/except/continue in font-record parsing is a deliberate skip-bad-record.
-skips = ["B104", "B404", "B603", "B112"]
+skips = ["B104", "B404", "B603", "B607", "B112"]
 
 [tool.deptry]
 # Dev/test-only tooling and transitive-runtime deps that deptry can't see used.
