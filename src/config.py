@@ -7,7 +7,7 @@ Copy .env.example to .env and customize before running.
 
 from functools import lru_cache
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -83,9 +83,40 @@ class Config(BaseSettings):
     default_min_clip_length: int = Field(default=15, validation_alias="DEFAULT_MIN_CLIP_LENGTH")
     default_max_clip_length: int = Field(default=45, validation_alias="DEFAULT_MAX_CLIP_LENGTH")
 
+    # Vision / VLM (content-aware clipping — see docs/plans/vlm-enhancement.md).
+    # content_mode selects the per-video framing/selection strategy. The VLM is a
+    # DISTINCT model from the text-analysis LLM and is OFF by default; every tunable
+    # is a named field here (no magic numbers in the vision path).
+    content_mode: Literal["single", "duo", "multi"] = Field(default="single", validation_alias="CONTENT_MODE")
+    vlm_enabled: bool = Field(default=False, validation_alias="VLM_ENABLED")
+    vlm_model: str = Field(default="", validation_alias="VLM_MODEL")
+    vlm_base_url: str = Field(default="", validation_alias="VLM_BASE_URL")
+    vlm_api_key: str = Field(default="", validation_alias="VLM_API_KEY")
+    vlm_max_tokens: int = Field(default=512, validation_alias="VLM_MAX_TOKENS", ge=1)
+    vlm_frames_per_clip: int = Field(default=5, validation_alias="VLM_FRAMES_PER_CLIP", ge=1)
+    vlm_image_max_dim: int = Field(default=768, validation_alias="VLM_IMAGE_MAX_DIM", ge=64)
+    vlm_timeout_s: float = Field(default=180.0, validation_alias="VLM_TIMEOUT_S", gt=0)
+
     # Internal constants (not from env)
     FONTS_DIR: ClassVar[Path] = Path("fonts")
     TRANSITIONS_DIR: ClassVar[Path] = Path("transitions")
+
+    def get_vlm_base_url(self) -> str:
+        """Return the VLM endpoint, falling back to the local LLM endpoint.
+
+        Returns:
+            ``vlm_base_url`` when set, otherwise ``local_llm_base_url`` so a
+            single local server can serve both the text and vision models.
+        """
+        return self.vlm_base_url or self.local_llm_base_url
+
+    def get_vlm_api_key(self) -> str:
+        """Return the VLM API key, falling back to the local LLM key.
+
+        Returns:
+            ``vlm_api_key`` when set, otherwise ``local_llm_api_key``.
+        """
+        return self.vlm_api_key or self.local_llm_api_key
 
     def get_llm_model(self) -> str:
         """Return the effective LLM model string.

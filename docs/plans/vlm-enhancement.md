@@ -228,6 +228,31 @@ cost/quality choice, not a blocker:
 Use `tests/e2e/vision_spike.py` (`VLM_MODEL=…`) as the **entry gate** before any
 VLM-vision build, and pin the chosen `vlm_model` in config.
 
+**Active-speaker ground truth (2026-06-29).** Sampled 6 frames across a duo
+conversational window (220–260 s) and asked Qwen for the active speaker per frame.
+It tracked cleanly — left (man, gesturing) at 220–228 s, then a turn boundary to
+right (woman) at 236–260 s — high-confidence, grounded cues (e.g. *"man is covering
+his face with a cloth"*). Two frames visually verified: both correct (2/2). So the
+**VLM active-speaker signal is good enough for `duo` framing**; the open question is
+only cost vs. the deterministic diarization+faces path (~4–6 s/frame warm → sparse
+sampling required).
+
+### Phase 1 — IN PROGRESS (config foundation landed)
+
+Landed (gate-green, 100% covered): `src/config.py` now has the content-mode / VLM
+config layer — `content_mode` (single/duo/multi, default single), `vlm_enabled`
+(default off), `vlm_model`, `vlm_base_url`/`vlm_api_key` (fall back to the local LLM
+endpoint via `get_vlm_base_url()`/`get_vlm_api_key()`), `vlm_max_tokens`,
+`vlm_frames_per_clip`, `vlm_image_max_dim`, `vlm_timeout_s`. All named, env-
+overridable, no magic numbers.
+
+Next: `src/pipeline/vision.py` with the determinism boundary —
+- deterministic core (frame-sample timestamps, ffmpeg frame extraction, response
+  parsing, the disabled/error fallback) → 100% unit-tested **in the gate**;
+- the raw VLM chat call → thin seam, exercised in the **e2e tier** + `vision_spike`;
+then consume the `duo` active-speaker result in `face_detect`/`clip` framing
+(default-off; face/center crop stays the gate-tested fallback).
+
 **Phase 1 — `content_mode` config + mode-aware framing.** Add
 `content_mode: Literal["single","duo","multi"]` (default `single`) to `Config`,
 plus a strategy selector. `single` = today's face-centered crop (no VLM, cheap).

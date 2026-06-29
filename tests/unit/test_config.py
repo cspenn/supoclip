@@ -151,4 +151,60 @@ class TestEnsureTempDirs:
         config.ensure_temp_dirs()  # calling again is safe
 
 
+class TestVlmConfig:
+    """Tests for the VLM / content-mode configuration (vision-aware clipping)."""
+
+    def test_defaults(self) -> None:
+        """VLM is off by default; content_mode defaults to single."""
+        config = Config()
+        assert config.content_mode == "single"
+        assert config.vlm_enabled is False
+        assert config.vlm_model == ""
+        assert config.vlm_max_tokens == 512
+        assert config.vlm_frames_per_clip == 5
+        assert config.vlm_image_max_dim == 768
+        assert config.vlm_timeout_s == pytest.approx(180.0)
+
+    def test_env_overrides(self) -> None:
+        """Every VLM tunable is overridable via its env alias."""
+        config = Config(
+            CONTENT_MODE="duo",
+            VLM_ENABLED=True,
+            VLM_MODEL="Qwen3.6-35B-A3B-Mixed-4-8",
+            VLM_MAX_TOKENS=1024,
+            VLM_FRAMES_PER_CLIP=8,
+            VLM_IMAGE_MAX_DIM=512,
+            VLM_TIMEOUT_S=90.0,
+        )
+        assert config.content_mode == "duo"
+        assert config.vlm_enabled is True
+        assert config.vlm_model == "Qwen3.6-35B-A3B-Mixed-4-8"
+        assert config.vlm_max_tokens == 1024
+        assert config.vlm_frames_per_clip == 8
+        assert config.vlm_image_max_dim == 512
+        assert config.vlm_timeout_s == pytest.approx(90.0)
+
+    def test_invalid_content_mode_rejected(self) -> None:
+        """content_mode only accepts single/duo/multi."""
+        with pytest.raises(ValueError):
+            Config(CONTENT_MODE="quad")
+
+    def test_vlm_endpoint_falls_back_to_local_llm(self) -> None:
+        """When vlm_base_url/api_key are unset, the local LLM endpoint is reused."""
+        config = Config(LOCAL_LLM_BASE_URL="http://localhost:1/v1", LOCAL_LLM_API_KEY="k")
+        assert config.get_vlm_base_url() == "http://localhost:1/v1"
+        assert config.get_vlm_api_key() == "k"
+
+    def test_vlm_endpoint_overrides_local_llm(self) -> None:
+        """Explicit vlm_base_url/api_key take precedence over the local LLM ones."""
+        config = Config(
+            LOCAL_LLM_BASE_URL="http://localhost:1/v1",
+            LOCAL_LLM_API_KEY="k",
+            VLM_BASE_URL="http://localhost:2/v1",
+            VLM_API_KEY="vk",
+        )
+        assert config.get_vlm_base_url() == "http://localhost:2/v1"
+        assert config.get_vlm_api_key() == "vk"
+
+
 # end tests/unit/test_config.py
