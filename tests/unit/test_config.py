@@ -195,6 +195,27 @@ class TestVlmConfig:
         assert overridden.vlm_transcript_weight == pytest.approx(0.5)
         assert overridden.vlm_visual_weight == pytest.approx(0.5)
 
+    def test_quality_defaults_and_overrides(self) -> None:
+        """Deterministic quality utilities are off by default and overridable."""
+        default = Config()
+        assert default.quality_dark_filter_enabled is False
+        assert default.scene_snap_enabled is False
+        assert default.quality_min_brightness == pytest.approx(16.0)
+        assert default.scene_threshold == pytest.approx(0.4)
+        over = Config(
+            QUALITY_DARK_FILTER_ENABLED=True,
+            QUALITY_MIN_BRIGHTNESS=24,
+            SCENE_SNAP_ENABLED=True,
+            SCENE_THRESHOLD=0.6,
+            SCENE_SNAP_WINDOW_S=3.0,
+            QUALITY_PROBE_DIM=160,
+            QUALITY_BRIGHTNESS_SAMPLES=5,
+        )
+        assert over.quality_dark_filter_enabled is True
+        assert over.scene_snap_enabled is True
+        assert over.quality_min_brightness == pytest.approx(24.0)
+        assert over.scene_threshold == pytest.approx(0.6)
+
     def test_invalid_content_mode_rejected(self) -> None:
         """content_mode only accepts single/duo/multi."""
         with pytest.raises(ValueError):

@@ -399,6 +399,56 @@ async def _rerank_by_engagement(
     return [seg for _, seg in ordered]
 
 
+async def _apply_quality_filters(
+    source_video: Path,
+    segments: list[TranscriptSegment],
+) -> list[TranscriptSegment]:
+    """Apply deterministic ffmpeg quality steps (dark filter + scene snap).
+
+    Both features are config-gated and off by default, so this is a no-op unless
+    explicitly enabled. When on: segments whose sampled frames are too dark are
+    dropped, and each kept segment's start is snapped back to the nearest scene
+    cut within the configured window. All probing runs off the event loop.
+
+    Args:
+        source_video: Path to the source video.
+        segments: Analysis-selected (and possibly re-ranked) segments.
+
+    Returns:
+        The filtered/adjusted segments (unchanged when both features are off).
+    """
+    cfg = get_config()
+    if not (cfg.quality_dark_filter_enabled or cfg.scene_snap_enabled) or not segments:
+        return segments
+    from src.pipeline.quality import is_segment_too_dark, snap_start_to_scene
+
+    kept: list[TranscriptSegment] = []
+    for seg in segments:
+        if cfg.quality_dark_filter_enabled and await asyncio.to_thread(
+            is_segment_too_dark,
+            source_video,
+            seg.start_time,
+            seg.end_time,
+            cfg.quality_brightness_samples,
+            cfg.quality_probe_dim,
+            cfg.quality_min_brightness,
+        ):
+            logger.info("segment_dropped_too_dark", start=seg.start_time, end=seg.end_time)
+            continue
+        if cfg.scene_snap_enabled:
+            snapped = await asyncio.to_thread(
+                snap_start_to_scene,
+                source_video,
+                seg.start_time,
+                seg.end_time,
+                cfg.scene_threshold,
+                cfg.scene_snap_window_s,
+            )
+            seg = seg.model_copy(update={"start_time": snapped})
+        kept.append(seg)
+    return kept
+
+
 async def _generate_clips_concurrently(
     source_video: Path,
     segments: list[TranscriptSegment],
@@ -777,6 +827,7 @@ async def process_video(
         transcript_text, words = await _run_transcription(request, source_video, _notify)
         segments = await _run_analysis(request, transcript_text, words, _notify)
         segments = await _rerank_by_engagement(source_video, segments)
+        segments = await _apply_quality_filters(source_video, segments)
         clip_paths, clip_metadata = await _run_clip_generation(
             request,
             source_video,

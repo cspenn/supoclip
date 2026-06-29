@@ -102,6 +102,15 @@ class Config(BaseSettings):
     vlm_transcript_weight: float = Field(default=0.7, validation_alias="VLM_TRANSCRIPT_WEIGHT", ge=0)
     vlm_visual_weight: float = Field(default=0.3, validation_alias="VLM_VISUAL_WEIGHT", ge=0)
 
+    # Deterministic visual-quality utilities (ffmpeg, no VLM). All off by default.
+    quality_probe_dim: int = Field(default=320, validation_alias="QUALITY_PROBE_DIM", ge=64)
+    quality_dark_filter_enabled: bool = Field(default=False, validation_alias="QUALITY_DARK_FILTER_ENABLED")
+    quality_min_brightness: float = Field(default=16.0, validation_alias="QUALITY_MIN_BRIGHTNESS", ge=0)
+    quality_brightness_samples: int = Field(default=3, validation_alias="QUALITY_BRIGHTNESS_SAMPLES", ge=1)
+    scene_snap_enabled: bool = Field(default=False, validation_alias="SCENE_SNAP_ENABLED")
+    scene_threshold: float = Field(default=0.4, validation_alias="SCENE_THRESHOLD", ge=0, le=1)
+    scene_snap_window_s: float = Field(default=2.0, validation_alias="SCENE_SNAP_WINDOW_S", ge=0)
+
     # Internal constants (not from env)
     FONTS_DIR: ClassVar[Path] = Path("fonts")
     TRANSITIONS_DIR: ClassVar[Path] = Path("transitions")

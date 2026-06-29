@@ -34,6 +34,7 @@ from src.pipeline.clip import TranscriptSegment as ClipTranscriptSegment
 from src.services.video_service import (
     ProcessingRequest,
     ProcessingResult,
+    _apply_quality_filters,
     _delete_existing_clips,
     _generate_clips_concurrently,
     _generate_thumbnail,
@@ -90,6 +91,59 @@ class TestOptionsForClipActiveSpeaker:
         result = _options_for_clip(base, 0, [], active_speaker_side="left")
         assert result is not base
         assert result.active_speaker_side == "left"  # type: ignore[union-attr]
+
+
+class TestApplyQualityFilters:
+    """Tests for the deterministic dark-filter + scene-snap quality step."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_returns_unchanged(self) -> None:
+        """Both features off → segments untouched."""
+        segs = [_make_segment(start=0.0), _make_segment(start=10.0)]
+        cfg = SimpleNamespace(quality_dark_filter_enabled=False, scene_snap_enabled=False)
+        with patch("src.services.video_service.get_config", return_value=cfg):
+            out = await _apply_quality_filters(Path("/v.mp4"), segs)
+        assert out == segs
+
+    @pytest.mark.asyncio
+    async def test_drops_dark_segments(self) -> None:
+        """A too-dark segment is filtered out."""
+        keep = _make_segment(start=0.0)
+        drop = _make_segment(start=10.0)
+        cfg = SimpleNamespace(
+            quality_dark_filter_enabled=True,
+            scene_snap_enabled=False,
+            quality_brightness_samples=3,
+            quality_probe_dim=160,
+            quality_min_brightness=16.0,
+        )
+
+        def fake_dark(_v: object, start: float, *a: object) -> bool:
+            return start == 10.0
+
+        with (
+            patch("src.services.video_service.get_config", return_value=cfg),
+            patch("src.pipeline.quality.is_segment_too_dark", side_effect=fake_dark),
+        ):
+            out = await _apply_quality_filters(Path("/v.mp4"), [keep, drop])
+        assert out == [keep]
+
+    @pytest.mark.asyncio
+    async def test_scene_snap_adjusts_start(self) -> None:
+        """Scene snapping rewrites the segment start to the nearest cut."""
+        seg = _make_segment(start=12.0, end=30.0)
+        cfg = SimpleNamespace(
+            quality_dark_filter_enabled=False,
+            scene_snap_enabled=True,
+            scene_threshold=0.4,
+            scene_snap_window_s=2.0,
+        )
+        with (
+            patch("src.services.video_service.get_config", return_value=cfg),
+            patch("src.pipeline.quality.snap_start_to_scene", return_value=11.0),
+        ):
+            out = await _apply_quality_filters(Path("/v.mp4"), [seg])
+        assert out[0].start_time == pytest.approx(11.0)
 
 
 class TestGenerateThumbnail:
@@ -227,6 +281,8 @@ def _make_cfg(tmp_path: Path, max_workers: int = 4) -> MagicMock:
     cfg.vlm_enabled = False
     cfg.vlm_model = ""
     cfg.vlm_image_max_dim = 768
+    cfg.quality_dark_filter_enabled = False
+    cfg.scene_snap_enabled = False
     return cfg
 
 
