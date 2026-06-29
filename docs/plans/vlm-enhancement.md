@@ -179,6 +179,13 @@ get a structured VLM judgment via the OpenAI vision message format against the
 gemma endpoint. Output: go/no-go on latency and message-format compatibility.
 Lives in the e2e tier from day one.
 
+*Reference smoke sources:*
+- **single** — `https://www.youtube.com/watch?v=wkPL4QNlNV4` ("LLM Context Window
+  Decay", talking-head; already validated end-to-end by `tests/e2e/smoke_pipeline.py`).
+- **duo** — `https://www.youtube.com/watch?v=kssjy4RCKgU` (two-speaker; the active-
+  speaker / `duo` framing + diarization-vs-VLM comparison target).
+- *(add a `multi` source when that mode is scheduled.)*
+
 **Phase 1 — `content_mode` config + mode-aware framing.** Add
 `content_mode: Literal["single","duo","multi"]` (default `single`) to `Config`,
 plus a strategy selector. `single` = today's face-centered crop (no VLM, cheap).
