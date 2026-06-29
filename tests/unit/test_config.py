@@ -160,7 +160,7 @@ class TestVlmConfig:
         assert config.content_mode == "single"
         assert config.vlm_enabled is False
         assert config.vlm_model == ""
-        assert config.vlm_max_tokens == 512
+        assert config.vlm_max_tokens == 1024
         assert config.vlm_frames_per_clip == 5
         assert config.vlm_image_max_dim == 768
         assert config.vlm_timeout_s == pytest.approx(180.0)

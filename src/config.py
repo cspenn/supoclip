@@ -92,7 +92,10 @@ class Config(BaseSettings):
     vlm_model: str = Field(default="", validation_alias="VLM_MODEL")
     vlm_base_url: str = Field(default="", validation_alias="VLM_BASE_URL")
     vlm_api_key: str = Field(default="", validation_alias="VLM_API_KEY")
-    vlm_max_tokens: int = Field(default=512, validation_alias="VLM_MAX_TOKENS", ge=1)
+    # Reasoning VLMs (e.g. Qwen3.x) emit chain-of-thought before the JSON answer,
+    # so multi-image prompts need a generous budget — engagement scoring needed
+    # ~2000 in practice; raise VLM_MAX_TOKENS further for heavier reasoning models.
+    vlm_max_tokens: int = Field(default=1024, validation_alias="VLM_MAX_TOKENS", ge=1)
     vlm_frames_per_clip: int = Field(default=5, validation_alias="VLM_FRAMES_PER_CLIP", ge=1)
     vlm_image_max_dim: int = Field(default=768, validation_alias="VLM_IMAGE_MAX_DIM", ge=64)
     vlm_timeout_s: float = Field(default=180.0, validation_alias="VLM_TIMEOUT_S", gt=0)

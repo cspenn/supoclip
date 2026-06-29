@@ -11,6 +11,34 @@ concrete phased roadmap and the open decisions that gate it.
 
 ---
 
+## 0. IMPLEMENTATION STATUS — COMPLETE (2026-06-29)
+
+The plan is **fully implemented** and `./checkpython.sh` is **green** (718 tests,
+100% line+branch coverage). Everything below shipped, all **off by default**, with
+the §2 determinism boundary held (deterministic core in-gate, VLM call e2e-only).
+
+| Item | Where | State |
+|------|-------|-------|
+| Phase 0 spike | `tests/e2e/vision_spike.py` | ✅ Qwen3.6-35B-A3B vision verified (gemma broken) |
+| `content_mode` + VLM config | `src/config.py` | ✅ single/duo/multi + all VLM/quality tunables (no magic numbers) |
+| Vision module (boundary) | `src/pipeline/vision.py` | ✅ active-speaker, engagement, thumbnail, fusion |
+| Phase 1 framing (B) | `clip.py` + `video_service.py` | ✅ duo/multi active-speaker crop; real-output test |
+| Phase 2 re-ranking (A) | `vision.fuse_scores` + `video_service._rerank_by_engagement` | ✅ |
+| Phase 3 thumbnails (C) | `vision.select_best_frame_timestamp` + `_generate_thumbnail` + task page | ✅ |
+| E/F deterministic ffmpeg | `src/pipeline/quality.py` | ✅ scene detection + dark-segment filter (no VLM) |
+
+**Live e2e verification** (`tests/e2e/vision_features.py` against Qwen on the duo
+video): `active_speaker='left' (0.95)`, `engagement=0.5`, `best_thumbnail_ts` —
+all correct. **Tuning finding:** the reasoning VLM needs a generous token budget
+for multi-image prompts (engagement parsed empty at 512, worked at ~2000), so the
+`vlm_max_tokens` default was raised to 1024 — raise further for heavier models.
+
+To enable: set `VLM_ENABLED=true`, `VLM_MODEL=Qwen3.6-35B-A3B-Mixed-4-8`,
+`CONTENT_MODE=duo`, and the feature flags (`VLM_RERANK_ENABLED`,
+`QUALITY_DARK_FILTER_ENABLED`, `SCENE_SNAP_ENABLED`) as desired.
+
+---
+
 ## 1. The core thesis
 
 SupoClip selects clips from **what was said**. The most viral short-form moments

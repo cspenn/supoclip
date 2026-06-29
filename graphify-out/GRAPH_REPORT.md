@@ -1,12 +1,12 @@
 # Graph Report - /Users/cspenn/Documents/github/supoclip  (2026-06-29)
 
 ## Corpus Check
-- 50 files · ~316,508 words
+- 58 files · ~339,446 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1955 nodes · 5144 edges · 63 communities detected
-- Extraction: 43% EXTRACTED · 57% INFERRED · 0% AMBIGUOUS · INFERRED: 2915 edges (avg confidence: 0.58)
+- 2182 nodes · 5976 edges · 64 communities detected
+- Extraction: 42% EXTRACTED · 58% INFERRED · 0% AMBIGUOUS · INFERRED: 3465 edges (avg confidence: 0.58)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -73,52 +73,53 @@
 - [[_COMMUNITY_Community 60|Community 60]]
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `TranscriptSegment` - 378 edges
-2. `SubtitleStyle` - 274 edges
-3. `ClipOptions` - 267 edges
-4. `UserPreferences` - 216 edges
-5. `Task` - 188 edges
-6. `DownloadError` - 176 edges
-7. `GeneratedClip` - 166 edges
-8. `ClipGenerationError` - 152 edges
-9. `ProcessingRequest` - 130 edges
-10. `InsufficientSegmentsError` - 108 edges
+1. `TranscriptSegment` - 420 edges
+2. `ClipOptions` - 312 edges
+3. `SubtitleStyle` - 291 edges
+4. `Task` - 223 edges
+5. `UserPreferences` - 216 edges
+6. `DownloadError` - 206 edges
+7. `GeneratedClip` - 200 edges
+8. `ClipGenerationError` - 161 edges
+9. `ProcessingRequest` - 153 edges
+10. `Config` - 130 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `test_creates_task_and_returns_id()` --calls--> `_create_task()`  [INFERRED]
+  /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/tests/integration/test_pipeline_failures.py
+- `test_creates_upload_task()` --calls--> `_create_task()`  [INFERRED]
+  /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/tests/integration/test_pipeline_failures.py
 - `Return a default UserPreferences row, optionally overriding fields.      Args:` --uses--> `UserPreferences`  [INFERRED]
   /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/src/models.py
 - `Patch ``load_prefs`` for every test so ``render()`` never hits the DB.      Indi` --uses--> `UserPreferences`  [INFERRED]
   /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/src/models.py
 - `Close a coroutine and return a task-like mock for ``add_done_callback``.      Ar` --uses--> `UserPreferences`  [INFERRED]
   /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/src/models.py
-- `_RESOLUTIONS must contain both 720p and 1080p.` --uses--> `UserPreferences`  [INFERRED]
-  /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/src/models.py
-- `Return a self-chaining NiceGUI element stub.      Returns:         A MagicMock w` --uses--> `UserPreferences`  [INFERRED]
-  /Users/cspenn/Documents/github/supoclip/tests/unit/test_home.py → /Users/cspenn/Documents/github/supoclip/src/models.py
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (220): TranscriptSegment, build_concat_command(), build_ffmpeg_command(), _build_logo_overlay_graph(), _build_main_video_filter(), ClipOptions, _escape_filter_path(), filter_words_for_segment() (+212 more)
+Nodes (245): TranscriptSegment, build_concat_command(), build_ffmpeg_command(), _build_logo_overlay_graph(), _build_main_video_filter(), ClipOptions, _escape_filter_path(), filter_words_for_segment() (+237 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.03
-Nodes (210): BaseDownloadError, DownloadError, Execute yt-dlp download synchronously.      Args:         url: YouTube URL to do, Raised when video download fails., _run_ydl_download(), Raised when video acquisition (yt-dlp / upload) fails., Render the top navigation bar with links to Home and Settings., Render a single task row inside a card.      Args:         task: The Task ORM ob (+202 more)
+Nodes (225): BaseDownloadError, DownloadError, Execute yt-dlp download synchronously.      Args:         url: YouTube URL to do, Raised when video download fails., _run_ydl_download(), Raised when video acquisition (yt-dlp / upload) fails., Render the top navigation bar with links to Home and Settings., Render a single task row inside a card.      Args:         task: The Task ORM ob (+217 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.01
-Nodes (178): Exception, build_processing_request(), _max_upload_bytes(), _on_pipeline_done(), _seed_resolution(), _unsupported_type_message(), Singleton row storing the user's global application preferences.      There is a, UserPreferences (+170 more)
+Nodes (189): Exception, build_processing_request(), _max_upload_bytes(), _on_pipeline_done(), _seed_resolution(), _start_processing(), _unsupported_type_message(), Singleton row storing the user's global application preferences.      There is a (+181 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.02
-Nodes (174): delete_task(), _format_date(), _load_tasks(), render(), _render_empty_state(), _render_navigation(), _render_task_row(), _truncate() (+166 more)
+Nodes (183): analyze_transcript(), _analyze_with_groq_structured(), _analyze_with_pydantic_ai(), build_system_prompt(), _build_user_prompt(), _derive_transcript_bound(), _exceeds_bounds(), _parse_timestamp() (+175 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.02
-Nodes (139): analyze_transcript(), _analyze_with_groq_structured(), _analyze_with_pydantic_ai(), build_system_prompt(), _build_user_prompt(), _derive_transcript_bound(), _exceeds_bounds(), _parse_timestamp() (+131 more)
+Nodes (184): delete_task(), _format_date(), _load_tasks(), render(), _render_empty_state(), _render_navigation(), _render_task_row(), _truncate() (+176 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.02
@@ -130,31 +131,31 @@ Nodes (82): BaseTranscriptionError, Raised when audio transcription fails., An `
 
 ### Community 7 - "Community 7"
 Cohesion: 0.03
-Nodes (64): calculate_crop_box(), detect_face_center(), detect_face_center_multi(), _detect_raw(), _face_model_cache_path(), _get_face_detector(), get_representative_frame(), Return a cached MediaPipe Tasks FaceDetector, or ``None`` if unavailable.      T (+56 more)
+Nodes (61): calculate_crop_box(), detect_face_center(), detect_face_center_multi(), _detect_raw(), _face_model_cache_path(), _get_face_detector(), get_representative_frame(), Return a cached MediaPipe Tasks FaceDetector, or ``None`` if unavailable.      T (+53 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.04
-Nodes (53): _build_ui_module(), _make_widget(), mock_analyze(), mock_ffmpeg(), mock_transcribe(), mock_yt_dlp(), Return a MagicMock that supports the most common NiceGUI widget fluent API., Mock ffmpeg subprocess calls to avoid real video processing. (+45 more)
+Nodes (51): Return up to ``samples`` evenly spaced timestamps across a segment.      The fir, _segment_sample_timestamps(), TestSegmentSampleTimestamps, _cfg(), Build a Config with VLM enabled by default for orchestration tests., A real frame extracts to a non-trivial base64 JPEG., TestBuildPayload, TestDetectActiveSpeaker (+43 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.1
-Nodes (61): get_config(), Return the cached application config singleton.      Returns:         The applic, get_session(), Provide an async database session as a context manager.      Yields:         An, _make_segment(), test_creates_task_and_returns_id(), test_creates_upload_task(), _make_task_row() (+53 more)
+Cohesion: 0.08
+Nodes (73): get_config(), Return the cached application config singleton.      Returns:         The applic, get_session(), Provide an async database session as a context manager.      Yields:         An, _make_task_row(), test_local_file_pipeline_happy_path(), test_progress_callback_milestones(), _create_task() (+65 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.05
-Nodes (42): _build_ydl_opts(), download_youtube_video(), _extract_video_id(), find_downloaded_file(), Check if a URL is a valid YouTube video URL.      Args:         url: URL string, Find the most recently modified video file in the output directory.      yt-dlp, Download a YouTube video to the output directory.      Downloads the best availa, Build yt-dlp options for a single download.      Args:         output_dir: Direc (+34 more)
+Cohesion: 0.04
+Nodes (53): _build_ui_module(), _make_widget(), mock_analyze(), mock_ffmpeg(), mock_transcribe(), mock_yt_dlp(), Return a MagicMock that supports the most common NiceGUI widget fluent API., Mock ffmpeg subprocess calls to avoid real video processing. (+45 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.09
-Nodes (32): Raised when transcript analysis fails., Raw segment returned by LLM before float conversion., BaseSettings, Config, Create temp directory structure if it doesn't exist.          Creates: temp/, te, SupoClip application configuration.      All values are loaded from environment, Return the effective LLM model string.          Returns the local model spec if, ConfigurationError (+24 more)
+Cohesion: 0.04
+Nodes (50): history_page(), home_page(), Render the home page., Render the task detail page., Render the task history page., Render the settings page., Initialize the database and mount static clip serving on startup., Close the database on application shutdown. (+42 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.05
-Nodes (39): history_page(), home_page(), main(), Render the home page., Render the task detail page., Render the task history page., Render the settings page., Initialize the database and mount static clip serving on startup. (+31 more)
+Nodes (42): _build_ydl_opts(), download_youtube_video(), _extract_video_id(), find_downloaded_file(), Check if a URL is a valid YouTube video URL.      Args:         url: URL string, Find the most recently modified video file in the output directory.      yt-dlp, Download a YouTube video to the output directory.      Downloads the best availa, Build yt-dlp options for a single download.      Args:         output_dir: Direc (+34 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.18
-Nodes (10): _config_with_temp(), Build a stub config exposing *temp_dir*.      Args:         temp_dir: Path to us, Tests for remove_clip_files() exercising real filesystem behaviour., Listed clip files are deleted from the clips directory., A filename that does not exist is silently skipped (missing_ok)., An empty filename iterable performs no deletions and does not raise., A removal failure (here: target is a directory) is warned, not raised., TestRemoveClipFiles (+2 more)
+Cohesion: 0.1
+Nodes (19): detect_scene_timestamps(), frame_brightness(), is_segment_too_dark(), Return the mean luma (0–255) of one frame, or ``None`` on failure.      Args:, Return the mean brightness across sampled frames of a segment.      Args:, Return True when a segment's mean brightness is below ``min_brightness``.      A, Return absolute timestamps of visual scene cuts within ``[start_s, end_s]``., Snap a clip start back to the nearest scene cut within ``window_s``.      Looks (+11 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 1.0
@@ -162,312 +163,318 @@ Nodes (0):
 
 ### Community 15 - "Community 15"
 Cohesion: 1.0
-Nodes (1): No polling timer is created for a task that has already failed.
+Nodes (1): A clip with no thumbnail renders without setting a video poster.
 
 ### Community 16 - "Community 16"
 Cohesion: 1.0
-Nodes (1): The guard deactivates the timer once elapsed time hits the cap.
+Nodes (1): render() with a completed task renders the clip grid without a timer.
 
 ### Community 17 - "Community 17"
 Cohesion: 1.0
-Nodes (1): When the guard fires it updates the status label with a notice.
+Nodes (1): No polling timer is created for a task that has already failed.
 
 ### Community 18 - "Community 18"
 Cohesion: 1.0
-Nodes (1): delete_clip() deletes the clip row and removes its .mp4 from disk.
+Nodes (1): Tests for the _format_seconds helper.
 
 ### Community 19 - "Community 19"
 Cohesion: 1.0
-Nodes (1): delete_clip() is a no-op delete (still reloads) when the clip is gone.
+Nodes (1): The guard deactivates the timer once elapsed time hits the cap.
 
 ### Community 20 - "Community 20"
 Cohesion: 1.0
-Nodes (1): The clip card's delete button on_click awaits delete_clip with the id.
+Nodes (1): When the guard fires it updates the status label with a notice.
 
 ### Community 21 - "Community 21"
 Cohesion: 1.0
-Nodes (1): A clip with no transcript_text renders without the transcript expansion.
+Nodes (1): delete_clip() deletes the clip row and removes its .mp4 from disk.
 
 ### Community 22 - "Community 22"
 Cohesion: 1.0
-Nodes (1): A ui.timer is also created when status is 'pending'.
+Nodes (1): delete_clip() is a no-op delete (still reloads) when the clip is gone.
 
 ### Community 23 - "Community 23"
 Cohesion: 1.0
-Nodes (1): set_visibility is called on at least one card widget for a failed task.
+Nodes (1): The clip card's delete button on_click awaits delete_clip with the id.
 
 ### Community 24 - "Community 24"
 Cohesion: 1.0
-Nodes (1): Zero seconds formats as '00:00'.
+Nodes (1): A clip with no transcript_text renders without the transcript expansion.
 
 ### Community 25 - "Community 25"
 Cohesion: 1.0
-Nodes (1): Tests for _load_tasks() exercising the real DB query path.
+Nodes (1): A ui.timer is also created when status is 'pending'.
 
 ### Community 26 - "Community 26"
 Cohesion: 1.0
-Nodes (1): _load_tasks() issues exactly two SQL queries: tasks then clip counts.
+Nodes (1): set_visibility is called on at least one card widget for a failed task.
 
 ### Community 27 - "Community 27"
 Cohesion: 1.0
-Nodes (1): _render_task_row() falls back to 'grey' for an unrecognised status.
+Nodes (1): Tests for _load_tasks() exercising the real DB query path.
 
 ### Community 28 - "Community 28"
 Cohesion: 1.0
-Nodes (1): Generate ASS subtitle file content with per-word timing.      Creates one SSAEve
+Nodes (1): _load_tasks() issues exactly two SQL queries: tasks then clip counts.
 
 ### Community 29 - "Community 29"
 Cohesion: 1.0
-Nodes (1): A polling timer must not be created when the task is already done.
+Nodes (1): _render_task_row() falls back to 'grey' for an unrecognised status.
 
 ### Community 30 - "Community 30"
 Cohesion: 1.0
-Nodes (1): ui.video must be called once for each clip returned by the DB.
+Nodes (1): Generate ASS subtitle file content with per-word timing.      Creates one SSAEve
 
 ### Community 31 - "Community 31"
 Cohesion: 1.0
-Nodes (1): set_visibility is called at least once on a column widget.          The progress
+Nodes (1): ui.video must be called once for each clip returned by the DB.
 
 ### Community 32 - "Community 32"
 Cohesion: 1.0
-Nodes (1): A ui.timer(1.0, ...) is created when status is 'processing'.
+Nodes (1): set_visibility is called at least once on a column widget.          The progress
 
 ### Community 33 - "Community 33"
 Cohesion: 1.0
-Nodes (1): render() must not raise for a missing task_id.
+Nodes (1): A ui.timer(1.0, ...) is created when status is 'processing'.
 
 ### Community 34 - "Community 34"
 Cohesion: 1.0
-Nodes (1): No polling timer is created when the task does not exist.
+Nodes (1): render() must not raise for a missing task_id.
 
 ### Community 35 - "Community 35"
 Cohesion: 1.0
-Nodes (1): At least one ui.card is rendered for the not-found warning.
+Nodes (1): No polling timer is created when the task does not exist.
 
 ### Community 36 - "Community 36"
 Cohesion: 1.0
-Nodes (1): Timer deactivates when DB task reaches completed status.
+Nodes (1): At least one ui.card is rendered for the not-found warning.
 
 ### Community 37 - "Community 37"
 Cohesion: 1.0
-Nodes (1): Timer deactivates when DB task reaches failed status.
+Nodes (1): Timer deactivates when DB task reaches completed status.
 
 ### Community 38 - "Community 38"
 Cohesion: 1.0
-Nodes (1): Fallback error message is used when error_message is None.
+Nodes (1): Timer deactivates when DB task reaches failed status.
 
 ### Community 39 - "Community 39"
 Cohesion: 1.0
-Nodes (1): Timer deactivates when the task record disappears mid-poll.
+Nodes (1): Fallback error message is used when error_message is None.
 
 ### Community 40 - "Community 40"
 Cohesion: 1.0
-Nodes (1): Timer stays active when the task is still processing.
+Nodes (1): Timer deactivates when the task record disappears mid-poll.
 
 ### Community 41 - "Community 41"
 Cohesion: 1.0
-Nodes (1): _show_clips calls ui.video once per clip from the DB.
+Nodes (1): Timer stays active when the task is still processing.
 
 ### Community 42 - "Community 42"
 Cohesion: 1.0
-Nodes (1): _show_clips sets status label text containing the word clip.
+Nodes (1): _show_clips calls ui.video once per clip from the DB.
 
 ### Community 43 - "Community 43"
 Cohesion: 1.0
-Nodes (1): _show_clips uses clips plural when count is not 1.
+Nodes (1): _show_clips sets status label text containing the word clip.
 
 ### Community 44 - "Community 44"
 Cohesion: 1.0
-Nodes (1): init_db() completes without error when src.models cannot be imported.
+Nodes (1): _show_clips uses clips plural when count is not 1.
 
 ### Community 45 - "Community 45"
 Cohesion: 1.0
-Nodes (1): Build a minimal mock that looks like a MediaPipe detection.
+Nodes (1): init_db() completes without error when src.models cannot be imported.
 
 ### Community 46 - "Community 46"
 Cohesion: 1.0
-Nodes (1): Return a mock mediapipe module with the given detections.
+Nodes (1): Build a minimal mock that looks like a MediaPipe detection.
 
 ### Community 47 - "Community 47"
 Cohesion: 1.0
-Nodes (1): A 30%-wide face centred at 50% should yield ~(100, 100) on a 200×200 frame.
+Nodes (1): Return a mock mediapipe module with the given detections.
 
 ### Community 48 - "Community 48"
 Cohesion: 1.0
-Nodes (1): Faces smaller than 30 px should be filtered out.
+Nodes (1): A 30%-wide face centred at 50% should yield ~(100, 100) on a 200×200 frame.
 
 ### Community 49 - "Community 49"
 Cohesion: 1.0
-Nodes (1): When multiple faces qualify, the one with the highest score wins.
+Nodes (1): Faces smaller than 30 px should be filtered out.
 
 ### Community 50 - "Community 50"
 Cohesion: 1.0
-Nodes (1): A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out.
+Nodes (1): When multiple faces qualify, the one with the highest score wins.
 
 ### Community 51 - "Community 51"
 Cohesion: 1.0
-Nodes (1): If MediaPipe raises an exception, return None gracefully.
+Nodes (1): A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out.
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
-Nodes (1): Tests for home_page().
+Nodes (1): If MediaPipe raises an exception, return None gracefully.
 
 ### Community 53 - "Community 53"
 Cohesion: 1.0
-Nodes (1): Tests for task_page().
+Nodes (1): Tests for home_page().
 
 ### Community 54 - "Community 54"
 Cohesion: 1.0
-Nodes (1): Tests for history_page().
+Nodes (1): Tests for task_page().
 
 ### Community 55 - "Community 55"
 Cohesion: 1.0
-Nodes (1): Tests for settings_page().
+Nodes (1): Tests for history_page().
 
 ### Community 56 - "Community 56"
 Cohesion: 1.0
-Nodes (1): Tests for _startup().
+Nodes (1): Tests for settings_page().
 
 ### Community 57 - "Community 57"
 Cohesion: 1.0
-Nodes (1): Initialize the database on application startup.
+Nodes (1): Tests for _startup().
 
 ### Community 58 - "Community 58"
 Cohesion: 1.0
-Nodes (1): Fetch video metadata synchronously via yt-dlp.      Args:         url: YouTube U
+Nodes (1): Initialize the database on application startup.
 
 ### Community 59 - "Community 59"
 Cohesion: 1.0
-Nodes (1): Fetch YouTube video metadata without downloading.      Args:         url: YouTub
+Nodes (1): Fetch video metadata synchronously via yt-dlp.      Args:         url: YouTube U
 
 ### Community 60 - "Community 60"
 Cohesion: 1.0
-Nodes (1): Detect the center (x, y) of the most prominent face in the frame.      Uses Medi
+Nodes (1): Fetch YouTube video metadata without downloading.      Args:         url: YouTub
 
 ### Community 61 - "Community 61"
 Cohesion: 1.0
-Nodes (1): Verify that BrowserSubtitleRenderer accepts new style arguments.
+Nodes (1): Detect the center (x, y) of the most prominent face in the frame.      Uses Medi
 
 ### Community 62 - "Community 62"
+Cohesion: 1.0
+Nodes (1): Verify that BrowserSubtitleRenderer accepts new style arguments.
+
+### Community 63 - "Community 63"
 Cohesion: 1.0
 Nodes (1): _start_processing must forward a local file path as the source.          Args: (
 
 ## Knowledge Gaps
-- **284 isolated node(s):** `TestRefreshCallback`, `TestShowClips`, `Build a MagicMock that behaves like a Task ORM instance.      Using ``MagicMock``, `Build a MagicMock that behaves like a GeneratedClip ORM instance.      Using ``M`, `Return an async context-manager mock that yields a DB session stub.      The yie` (+279 more)
+- **297 isolated node(s):** `TestRefreshCallback`, `TestShowClips`, `Build a MagicMock that behaves like a Task ORM instance.      Using ``MagicMock``, `Build a MagicMock that behaves like a GeneratedClip ORM instance.      Using ``M`, `Return an async context-manager mock that yields a DB session stub.      The yie` (+292 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **Thin community `Community 14`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 15`** (1 nodes): `No polling timer is created for a task that has already failed.`
+- **Thin community `Community 15`** (1 nodes): `A clip with no thumbnail renders without setting a video poster.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 16`** (1 nodes): `The guard deactivates the timer once elapsed time hits the cap.`
+- **Thin community `Community 16`** (1 nodes): `render() with a completed task renders the clip grid without a timer.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 17`** (1 nodes): `When the guard fires it updates the status label with a notice.`
+- **Thin community `Community 17`** (1 nodes): `No polling timer is created for a task that has already failed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 18`** (1 nodes): `delete_clip() deletes the clip row and removes its .mp4 from disk.`
+- **Thin community `Community 18`** (1 nodes): `Tests for the _format_seconds helper.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 19`** (1 nodes): `delete_clip() is a no-op delete (still reloads) when the clip is gone.`
+- **Thin community `Community 19`** (1 nodes): `The guard deactivates the timer once elapsed time hits the cap.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 20`** (1 nodes): `The clip card's delete button on_click awaits delete_clip with the id.`
+- **Thin community `Community 20`** (1 nodes): `When the guard fires it updates the status label with a notice.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 21`** (1 nodes): `A clip with no transcript_text renders without the transcript expansion.`
+- **Thin community `Community 21`** (1 nodes): `delete_clip() deletes the clip row and removes its .mp4 from disk.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 22`** (1 nodes): `A ui.timer is also created when status is 'pending'.`
+- **Thin community `Community 22`** (1 nodes): `delete_clip() is a no-op delete (still reloads) when the clip is gone.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 23`** (1 nodes): `set_visibility is called on at least one card widget for a failed task.`
+- **Thin community `Community 23`** (1 nodes): `The clip card's delete button on_click awaits delete_clip with the id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 24`** (1 nodes): `Zero seconds formats as '00:00'.`
+- **Thin community `Community 24`** (1 nodes): `A clip with no transcript_text renders without the transcript expansion.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 25`** (1 nodes): `Tests for _load_tasks() exercising the real DB query path.`
+- **Thin community `Community 25`** (1 nodes): `A ui.timer is also created when status is 'pending'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 26`** (1 nodes): `_load_tasks() issues exactly two SQL queries: tasks then clip counts.`
+- **Thin community `Community 26`** (1 nodes): `set_visibility is called on at least one card widget for a failed task.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 27`** (1 nodes): `_render_task_row() falls back to 'grey' for an unrecognised status.`
+- **Thin community `Community 27`** (1 nodes): `Tests for _load_tasks() exercising the real DB query path.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 28`** (1 nodes): `Generate ASS subtitle file content with per-word timing.      Creates one SSAEve`
+- **Thin community `Community 28`** (1 nodes): `_load_tasks() issues exactly two SQL queries: tasks then clip counts.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 29`** (1 nodes): `A polling timer must not be created when the task is already done.`
+- **Thin community `Community 29`** (1 nodes): `_render_task_row() falls back to 'grey' for an unrecognised status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 30`** (1 nodes): `ui.video must be called once for each clip returned by the DB.`
+- **Thin community `Community 30`** (1 nodes): `Generate ASS subtitle file content with per-word timing.      Creates one SSAEve`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 31`** (1 nodes): `set_visibility is called at least once on a column widget.          The progress`
+- **Thin community `Community 31`** (1 nodes): `ui.video must be called once for each clip returned by the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 32`** (1 nodes): `A ui.timer(1.0, ...) is created when status is 'processing'.`
+- **Thin community `Community 32`** (1 nodes): `set_visibility is called at least once on a column widget.          The progress`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 33`** (1 nodes): `render() must not raise for a missing task_id.`
+- **Thin community `Community 33`** (1 nodes): `A ui.timer(1.0, ...) is created when status is 'processing'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 34`** (1 nodes): `No polling timer is created when the task does not exist.`
+- **Thin community `Community 34`** (1 nodes): `render() must not raise for a missing task_id.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 35`** (1 nodes): `At least one ui.card is rendered for the not-found warning.`
+- **Thin community `Community 35`** (1 nodes): `No polling timer is created when the task does not exist.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 36`** (1 nodes): `Timer deactivates when DB task reaches completed status.`
+- **Thin community `Community 36`** (1 nodes): `At least one ui.card is rendered for the not-found warning.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 37`** (1 nodes): `Timer deactivates when DB task reaches failed status.`
+- **Thin community `Community 37`** (1 nodes): `Timer deactivates when DB task reaches completed status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 38`** (1 nodes): `Fallback error message is used when error_message is None.`
+- **Thin community `Community 38`** (1 nodes): `Timer deactivates when DB task reaches failed status.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 39`** (1 nodes): `Timer deactivates when the task record disappears mid-poll.`
+- **Thin community `Community 39`** (1 nodes): `Fallback error message is used when error_message is None.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 40`** (1 nodes): `Timer stays active when the task is still processing.`
+- **Thin community `Community 40`** (1 nodes): `Timer deactivates when the task record disappears mid-poll.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 41`** (1 nodes): `_show_clips calls ui.video once per clip from the DB.`
+- **Thin community `Community 41`** (1 nodes): `Timer stays active when the task is still processing.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 42`** (1 nodes): `_show_clips sets status label text containing the word clip.`
+- **Thin community `Community 42`** (1 nodes): `_show_clips calls ui.video once per clip from the DB.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 43`** (1 nodes): `_show_clips uses clips plural when count is not 1.`
+- **Thin community `Community 43`** (1 nodes): `_show_clips sets status label text containing the word clip.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 44`** (1 nodes): `init_db() completes without error when src.models cannot be imported.`
+- **Thin community `Community 44`** (1 nodes): `_show_clips uses clips plural when count is not 1.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 45`** (1 nodes): `Build a minimal mock that looks like a MediaPipe detection.`
+- **Thin community `Community 45`** (1 nodes): `init_db() completes without error when src.models cannot be imported.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 46`** (1 nodes): `Return a mock mediapipe module with the given detections.`
+- **Thin community `Community 46`** (1 nodes): `Build a minimal mock that looks like a MediaPipe detection.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (1 nodes): `A 30%-wide face centred at 50% should yield ~(100, 100) on a 200×200 frame.`
+- **Thin community `Community 47`** (1 nodes): `Return a mock mediapipe module with the given detections.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 48`** (1 nodes): `Faces smaller than 30 px should be filtered out.`
+- **Thin community `Community 48`** (1 nodes): `A 30%-wide face centred at 50% should yield ~(100, 100) on a 200×200 frame.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (1 nodes): `When multiple faces qualify, the one with the highest score wins.`
+- **Thin community `Community 49`** (1 nodes): `Faces smaller than 30 px should be filtered out.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (1 nodes): `A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out.`
+- **Thin community `Community 50`** (1 nodes): `When multiple faces qualify, the one with the highest score wins.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (1 nodes): `If MediaPipe raises an exception, return None gracefully.`
+- **Thin community `Community 51`** (1 nodes): `A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (1 nodes): `Tests for home_page().`
+- **Thin community `Community 52`** (1 nodes): `If MediaPipe raises an exception, return None gracefully.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (1 nodes): `Tests for task_page().`
+- **Thin community `Community 53`** (1 nodes): `Tests for home_page().`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (1 nodes): `Tests for history_page().`
+- **Thin community `Community 54`** (1 nodes): `Tests for task_page().`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (1 nodes): `Tests for settings_page().`
+- **Thin community `Community 55`** (1 nodes): `Tests for history_page().`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (1 nodes): `Tests for _startup().`
+- **Thin community `Community 56`** (1 nodes): `Tests for settings_page().`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (1 nodes): `Initialize the database on application startup.`
+- **Thin community `Community 57`** (1 nodes): `Tests for _startup().`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (1 nodes): `Fetch video metadata synchronously via yt-dlp.      Args:         url: YouTube U`
+- **Thin community `Community 58`** (1 nodes): `Initialize the database on application startup.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (1 nodes): `Fetch YouTube video metadata without downloading.      Args:         url: YouTub`
+- **Thin community `Community 59`** (1 nodes): `Fetch video metadata synchronously via yt-dlp.      Args:         url: YouTube U`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (1 nodes): `Detect the center (x, y) of the most prominent face in the frame.      Uses Medi`
+- **Thin community `Community 60`** (1 nodes): `Fetch YouTube video metadata without downloading.      Args:         url: YouTub`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (1 nodes): `Verify that BrowserSubtitleRenderer accepts new style arguments.`
+- **Thin community `Community 61`** (1 nodes): `Detect the center (x, y) of the most prominent face in the frame.      Uses Medi`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 62`** (1 nodes): `_start_processing must forward a local file path as the source.          Args: (`
+- **Thin community `Community 62`** (1 nodes): `Verify that BrowserSubtitleRenderer accepts new style arguments.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 63`** (1 nodes): `_start_processing must forward a local file path as the source.          Args: (`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TranscriptSegment` connect `Community 0` to `Community 1`, `Community 4`, `Community 8`, `Community 9`, `Community 11`?**
-  _High betweenness centrality (0.213) - this node is a cross-community bridge._
-- **Why does `SubtitleStyle` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 9`?**
-  _High betweenness centrality (0.179) - this node is a cross-community bridge._
-- **Why does `UserPreferences` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 8`?**
-  _High betweenness centrality (0.164) - this node is a cross-community bridge._
-- **Are the 372 inferred relationships involving `TranscriptSegment` (e.g. with `TestProcessingRequest` and `TestProcessingResult`) actually correct?**
-  _`TranscriptSegment` has 372 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 271 inferred relationships involving `SubtitleStyle` (e.g. with `TestHexToBgrColor` and `TestCalculateMarginV`) actually correct?**
-  _`SubtitleStyle` has 271 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 264 inferred relationships involving `ClipOptions` (e.g. with `TestProcessingRequest` and `TestProcessingResult`) actually correct?**
-  _`ClipOptions` has 264 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 214 inferred relationships involving `UserPreferences` (e.g. with `TestIsYoutubeUrl` and `TestCreateTask`) actually correct?**
-  _`UserPreferences` has 214 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `TranscriptSegment` connect `Community 0` to `Community 1`, `Community 10`, `Community 3`, `Community 9`?**
+  _High betweenness centrality (0.208) - this node is a cross-community bridge._
+- **Why does `UserPreferences` connect `Community 2` to `Community 0`, `Community 1`, `Community 10`, `Community 4`?**
+  _High betweenness centrality (0.197) - this node is a cross-community bridge._
+- **Why does `SubtitleStyle` connect `Community 0` to `Community 1`, `Community 2`, `Community 4`, `Community 5`?**
+  _High betweenness centrality (0.176) - this node is a cross-community bridge._
+- **Are the 414 inferred relationships involving `TranscriptSegment` (e.g. with `TestResolveActiveSpeakerSide` and `TestOptionsForClipActiveSpeaker`) actually correct?**
+  _`TranscriptSegment` has 414 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 309 inferred relationships involving `ClipOptions` (e.g. with `TestResolveActiveSpeakerSide` and `TestOptionsForClipActiveSpeaker`) actually correct?**
+  _`ClipOptions` has 309 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 288 inferred relationships involving `SubtitleStyle` (e.g. with `TestHexToBgrColor` and `TestCalculateMarginV`) actually correct?**
+  _`SubtitleStyle` has 288 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 221 inferred relationships involving `Task` (e.g. with `TestResolveActiveSpeakerSide` and `TestOptionsForClipActiveSpeaker`) actually correct?**
+  _`Task` has 221 INFERRED edges - model-reasoned connections that need verification._
