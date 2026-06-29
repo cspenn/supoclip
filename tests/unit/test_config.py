@@ -184,6 +184,17 @@ class TestVlmConfig:
         assert config.vlm_image_max_dim == 512
         assert config.vlm_timeout_s == pytest.approx(90.0)
 
+    def test_rerank_defaults_and_overrides(self) -> None:
+        """Engagement re-ranking is off by default with 0.7/0.3 fusion weights."""
+        default = Config()
+        assert default.vlm_rerank_enabled is False
+        assert default.vlm_transcript_weight == pytest.approx(0.7)
+        assert default.vlm_visual_weight == pytest.approx(0.3)
+        overridden = Config(VLM_RERANK_ENABLED=True, VLM_TRANSCRIPT_WEIGHT=0.5, VLM_VISUAL_WEIGHT=0.5)
+        assert overridden.vlm_rerank_enabled is True
+        assert overridden.vlm_transcript_weight == pytest.approx(0.5)
+        assert overridden.vlm_visual_weight == pytest.approx(0.5)
+
     def test_invalid_content_mode_rejected(self) -> None:
         """content_mode only accepts single/duo/multi."""
         with pytest.raises(ValueError):

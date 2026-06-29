@@ -188,6 +188,33 @@ def parse_engagement(content: str) -> float | None:
     return _coerce_confidence(data.get("engagement"))
 
 
+def fuse_scores(
+    transcript_score: float,
+    engagement: float,
+    transcript_weight: float,
+    visual_weight: float,
+) -> float:
+    """Fuse a transcript relevance score with a visual engagement score.
+
+    Computes a weighted average so the result stays on the same [0,1] scale
+    regardless of the absolute weights. When both weights are zero, the
+    transcript score is returned unchanged (a safe identity).
+
+    Args:
+        transcript_score: LLM relevance score in [0,1].
+        engagement: VLM visual-engagement score in [0,1].
+        transcript_weight: Weight for the transcript score (>= 0).
+        visual_weight: Weight for the visual score (>= 0).
+
+    Returns:
+        The fused score in [0,1].
+    """
+    total = transcript_weight + visual_weight
+    if total <= 0:
+        return transcript_score
+    return (transcript_weight * transcript_score + visual_weight * engagement) / total
+
+
 # ---------------------------------------------------------------------------
 # VLM seam (e2e-tested; request construction is gate-tested with patched transport)
 # ---------------------------------------------------------------------------

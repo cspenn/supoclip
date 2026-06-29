@@ -96,6 +96,11 @@ class Config(BaseSettings):
     vlm_frames_per_clip: int = Field(default=5, validation_alias="VLM_FRAMES_PER_CLIP", ge=1)
     vlm_image_max_dim: int = Field(default=768, validation_alias="VLM_IMAGE_MAX_DIM", ge=64)
     vlm_timeout_s: float = Field(default=180.0, validation_alias="VLM_TIMEOUT_S", gt=0)
+    # Engagement re-ranking fuses transcript relevance with the VLM's visual score:
+    # fused = transcript_weight * transcript + visual_weight * engagement.
+    vlm_rerank_enabled: bool = Field(default=False, validation_alias="VLM_RERANK_ENABLED")
+    vlm_transcript_weight: float = Field(default=0.7, validation_alias="VLM_TRANSCRIPT_WEIGHT", ge=0)
+    vlm_visual_weight: float = Field(default=0.3, validation_alias="VLM_VISUAL_WEIGHT", ge=0)
 
     # Internal constants (not from env)
     FONTS_DIR: ClassVar[Path] = Path("fonts")

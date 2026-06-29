@@ -23,6 +23,7 @@ from src.pipeline.vision import (
     detect_active_speaker,
     extract_frame_b64,
     extract_json,
+    fuse_scores,
     parse_active_speaker,
     parse_engagement,
     sample_timestamps,
@@ -127,6 +128,19 @@ class TestParseEngagement:
 
     def test_no_json_returns_none(self) -> None:
         assert parse_engagement("none") is None
+
+
+class TestFuseScores:
+    def test_weighted_average(self) -> None:
+        # 0.7*0.8 + 0.3*0.4 = 0.68 over total 1.0
+        assert fuse_scores(0.8, 0.4, 0.7, 0.3) == pytest.approx(0.68)
+
+    def test_normalizes_by_total_weight(self) -> None:
+        # Unnormalized weights still yield a [0,1]-scaled result.
+        assert fuse_scores(1.0, 0.0, 2.0, 2.0) == pytest.approx(0.5)
+
+    def test_zero_weights_returns_transcript(self) -> None:
+        assert fuse_scores(0.9, 0.1, 0.0, 0.0) == pytest.approx(0.9)
 
 
 class TestBuildPayload:

@@ -39,6 +39,7 @@ from src.services.video_service import (
     _list_transition_files,
     _options_for_clip,
     _positive_number,
+    _rerank_by_engagement,
     _resolve_active_speaker_side,
     _save_generated_clip,
     _select_transition,
@@ -88,6 +89,56 @@ class TestOptionsForClipActiveSpeaker:
         result = _options_for_clip(base, 0, [], active_speaker_side="left")
         assert result is not base
         assert result.active_speaker_side == "left"  # type: ignore[union-attr]
+
+
+class TestRerankByEngagement:
+    """Tests for engagement-based segment re-ranking."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_returns_unchanged(self) -> None:
+        """With re-ranking off, segment order is untouched."""
+        segs = [_make_segment(start=0.0), _make_segment(start=10.0)]
+        cfg = SimpleNamespace(vlm_rerank_enabled=False)
+        with patch("src.services.video_service.get_config", return_value=cfg):
+            out = await _rerank_by_engagement(Path("/v.mp4"), segs)
+        assert out == segs
+
+    @pytest.mark.asyncio
+    async def test_empty_returns_unchanged(self) -> None:
+        """No segments → nothing to do."""
+        cfg = SimpleNamespace(vlm_rerank_enabled=True)
+        with patch("src.services.video_service.get_config", return_value=cfg):
+            assert await _rerank_by_engagement(Path("/v.mp4"), []) == []
+
+    @pytest.mark.asyncio
+    async def test_orders_by_visual_engagement(self) -> None:
+        """With pure visual weight, the most engaging segment sorts first."""
+        first = _make_segment(start=0.0, score=0.5)
+        second = _make_segment(start=10.0, score=0.6)
+        cfg = SimpleNamespace(vlm_rerank_enabled=True, vlm_transcript_weight=0.0, vlm_visual_weight=1.0)
+
+        def fake_score(_video: object, start: float, _end: float, *a: object) -> float:
+            return 0.9 if start == 0.0 else 0.1
+
+        with (
+            patch("src.services.video_service.get_config", return_value=cfg),
+            patch("src.pipeline.vision.score_engagement", side_effect=fake_score),
+        ):
+            out = await _rerank_by_engagement(Path("/v.mp4"), [second, first])
+        assert out[0] is first  # higher engagement despite lower transcript score
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_transcript_when_no_visual(self) -> None:
+        """When the VLM yields no engagement, the transcript score orders segments."""
+        low = _make_segment(start=0.0, score=0.3)
+        high = _make_segment(start=10.0, score=0.8)
+        cfg = SimpleNamespace(vlm_rerank_enabled=True, vlm_transcript_weight=1.0, vlm_visual_weight=0.0)
+        with (
+            patch("src.services.video_service.get_config", return_value=cfg),
+            patch("src.pipeline.vision.score_engagement", return_value=None),
+        ):
+            out = await _rerank_by_engagement(Path("/v.mp4"), [low, high])
+        assert out[0] is high
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +191,9 @@ def _make_cfg(tmp_path: Path, max_workers: int = 4) -> MagicMock:
     cfg = MagicMock()
     cfg.temp_dir = str(tmp_path)
     cfg.max_workers = max_workers
+    # Vision features default OFF so process_video tests exercise the deterministic
+    # path (the VLM seam is covered separately and in the e2e tier).
+    cfg.vlm_rerank_enabled = False
     return cfg
 
 

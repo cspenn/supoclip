@@ -329,6 +329,42 @@ async def _resolve_active_speaker_side(
     return speaker.side if speaker is not None else None
 
 
+async def _rerank_by_engagement(
+    source_video: Path,
+    segments: list[TranscriptSegment],
+) -> list[TranscriptSegment]:
+    """Re-order segments by a transcript+visual fused score (``None``-safe no-op).
+
+    When ``vlm_rerank_enabled`` is off (default) or there are no segments, the
+    input order is returned unchanged. Otherwise each segment's visual engagement
+    is scored by the VLM (off the event loop) and fused with its transcript
+    relevance; segments are sorted by the fused score descending so the strongest
+    clip is produced first. A segment whose visual score is unavailable keeps its
+    transcript score, so the VLM being disabled degrades cleanly to no reorder.
+
+    Args:
+        source_video: Path to the source video.
+        segments: Analysis-selected segments to re-rank.
+
+    Returns:
+        The segments, re-ordered (or unchanged when disabled).
+    """
+    cfg = get_config()
+    if not cfg.vlm_rerank_enabled or not segments:
+        return segments
+    from src.pipeline.vision import fuse_scores, score_engagement
+
+    async def _fused(seg: TranscriptSegment) -> float:
+        engagement = await asyncio.to_thread(score_engagement, source_video, seg.start_time, seg.end_time)
+        if engagement is None:
+            return seg.score
+        return fuse_scores(seg.score, engagement, cfg.vlm_transcript_weight, cfg.vlm_visual_weight)
+
+    fused = await asyncio.gather(*[_fused(s) for s in segments])
+    ordered = sorted(zip(fused, segments, strict=True), key=lambda pair: pair[0], reverse=True)
+    return [seg for _, seg in ordered]
+
+
 async def _generate_clips_concurrently(
     source_video: Path,
     segments: list[TranscriptSegment],
@@ -704,6 +740,7 @@ async def process_video(
         source_video = await _obtain_source(request, temp_dir, _notify)
         transcript_text, words = await _run_transcription(request, source_video, _notify)
         segments = await _run_analysis(request, transcript_text, words, _notify)
+        segments = await _rerank_by_engagement(source_video, segments)
         clip_paths, clip_metadata = await _run_clip_generation(
             request,
             source_video,
