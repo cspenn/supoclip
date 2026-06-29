@@ -52,6 +52,9 @@ package = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=100"
+markers = [
+    "integration: real-output tests that invoke ffmpeg/produce artifacts",
+]
 
 [tool.mypy]
 ignore_missing_imports = true

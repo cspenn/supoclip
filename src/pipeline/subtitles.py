@@ -152,6 +152,12 @@ def generate_ass_subtitles(
     """
     resolved_style = style or SubtitleStyle()
     subs = pysubs2.SSAFile()
+    # Pin the script resolution to the real clip dimensions. Without PlayResX/Y
+    # libass falls back to the legacy 384x288 coordinate space, so a MarginV
+    # computed for a 1080x1920 clip lands far below the frame and every caption
+    # renders off-screen (invisible). 9:16 width derives from the height.
+    subs.info["PlayResY"] = str(resolved_style.video_height)
+    subs.info["PlayResX"] = str(round(resolved_style.video_height * 9 / 16))
     subs.styles["Default"] = _build_style(resolved_style)
 
     skipped = 0

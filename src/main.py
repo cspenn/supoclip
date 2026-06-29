@@ -4,7 +4,7 @@
 Entry point for the NiceGUI + FastAPI application.
 """
 import structlog
-from nicegui import app, ui  # noqa: F401
+from nicegui import app, ui
 
 from src.config import get_config
 from src.database import init_db
@@ -41,9 +41,19 @@ async def settings_page() -> None:
 
 
 async def _startup() -> None:
-    """Initialize the database on application startup."""
+    """Initialize the database and mount static clip serving on startup."""
     cfg = get_config()
+    cfg.ensure_temp_dirs()
     await init_db(cfg.database_url)
+    # Serve generated clips so the task page can play and download them.
+    # Without this mount every /clips/{filename} request 404s (audit C-2).
+    # Guard against duplicate registration on hot reload / repeated startup.
+    clips_dir = cfg.temp_dir / "clips"
+    already_mounted = any(
+        getattr(route, "path", "").startswith("/clips") for route in app.routes
+    )
+    if not already_mounted:
+        app.add_media_files("/clips", clips_dir)
 
 
 async def _shutdown() -> None:

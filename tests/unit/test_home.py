@@ -141,10 +141,33 @@ class TestStartProcessing:
 
     @pytest.mark.asyncio
     async def test_calls_process_video_with_correct_request(self) -> None:
-        """_start_processing must build ProcessingRequest and call process_video."""
+        """_start_processing builds a styled ProcessingRequest and runs the pipeline.
+
+        Verifies the C-1 wiring: the request now carries a real SubtitleStyle
+        derived from saved preferences (it is no longer ``None``).
+        """
+        from src.models import UserPreferences
+
+        prefs = UserPreferences(
+            id=1,
+            font_family="Bangers",
+            font_size=30,
+            font_color="#FF0000",
+            font_stroke_color="#000000",
+            font_stroke_width=2.0,
+            font_shadow_offset=1,
+            subtitle_position_y=75,
+            min_clip_length=15,
+            max_clip_length=45,
+            output_resolution="1080p",
+            ai_prompt="punchy clips",
+        )
         mock_process = AsyncMock()
 
-        with patch("src.pages.home.process_video", mock_process):
+        with (
+            patch("src.pages.home.process_video", mock_process),
+            patch("src.pages.home.load_prefs", AsyncMock(return_value=prefs)),
+        ):
             await _start_processing(
                 task_id="abc-123",
                 source="https://youtu.be/test",
@@ -154,25 +177,43 @@ class TestStartProcessing:
             )
 
         mock_process.assert_awaited_once()
-        call_args = mock_process.call_args
-        request = call_args.args[0]
+        request = mock_process.call_args.args[0]
 
         assert request.task_id == "abc-123"
         assert request.source == "https://youtu.be/test"
         assert request.min_clip_length == 15
         assert request.max_clip_length == 45
         assert request.output_resolution == "1080p"
+        # C-1: the styling/prompt seam is now wired through.
+        assert request.subtitle_style is not None
+        assert request.subtitle_style.font_family == "Bangers"
+        assert request.custom_prompt == "punchy clips"
 
     @pytest.mark.asyncio
     async def test_passes_local_path_unchanged(self) -> None:
-        """_start_processing must forward a local file path as the source.
+        """_start_processing must forward a local file path as the source."""
+        from src.models import UserPreferences
 
-        Args: (none — parametrized via class context)
-        """
         mock_process = AsyncMock()
         local = "/tmp/my_video.mp4"
 
-        with patch("src.pages.home.process_video", mock_process):
+        prefs = UserPreferences(
+            id=1,
+            font_family="Arial",
+            font_size=24,
+            font_color="#FFFFFF",
+            font_stroke_color="#000000",
+            font_stroke_width=2.0,
+            font_shadow_offset=1,
+            subtitle_position_y=75,
+            min_clip_length=15,
+            max_clip_length=45,
+            output_resolution="720p",
+        )
+        with (
+            patch("src.pages.home.process_video", mock_process),
+            patch("src.pages.home.load_prefs", AsyncMock(return_value=prefs)),
+        ):
             await _start_processing(
                 task_id="xyz-789",
                 source=local,

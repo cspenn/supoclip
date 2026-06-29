@@ -105,6 +105,31 @@ class ClipGenerationError(Exception):
 # ---------------------------------------------------------------------------
 
 
+def _escape_filter_path(path: str | Path) -> str:
+    """Escape a filesystem path for safe use inside an ffmpeg filtergraph.
+
+    The ``-vf`` filtergraph treats ``\\``, ``:``, ``'``, ``[``, ``]``, ``,``
+    and ``;`` as special. A raw path containing a colon or space (e.g. a
+    ``TEMP_DIR`` with a space) silently corrupts the ``ass=`` filter and the
+    whole command fails (audit H-1, spec 10.4). We backslash-escape the special
+    characters; backslash must be escaped first so we do not double-escape the
+    escapes we add.
+
+    Args:
+        path: Path to embed in the filtergraph (e.g. an ``.ass`` file).
+
+    Returns:
+        The path string with filtergraph-special characters escaped.
+    """
+    text = str(path)
+    text = text.replace("\\", "\\\\")
+    text = text.replace(":", "\\:")
+    text = text.replace("'", "\\'")
+    text = text.replace("[", "\\[").replace("]", "\\]")
+    text = text.replace(",", "\\,").replace(";", "\\;")
+    return text
+
+
 def filter_words_for_segment(
     words: list[dict],
     start_s: float,
@@ -209,9 +234,9 @@ def build_ffmpeg_command(
     ]
 
     if ass_path is not None:
-        ass_filter = f"ass={ass_path}"
+        ass_filter = f"ass={_escape_filter_path(ass_path)}"
         if fonts_dir is not None:
-            ass_filter += f":fontsdir={fonts_dir}"
+            ass_filter += f":fontsdir={_escape_filter_path(fonts_dir)}"
         vf_parts.append(ass_filter)
 
     video_filter = ",".join(vf_parts)

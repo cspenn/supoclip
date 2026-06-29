@@ -15,6 +15,7 @@ from nicegui import ui
 
 from src.database import get_session
 from src.models import Task
+from src.pages.settings import load_prefs, subtitle_style_from_prefs
 from src.services.video_service import ProcessingRequest, process_video
 
 log = structlog.get_logger()
@@ -69,6 +70,46 @@ async def _create_task(source_url: str, source_type: str) -> str:
     return task_id
 
 
+async def build_processing_request(
+    *,
+    source: str,
+    task_id: str,
+    min_clip_length: int,
+    max_clip_length: int,
+    output_resolution: str,
+) -> ProcessingRequest:
+    """Construct a ProcessingRequest with saved style/prompt preferences wired in.
+
+    This closes the audit's C-1 seam: it loads the persisted ``UserPreferences``
+    and forwards a real ``SubtitleStyle`` (plus the custom AI prompt and logo
+    path) onto the request, so produced clips actually carry the user's
+    captions and styling instead of ``subtitle_style=None``.
+
+    Args:
+        source: YouTube URL or absolute path to a local video file.
+        task_id: Database Task UUID that tracks this run.
+        min_clip_length: Minimum clip duration in seconds.
+        max_clip_length: Maximum clip duration in seconds.
+        output_resolution: Target output resolution string, e.g. ``"1080p"``.
+
+    Returns:
+        A fully-populated :class:`ProcessingRequest`.
+    """
+    prefs = await load_prefs()
+    style = subtitle_style_from_prefs(prefs, output_resolution)
+    logo_path = Path(prefs.logo_path) if prefs.logo_path else None
+    return ProcessingRequest(
+        source=source,
+        task_id=task_id,
+        min_clip_length=min_clip_length,
+        max_clip_length=max_clip_length,
+        output_resolution=output_resolution,
+        subtitle_style=style,
+        logo_path=logo_path,
+        custom_prompt=prefs.ai_prompt,
+    )
+
+
 async def _start_processing(
     task_id: str,
     source: str,
@@ -88,7 +129,7 @@ async def _start_processing(
         max_len: Maximum clip duration in seconds.
         resolution: Target output resolution string, e.g. ``"1080p"``.
     """
-    request = ProcessingRequest(
+    request = await build_processing_request(
         source=source,
         task_id=task_id,
         min_clip_length=min_len,

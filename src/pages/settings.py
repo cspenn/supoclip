@@ -16,8 +16,13 @@ from nicegui import ui
 from src.config import Config, get_config
 from src.database import get_session
 from src.models import UserPreferences
+from src.pipeline.subtitles import SubtitleStyle
 
 log = structlog.get_logger()
+
+# Output-resolution preset -> video height in pixels (used for subtitle MarginV).
+_RESOLUTION_HEIGHTS: dict[str, int] = {"480p": 854, "720p": 1280, "1080p": 1920}
+_DEFAULT_VIDEO_HEIGHT: int = 1920
 
 # ---------------------------------------------------------------------------
 # Hex color validation
@@ -200,6 +205,46 @@ def _build_phone_html(
         f"{_PREVIEW_SAMPLE_TEXT}"
         "</span>"
         "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Preferences -> pipeline style mapping
+# ---------------------------------------------------------------------------
+
+
+def subtitle_style_from_prefs(
+    prefs: UserPreferences,
+    output_resolution: str | None = None,
+) -> SubtitleStyle:
+    """Map persisted ``UserPreferences`` onto a pipeline ``SubtitleStyle``.
+
+    This is the seam that the audit's C-1 finding identified as missing: the
+    Settings page persists a full subtitle style, but nothing converted it into
+    the ``SubtitleStyle`` the clip pipeline consumes, so every clip rendered
+    with ``subtitle_style=None`` and no captions.
+
+    Args:
+        prefs: The persisted user preferences row.
+        output_resolution: Resolution preset whose height drives the subtitle
+            ``MarginV`` math. Falls back to ``prefs.output_resolution`` when not
+            given.
+
+    Returns:
+        A ``SubtitleStyle`` carrying the user's font, size, colors, stroke,
+        shadow and vertical position.
+    """
+    resolution = output_resolution or prefs.output_resolution
+    video_height = _RESOLUTION_HEIGHTS.get(resolution, _DEFAULT_VIDEO_HEIGHT)
+    return SubtitleStyle(
+        font_family=prefs.font_family,
+        font_size=prefs.font_size,
+        font_color=prefs.font_color,
+        outline_color=prefs.font_stroke_color,
+        outline_width=prefs.font_stroke_width,
+        shadow_depth=float(prefs.font_shadow_offset),
+        position_y_pct=prefs.subtitle_position_y,
+        video_height=video_height,
     )
 
 
