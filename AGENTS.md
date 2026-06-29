@@ -2,73 +2,69 @@
 
 ## Project Structure & Module Organization
 
-SupoClip is a monorepo with three apps:
+SupoClip is a **single all-Python application** — NiceGUI for the UI and FastAPI
+for the API, running in one process with no frontend build step. There is no
+React, TypeScript, Node, or monorepo.
 
-- `backend/`: FastAPI + Python 3.11 service. Core code lives in `backend/src`, with features split into `services/`, `repositories/`, and `api/routes/`.
-- `frontend/`: Main Next.js 15 app in `frontend/src` (App Router). Shared UI in `frontend/src/components`, hooks in `frontend/src/hooks`, and utilities in `frontend/src/lib`.
-- `waitlist/`: Next.js 15 landing page app in `waitlist/src`.
-
-Supporting assets live in `backend/fonts`, `backend/transitions`, `frontend/public`, `waitlist/public`. Runtime output and logs commonly land in `temp/` and `logs/`. Backend tests live in `backend/tests`, while ad-hoc verification scripts and fixtures are under `tests/`.
+- `src/`: application code.
+  - `src/main.py`: FastAPI + NiceGUI entry point and page registration.
+  - `src/config.py`: Pydantic `BaseSettings` configuration (`get_config()` singleton).
+  - `src/database.py`, `src/models.py`: async SQLAlchemy + SQLite.
+  - `src/exceptions.py`: centralized `SupoClipError` hierarchy.
+  - `src/pages/`: NiceGUI pages (`home`, `task`, `history`, `settings`).
+  - `src/pipeline/`: `download`, `transcribe`, `analyze`, `clip`, `subtitles`, `face_detect`.
+  - `src/services/video_service.py`: pipeline orchestration.
+- `fonts/`: custom TTF fonts for subtitle burn-in. `transitions/`: transition clips.
+- `tests/`: pytest suite (`tests/unit`, `tests/integration`). Runtime output and
+  logs land in `temp/` and `logs/` (gitignored).
 
 ## Build, Test, and Development Commands
 
-Quick local boot (backend + frontend):
+Uses `uv` (not pip/poetry). ffmpeg **must be built with libass** for subtitle
+burn-in (`ffmpeg -filters | grep ass`); on macOS install via the
+`homebrew-ffmpeg/ffmpeg` tap if the core build lacks it.
 
 ```bash
-./start.sh
-```
-
-Backend (uses `uv`):
-
-```bash
-cd backend
-uv venv .venv && source .venv/bin/activate
 uv sync
-python -m src.main   # auto-selects a free port
-```
-
-Frontend / Waitlist:
-
-```bash
-cd frontend && npm install && npm run dev
-cd waitlist && npm install && npm run dev
-```
-
-Quality checks (backend):
-
-```bash
-cd backend && ./checkpython.sh
+python -m src.main          # http://localhost:8008  (UI + API + Swagger at /docs)
+uv run pytest tests/        # tests
+./checkpython.sh            # mandatory quality gate (must be green before commit)
 ```
 
 ## Coding Style & Naming Conventions
 
-- Python: follow existing FastAPI patterns in `backend/src`, keep modules small, and prefer type hints. See `docs/standards.md` for backend conventions.
-- TypeScript/React: components are PascalCase (`TaskCard.tsx`), hooks start with `use` (`useTasks.ts`), and shared utilities live in `src/lib`.
-- Keep new assets in the established folders (fonts in `backend/fonts`, static files in `*/public`).
+- Python 3.11+. Type hints on all functions/methods. Google-style docstrings.
+  PEP 8 via Ruff. Absolute imports from `src.*` only (no relative imports).
+- Source files begin with a `# start <path>` comment.
+- Use `structlog` for logging (never the stdlib `logging` module, no emoji logs).
+- Read configuration via `get_config()`; no hardcoded secrets or magic numbers.
+- Max radon/xenon complexity grade A or B; refactor grade C via helper extraction.
 
 ## Testing Guidelines
 
-- Backend uses pytest (see `backend/pytest.ini`). Tests are named `test_*.py` under `backend/tests`. Run: `cd backend && pytest` (use markers like `-m "not slow"`).
-- Frontend uses Jest. Run `cd frontend && npm run test` (watch) or `npm run test:ci` (CI with coverage).
-- Waitlist has linting only: `cd waitlist && npm run lint`.
+- pytest, files named `test_*.py`. `uv run pytest tests/`.
+- 100% line+branch coverage is required, but it is a **floor over meaningful
+  tests** — coverage achieved by mocking the thing under test is forbidden.
+  Integration tests in `tests/integration` produce and inspect real ffmpeg
+  artifacts (a real captioned `.mp4`, caption sync) and must run in the gate.
+- `./checkpython.sh` runs ruff, mypy, pyright, bandit, radon, xenon, deptry,
+  an import-cycle check, and the full pytest suite with coverage.
 
 ## Commit & Pull Request Guidelines
 
-Recent commit history uses Conventional Commits and scoped prefixes, plus VUW checkpoint entries:
-
-- Examples: `fix(e2e): ...`, `chore(qa): ...`, `docs: ...`, `VUW_TEST-001: ...`.
-
-For PRs, include a concise summary, list the tests you ran (commands + results), link relevant issues, and add screenshots for UI changes. Call out schema or config changes explicitly.
+Conventional Commits with scoped prefixes; VUW checkpoint entries are common.
+For PRs: concise summary, the tests you ran (commands + results), linked issues,
+and explicit callouts for schema/config changes.
 
 ## Configuration & Secrets
 
-Local dev uses `.env` files. The root `./start.sh` copies `.env.example` if needed and updates `frontend/.env.local`. Backend defaults to local-first settings in `backend/.env.example`, so API keys are optional for offline workflows.
+Local dev uses a root `.env` (gitignored). Defaults are local-first (local LLM,
+SQLite), so API keys are optional for offline workflows. See `docs/spec.md`.
 
 ## graphify
 
-This project has a graphify knowledge graph at graphify-out/.
+This project has a graphify knowledge graph at `graphify-out/`.
 
-Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- Before answering architecture/codebase questions, read `graphify-out/GRAPH_REPORT.md`.
+- If `graphify-out/wiki/index.md` exists, navigate it instead of raw files.
+- After modifying code, run `graphify update .` to keep the graph current.

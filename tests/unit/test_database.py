@@ -1,5 +1,6 @@
 # start tests/unit/test_database.py
 """Unit tests for src/database.py — lazy async SQLAlchemy engine."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -63,8 +64,8 @@ class TestInitDb:
         engine_second = get_engine()
         assert engine_first is engine_second
 
-    async def test_init_db_completes_when_models_module_not_found(self) -> None:
-        """init_db() completes without error when src.models cannot be imported."""
+    async def test_init_db_propagates_models_import_error(self) -> None:
+        """init_db() fails loudly when src.models cannot be imported (M-8)."""
         real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __import__
 
         def import_raise_for_models(name, *args, **kwargs):
@@ -72,11 +73,11 @@ class TestInitDb:
                 raise ModuleNotFoundError(name)
             return real_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=import_raise_for_models):
+        with (
+            patch("builtins.__import__", side_effect=import_raise_for_models),
+            pytest.raises(ModuleNotFoundError, match="src.models"),
+        ):
             await init_db(IN_MEMORY_URL)
-
-        engine = get_engine()
-        assert engine is not None
 
     async def test_get_engine_returns_engine_after_init(self) -> None:
         """get_engine() returns an engine instance after init_db()."""
@@ -130,4 +131,6 @@ class TestCloseDb:
         await close_db()
         with pytest.raises(RuntimeError, match="Database not initialized"):
             get_engine()
+
+
 # end tests/unit/test_database.py

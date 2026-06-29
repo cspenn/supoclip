@@ -3,16 +3,26 @@
 
 Tests cover:
 - round_to_even with odd/even integers
-- calculate_crop_box with face center, center fallback, and clamping behaviour
-- detect_face_center with MediaPipe mocked (no real inference)
+- calculate_crop_box with face center, center fallback, clamping, and the
+  positive-dimension guard (L-4)
+- detect_face_center filtering/selection logic (raw detection boundary mocked)
+- _detect_raw parsing of MediaPipe Tasks output (mediapipe I/O mocked)
+- _get_face_detector / _resolve_face_model graceful unavailability
+- a REAL detection run against the committed sample_video.mp4 fixture that must
+  return None or a valid center without raising
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from src.pipeline.face_detect import (
+    _FACE_MODEL_FILENAME,
+    _detect_raw,
+    _get_face_detector,
+    _resolve_face_model,
     calculate_crop_box,
     detect_face_center,
     get_representative_frame,
@@ -147,118 +157,280 @@ class TestCalculateCropBoxClamping:
 
 
 # ---------------------------------------------------------------------------
-# detect_face_center — MediaPipe mocked
+# calculate_crop_box — positive-dimension guard (L-4)
+# ---------------------------------------------------------------------------
+class TestCalculateCropBoxGuards:
+    def test_zero_frame_width_raises(self) -> None:
+        with pytest.raises(ValueError):
+            calculate_crop_box(0, 1080, None)
+
+    def test_zero_frame_height_raises(self) -> None:
+        """A zero height must raise before the ratio division (no ZeroDivision)."""
+        with pytest.raises(ValueError):
+            calculate_crop_box(1920, 0, None)
+
+    def test_negative_frame_dimension_raises(self) -> None:
+        with pytest.raises(ValueError):
+            calculate_crop_box(-100, 200, None)
+
+    def test_zero_target_width_raises(self) -> None:
+        with pytest.raises(ValueError):
+            calculate_crop_box(1920, 1080, None, target_width=0)
+
+    def test_negative_target_height_raises(self) -> None:
+        with pytest.raises(ValueError):
+            calculate_crop_box(1920, 1080, None, target_height=-1)
+
+
+# ---------------------------------------------------------------------------
+# detect_face_center — raw-detection boundary mocked
 # ---------------------------------------------------------------------------
 class TestDetectFaceCenter:
-    def _make_detection(
-        self,
-        xmin: float,
-        ymin: float,
-        width: float,
-        height: float,
-        score: float,
-    ) -> MagicMock:
-        """Build a minimal mock that looks like a MediaPipe detection."""
-        detection = MagicMock()
-        detection.location_data.relative_bounding_box.xmin = xmin
-        detection.location_data.relative_bounding_box.ymin = ymin
-        detection.location_data.relative_bounding_box.width = width
-        detection.location_data.relative_bounding_box.height = height
-        detection.score = [score]
-        return detection
-
-    def _mock_mediapipe(self, detections: list[MagicMock]) -> MagicMock:
-        """Return a mock mediapipe module with the given detections."""
-        mp = MagicMock()
-        detector_instance = MagicMock()
-        results = MagicMock()
-        results.detections = detections
-        detector_instance.__enter__ = MagicMock(return_value=detector_instance)
-        detector_instance.__exit__ = MagicMock(return_value=False)
-        detector_instance.process.return_value = results
-        mp.solutions.face_detection.FaceDetection.return_value = detector_instance
-        return mp
+    """Verifies filtering/selection logic over absolute-pixel detections."""
 
     def test_returns_face_center(self) -> None:
-        """A 30%-wide face centred at 50% should yield ~(100, 100) on a 200×200 frame."""
+        """A 60×60 box at (70,70) on a 200×200 frame yields center (100, 100)."""
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        detection = self._make_detection(0.35, 0.35, 0.30, 0.30, 0.9)
-        mp_mock = self._mock_mediapipe([detection])
-
-        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
+        # relative_area = 3600 / 40000 = 0.09 → within (0.005, 0.3)
+        with patch(
+            "src.pipeline.face_detect._detect_raw",
+            return_value=[(70, 70, 60, 60, 0.9)],
+        ):
             result = detect_face_center(frame)
 
         assert result is not None
         cx, cy = result
-        # Face spans x: 70–130, y: 70–130 → centre at (100, 100)
         assert abs(cx - 100) <= 2
         assert abs(cy - 100) <= 2
 
     def test_returns_none_when_no_detections(self) -> None:
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        mp_mock = self._mock_mediapipe([])
-        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
-            result = detect_face_center(frame)
-        assert result is None
+        with patch("src.pipeline.face_detect._detect_raw", return_value=[]):
+            assert detect_face_center(frame) is None
 
-    def test_returns_none_when_mediapipe_missing(self) -> None:
+    def test_returns_none_when_detection_unavailable(self) -> None:
+        """_detect_raw returning None (model/mediapipe absent) → None, no raise."""
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        # Setting sys.modules["mediapipe"] = None causes `import mediapipe`
-        # inside the function to raise ImportError without touching builtins.
-        with patch.dict("sys.modules", {"mediapipe": None}):
-            result = detect_face_center(frame)
-        assert result is None
+        with patch("src.pipeline.face_detect._detect_raw", return_value=None):
+            assert detect_face_center(frame) is None
 
     def test_small_face_ignored(self) -> None:
-        """Faces smaller than 30 px should be filtered out."""
+        """Faces with an edge ≤ 30 px are filtered out."""
         frame = np.zeros((1000, 1000, 3), dtype=np.uint8)
-        # 0.02 * 1000 = 20 px → below the 30 px threshold
-        detection = self._make_detection(0.0, 0.0, 0.02, 0.02, 0.99)
-        mp_mock = self._mock_mediapipe([detection])
-
-        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
-            result = detect_face_center(frame)
-        assert result is None
+        with patch(
+            "src.pipeline.face_detect._detect_raw",
+            return_value=[(0, 0, 20, 20, 0.99)],
+        ):
+            assert detect_face_center(frame) is None
 
     def test_picks_highest_confidence_face(self) -> None:
-        """When multiple faces qualify, the one with the highest score wins."""
+        """When multiple faces qualify, the highest-confidence one wins."""
         frame = np.zeros((500, 500, 3), dtype=np.uint8)
-        low_conf = self._make_detection(0.1, 0.1, 0.2, 0.2, 0.6)
-        high_conf = self._make_detection(0.5, 0.5, 0.2, 0.2, 0.95)
-        mp_mock = self._mock_mediapipe([low_conf, high_conf])
-
-        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
+        # Both boxes are 100×100 → area 10000/250000 = 0.04 (in bounds).
+        boxes = [(50, 50, 100, 100, 0.6), (250, 250, 100, 100, 0.95)]
+        with patch("src.pipeline.face_detect._detect_raw", return_value=boxes):
             result = detect_face_center(frame)
 
         assert result is not None
         cx, _ = result
-        # High-confidence face is at x=0.5*500=250, width=0.2*500=100 → cx=300
+        # High-confidence box: x=250, w=100 → center 300.
         assert abs(cx - 300) <= 2
 
     def test_face_outside_relative_area_bounds_ignored(self) -> None:
-        """A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is filtered out."""
+        """A face larger than _MAX_RELATIVE_AREA (0.3) of the frame is dropped."""
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        # Face is 0.8 * 200 = 160 px wide/tall (> 30 px threshold) but
-        # relative_area = 0.8 * 0.8 = 0.64, which exceeds _MAX_RELATIVE_AREA (0.3).
-        detection = self._make_detection(0.1, 0.1, 0.8, 0.8, 0.99)
-        mp_mock = self._mock_mediapipe([detection])
+        # 160×160 → relative_area 0.64 > 0.3
+        with patch(
+            "src.pipeline.face_detect._detect_raw",
+            return_value=[(20, 20, 160, 160, 0.99)],
+        ):
+            assert detect_face_center(frame) is None
 
-        with patch.dict("sys.modules", {"mediapipe": mp_mock}):
+    def test_zero_area_frame_returns_none(self) -> None:
+        """A degenerate empty frame returns None without raising."""
+        frame = np.zeros((0, 0, 3), dtype=np.uint8)
+        assert detect_face_center(frame) is None
+
+    def test_keeps_first_when_later_face_has_lower_confidence(self) -> None:
+        """A later, lower-confidence qualifying face does not displace the best."""
+        frame = np.zeros((500, 500, 3), dtype=np.uint8)
+        # High-confidence box FIRST, lower-confidence box second.
+        boxes = [(50, 50, 100, 100, 0.95), (250, 250, 100, 100, 0.6)]
+        with patch("src.pipeline.face_detect._detect_raw", return_value=boxes):
             result = detect_face_center(frame)
-        assert result is None
 
-    def test_detection_exception_returns_none(self) -> None:
-        """If MediaPipe raises an exception, return None gracefully."""
-        frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        mp = MagicMock()
-        detector_instance = MagicMock()
-        detector_instance.__enter__ = MagicMock(side_effect=RuntimeError("crash"))
-        detector_instance.__exit__ = MagicMock(return_value=False)
-        mp.solutions.face_detection.FaceDetection.return_value = detector_instance
+        assert result is not None
+        cx, _ = result
+        # First (higher-confidence) box: x=50, w=100 → center 100.
+        assert abs(cx - 100) <= 2
 
-        with patch.dict("sys.modules", {"mediapipe": mp}):
+
+class TestGetFaceDetector:
+    """Covers the FaceDetector construction error path."""
+
+    def test_init_failure_returns_none(self) -> None:
+        """When FaceDetector creation raises, _get_face_detector returns None."""
+        import src.pipeline.face_detect as fd
+
+        fd._get_face_detector.cache_clear()
+        try:
+            with (
+                patch.object(fd, "_resolve_face_model", return_value=Path("/fake/model.tflite")),
+                patch(
+                    "mediapipe.tasks.python.vision.FaceDetector.create_from_options",
+                    side_effect=RuntimeError("init boom"),
+                ),
+            ):
+                assert fd._get_face_detector() is None
+        finally:
+            fd._get_face_detector.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# _detect_raw — MediaPipe Tasks output parsing (mediapipe I/O mocked)
+# ---------------------------------------------------------------------------
+class TestDetectRaw:
+    def test_returns_none_when_detector_unavailable(self) -> None:
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        with patch("src.pipeline.face_detect._get_face_detector", return_value=None):
+            assert _detect_raw(frame) is None
+
+    def test_parses_detector_output_to_pixel_tuples(self) -> None:
+        """Tasks bounding boxes (absolute pixels) + score become int tuples."""
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+        bbox = MagicMock(origin_x=10, origin_y=20, width=30, height=40)
+        category = MagicMock(score=0.88)
+        detection = MagicMock(bounding_box=bbox, categories=[category])
+        detector = MagicMock()
+        detector.detect.return_value = MagicMock(detections=[detection])
+
+        with (
+            patch(
+                "src.pipeline.face_detect._get_face_detector",
+                return_value=detector,
+            ),
+            patch.dict("sys.modules", {"mediapipe": MagicMock()}),
+        ):
+            boxes = _detect_raw(frame)
+
+        assert boxes == [(10, 20, 30, 40, 0.88)]
+
+    def test_returns_none_when_detect_raises(self) -> None:
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        detector = MagicMock()
+        detector.detect.side_effect = RuntimeError("inference crash")
+
+        with (
+            patch(
+                "src.pipeline.face_detect._get_face_detector",
+                return_value=detector,
+            ),
+            patch.dict("sys.modules", {"mediapipe": MagicMock()}),
+        ):
+            assert _detect_raw(frame) is None
+
+
+# ---------------------------------------------------------------------------
+# _get_face_detector / _resolve_face_model — graceful unavailability
+# ---------------------------------------------------------------------------
+class TestFaceDetectorAvailability:
+    def test_detector_none_when_model_unavailable(self) -> None:
+        _get_face_detector.cache_clear()
+        try:
+            with patch("src.pipeline.face_detect._resolve_face_model", return_value=None):
+                assert _get_face_detector() is None
+        finally:
+            _get_face_detector.cache_clear()
+
+    def test_detector_none_when_mediapipe_missing(self, tmp_path: Path) -> None:
+        """Missing mediapipe import yields None (clean fallback), not an error."""
+        _get_face_detector.cache_clear()
+        fake_model = tmp_path / _FACE_MODEL_FILENAME
+        fake_model.write_bytes(b"stub")
+        try:
+            with (
+                patch(
+                    "src.pipeline.face_detect._resolve_face_model",
+                    return_value=fake_model,
+                ),
+                patch.dict("sys.modules", {"mediapipe.tasks.python": None}),
+            ):
+                assert _get_face_detector() is None
+        finally:
+            _get_face_detector.cache_clear()
+
+    def test_resolve_returns_cached_model_when_present(self, tmp_path: Path) -> None:
+        model = tmp_path / "models" / _FACE_MODEL_FILENAME
+        model.parent.mkdir(parents=True)
+        model.write_bytes(b"cached-model-bytes")
+        with patch("src.pipeline.face_detect._face_model_cache_path", return_value=model):
+            assert _resolve_face_model() == model
+
+    def test_resolve_downloads_and_caches_when_absent(self, tmp_path: Path) -> None:
+        """When no cached model exists, it is downloaded and written to disk."""
+        model = tmp_path / "models" / _FACE_MODEL_FILENAME
+
+        response = MagicMock()
+        response.content = b"downloaded-model-bytes"
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.__enter__ = MagicMock(return_value=client)
+        client.__exit__ = MagicMock(return_value=False)
+        client.get.return_value = response
+
+        with (
+            patch(
+                "src.pipeline.face_detect._face_model_cache_path",
+                return_value=model,
+            ),
+            patch("httpx.Client", return_value=client),
+        ):
+            result = _resolve_face_model()
+
+        assert result == model
+        # Real assertion: the model bytes were persisted to the cache path.
+        assert model.read_bytes() == b"downloaded-model-bytes"
+
+    def test_resolve_returns_none_on_download_failure(self, tmp_path: Path) -> None:
+        """A network error during download degrades to None (logged), not raise."""
+        import httpx
+
+        model = tmp_path / "models" / _FACE_MODEL_FILENAME
+
+        def boom(*args: object, **kwargs: object) -> None:
+            raise httpx.ConnectError("no network")
+
+        with (
+            patch(
+                "src.pipeline.face_detect._face_model_cache_path",
+                return_value=model,
+            ),
+            patch("httpx.Client.get", boom),
+        ):
+            assert _resolve_face_model() is None
+
+
+# ---------------------------------------------------------------------------
+# detect_face_center — REAL run against the committed fixture
+# ---------------------------------------------------------------------------
+class TestDetectFaceCenterReal:
+    """Ground-truth test: real frame → None or a valid center, never a raise."""
+
+    def test_real_frame_returns_none_or_valid_center(self) -> None:
+        fixture = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
+        frame = get_representative_frame(fixture, timestamp_s=0.2)
+        if frame is None:
+            pytest.skip("could not extract a frame from the fixture")
+
+        _get_face_detector.cache_clear()
+        try:
             result = detect_face_center(frame)
-        assert result is None
+        finally:
+            _get_face_detector.cache_clear()
+
+        height, width = frame.shape[:2]
+        assert result is None or (isinstance(result, tuple) and len(result) == 2 and 0 <= result[0] < width and 0 <= result[1] < height)
 
 
 # ---------------------------------------------------------------------------

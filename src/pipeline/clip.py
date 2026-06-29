@@ -23,12 +23,14 @@ Usage::
 """
 
 import asyncio
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
 
+from src.exceptions import ClipGenerationError
 from src.pipeline.face_detect import (
     calculate_crop_box,
     detect_face_center,
@@ -51,6 +53,19 @@ _DEFAULT_RESOLUTION: str = "1080p"
 
 # Representative frame timestamp used for face detection (seconds into segment)
 _FACE_DETECT_OFFSET_S: float = 1.0
+
+# ffprobe invocation prefix for probing the first video stream's dimensions.
+_FFPROBE_DIMENSION_ARGS: tuple[str, ...] = (
+    "ffprobe",
+    "-v",
+    "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=width,height",
+    "-of",
+    "json",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +109,6 @@ class ClipOptions:
     logo_path: str | Path | None = None
     add_transitions: bool = False
     transitions_dir: str | Path | None = None
-
-
-class ClipGenerationError(Exception):
-    """Raised when ffmpeg fails or clip generation cannot proceed."""
 
 
 # ---------------------------------------------------------------------------
@@ -244,16 +255,26 @@ def build_ffmpeg_command(
     return [
         "ffmpeg",
         "-y",  # overwrite output without prompting
-        "-ss", str(start_s),
-        "-i", str(input_path),
-        "-to", str(duration_s),
-        "-vf", video_filter,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
+        "-ss",
+        str(start_s),
+        "-i",
+        str(input_path),
+        "-to",
+        str(duration_s),
+        "-vf",
+        video_filter,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 
@@ -303,9 +324,7 @@ async def generate_clip(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     # Resolve output resolution.
-    out_width, out_height = RESOLUTIONS.get(
-        opts.output_resolution, RESOLUTIONS[_DEFAULT_RESOLUTION]
-    )
+    out_width, out_height = RESOLUTIONS.get(opts.output_resolution, RESOLUTIONS[_DEFAULT_RESOLUTION])
 
     # --- Step 1: face detection ----------------------------------------
     face_ts = segment.start_s + _FACE_DETECT_OFFSET_S
@@ -313,8 +332,8 @@ async def generate_clip(
     face_center = detect_face_center(frame) if frame is not None else None
 
     # --- Step 2: crop box -------------------------------------------------
-    # We need the source video's frame dimensions.  Read via cv2 if available;
-    # fall back to the target resolution (produces a valid but unoptimised crop).
+    # We need the source video's frame dimensions.  Probe them with ffprobe
+    # (the project's mandated tool); this fails loudly rather than guessing.
     frame_width, frame_height = _get_video_dimensions(source)
     crop_box = calculate_crop_box(
         frame_width=frame_width,
@@ -365,10 +384,7 @@ async def generate_clip(
 
     if result.returncode != 0:
         stderr = result.stderr or b""
-        raise ClipGenerationError(
-            f"ffmpeg failed (exit {result.returncode}): "
-            + stderr.decode(errors="replace").strip()
-        )
+        raise ClipGenerationError(f"ffmpeg failed (exit {result.returncode}): " + stderr.decode(errors="replace").strip())
 
     log.info(
         "clip_generated",
@@ -401,38 +417,60 @@ def _run_ffmpeg(cmd: list[str]) -> subprocess.CompletedProcess:  # type: ignore[
     )
 
 
-def _get_video_dimensions(video_path: Path) -> tuple[int, int]:
-    """Return (width, height) of the video, falling back to 1920×1080.
+def _parse_ffprobe_dimensions(stdout: bytes) -> tuple[int, int]:
+    """Parse (width, height) from ffprobe JSON output.
 
-    Uses cv2 when available.  Falls back gracefully so that the rest of
-    the pipeline can continue with a sensible default even on machines
-    without opencv.
+    Args:
+        stdout: Raw ffprobe stdout containing a JSON ``streams`` array.
+
+    Returns:
+        ``(width, height)`` in pixels.
+
+    Raises:
+        ClipGenerationError: If the JSON is malformed, missing the expected
+            keys, or reports non-positive dimensions.
+    """
+    try:
+        data = json.loads(stdout or b"{}")
+        stream = data["streams"][0]
+        width = int(stream["width"])
+        height = int(stream["height"])
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ClipGenerationError(f"could not parse ffprobe dimension output: {exc}") from exc
+
+    if width <= 0 or height <= 0:
+        raise ClipGenerationError(f"ffprobe reported invalid dimensions {width}x{height}")
+    return (width, height)
+
+
+def _get_video_dimensions(video_path: Path) -> tuple[int, int]:
+    """Return (width, height) of the video's first stream via ffprobe.
+
+    Uses ffprobe (bundled with ffmpeg, the project's mandated tool) instead of
+    cv2 so dimension probing never silently guesses. Fails loudly on any probe
+    error rather than returning a hardcoded fallback that would corrupt crops.
 
     Args:
         video_path: Path to the video file.
 
     Returns:
         ``(width, height)`` tuple in pixels.
-    """
-    try:
-        import cv2  # type: ignore[import-untyped]  # optional dependency
-    except ImportError:
-        log.warning("cv2_unavailable_for_dimensions", path=str(video_path))
-        return (1920, 1080)
 
-    cap = cv2.VideoCapture(str(video_path))
+    Raises:
+        ClipGenerationError: If ffprobe cannot be executed, exits non-zero, or
+            returns output that cannot be parsed into positive dimensions.
+    """
+    cmd = [*_FFPROBE_DIMENSION_ARGS, str(video_path)]
     try:
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        if width > 0 and height > 0:
-            return (width, height)
-        log.warning("invalid_video_dimensions", width=width, height=height)
-        return (1920, 1080)
-    except Exception as exc:
-        log.warning("video_dimension_error", error=str(exc))
-        return (1920, 1080)
-    finally:
-        cap.release()
+        result = subprocess.run(cmd, capture_output=True, check=False)
+    except OSError as exc:
+        raise ClipGenerationError(f"ffprobe could not be executed for {video_path}: {exc}") from exc
+
+    if result.returncode != 0:
+        stderr = (result.stderr or b"").decode(errors="replace").strip()
+        raise ClipGenerationError(f"ffprobe failed (exit {result.returncode}) for {video_path}: {stderr}")
+
+    return _parse_ffprobe_dimensions(result.stdout or b"")
 
 
 def _find_fonts_dir() -> Path | None:

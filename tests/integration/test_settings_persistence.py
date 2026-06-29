@@ -6,6 +6,7 @@ Tests cover:
 - Update existing preferences (partial field updates persist)
 - Defaults when no row exists (graceful None return)
 """
+
 import pytest
 
 from src.database import get_session
@@ -108,4 +109,6 @@ async def test_no_row_returns_none(test_db: None) -> None:
         result = await session.get(UserPreferences, 1)
 
     assert result is None
+
+
 # end tests/integration/test_settings_persistence.py

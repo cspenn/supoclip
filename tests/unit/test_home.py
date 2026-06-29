@@ -10,8 +10,10 @@ Covers:
 - on_start closure: no-input error, min>=max error, task-creation failure, success,
   local file path
 """
+
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -96,9 +98,7 @@ class TestCreateTask:
             patch("src.pages.home.get_session", _mock_get_session),
             patch("src.pages.home.Task", return_value=fake_task),
         ):
-            result = await _create_task(
-                "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "youtube"
-            )
+            result = await _create_task("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "youtube")
 
         assert result == "test-uuid-1234"
         fake_session.add.assert_called_once_with(fake_task)
@@ -422,11 +422,23 @@ class TestHandleUpload:
         ui_mock.notify.assert_called_with("Upload failed: no content received.", color="negative")
 
     @pytest.mark.asyncio
-    async def test_handle_upload_with_readable_content_saves_file(self) -> None:
-        """handle_upload must write readable content to disk and notify on success."""
-        ui_mock, callbacks = _build_full_ui_mock()
+    async def test_handle_upload_with_readable_content_saves_file(self, tmp_path: Path) -> None:
+        """handle_upload writes readable content under the configured temp dir.
 
-        with patch("src.pages.home.ui", ui_mock):
+        Asserts the H-12 fix: the file lands under ``temp_dir/uploads`` (the
+        configured directory), never the hardcoded ``/tmp``.
+
+        Args:
+            tmp_path: pytest-provided temporary directory used as temp_dir.
+        """
+        ui_mock, callbacks = _build_full_ui_mock()
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.get_config", return_value=cfg),
+        ):
             from src.pages.home import render
 
             await render()
@@ -439,21 +451,30 @@ class TestHandleUpload:
                 name = "clip.mp4"
                 content = fake_content
 
-            mock_path_instance = MagicMock()
-            mock_path_instance.__truediv__ = MagicMock(return_value=mock_path_instance)
+            handle_upload(_Event())
 
-            with patch("src.pages.home.Path", return_value=mock_path_instance):
-                handle_upload(_Event())
-
-        mock_path_instance.write_bytes.assert_called_once_with(b"fake video bytes")
+        # H-12: the file must land under the configured temp_dir/uploads — if
+        # the code still wrote to the old hardcoded /tmp, exists() would be False.
+        expected = tmp_path / "uploads" / "clip.mp4"
+        assert expected.exists(), "upload must be written under temp_dir/uploads"
+        assert expected.read_bytes() == b"fake video bytes"
         ui_mock.notify.assert_called_with("File ready: clip.mp4", color="positive")
 
     @pytest.mark.asyncio
-    async def test_handle_upload_with_bytes_content_saves_file(self) -> None:
-        """handle_upload must write raw bytes content (no .read()) directly."""
-        ui_mock, callbacks = _build_full_ui_mock()
+    async def test_handle_upload_with_bytes_content_saves_file(self, tmp_path: Path) -> None:
+        """handle_upload writes raw bytes (no ``.read()``) under temp_dir/uploads.
 
-        with patch("src.pages.home.ui", ui_mock):
+        Args:
+            tmp_path: pytest-provided temporary directory used as temp_dir.
+        """
+        ui_mock, callbacks = _build_full_ui_mock()
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.get_config", return_value=cfg),
+        ):
             from src.pages.home import render
 
             await render()
@@ -464,13 +485,11 @@ class TestHandleUpload:
                 name = "raw.mp4"
                 content = b"raw bytes"
 
-            mock_path_instance = MagicMock()
-            mock_path_instance.__truediv__ = MagicMock(return_value=mock_path_instance)
+            handle_upload(_Event())
 
-            with patch("src.pages.home.Path", return_value=mock_path_instance):
-                handle_upload(_Event())
-
-        mock_path_instance.write_bytes.assert_called_once_with(b"raw bytes")
+        expected = tmp_path / "uploads" / "raw.mp4"
+        assert expected.exists()
+        assert expected.read_bytes() == b"raw bytes"
         ui_mock.notify.assert_called_with("File ready: raw.mp4", color="positive")
 
 
@@ -577,11 +596,20 @@ class TestOnStart:
         ui_mock.navigate.to.assert_called_with("/task/task-id-9999")
 
     @pytest.mark.asyncio
-    async def test_on_start_local_path_used_when_no_url(self) -> None:
-        """on_start must use the uploaded local path when URL input is empty."""
-        ui_mock, callbacks = _build_full_ui_mock(url_value="", min_value=10, max_value=45)
+    async def test_on_start_local_path_used_when_no_url(self, tmp_path: Path) -> None:
+        """on_start must use the uploaded local path when URL input is empty.
 
-        with patch("src.pages.home.ui", ui_mock):
+        Args:
+            tmp_path: pytest-provided temporary directory used as temp_dir.
+        """
+        ui_mock, callbacks = _build_full_ui_mock(url_value="", min_value=10, max_value=45)
+        cfg = MagicMock()
+        cfg.temp_dir = tmp_path
+
+        with (
+            patch("src.pages.home.ui", ui_mock),
+            patch("src.pages.home.get_config", return_value=cfg),
+        ):
             from src.pages.home import render
 
             await render()
@@ -594,12 +622,7 @@ class TestOnStart:
                 name = "local.mp4"
                 content = b"bytes"
 
-            mock_path_instance = MagicMock()
-            mock_path_instance.__truediv__ = MagicMock(return_value=mock_path_instance)
-            mock_path_instance.__str__ = MagicMock(return_value="/tmp/local.mp4")
-
-            with patch("src.pages.home.Path", return_value=mock_path_instance):
-                handle_upload(_UploadEvent())
+            handle_upload(_UploadEvent())
 
             on_start = callbacks["button"][0]
             mock_create = AsyncMock(return_value="local-task-id")
@@ -614,4 +637,9 @@ class TestOnStart:
         # source_type must be "upload" for a local file with no URL
         create_call_args = mock_create.call_args
         assert create_call_args.args[1] == "upload"
+        # The uploaded source path must point under the configured temp dir.
+        expected_source = str(tmp_path / "uploads" / "local.mp4")
+        assert create_call_args.args[0] == expected_source
+
+
 # end tests/unit/test_home.py

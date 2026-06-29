@@ -1,5 +1,6 @@
 # start tests/integration/conftest.py
 """Shared fixtures for SupoClip integration tests."""
+
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -40,9 +41,7 @@ def mock_ffmpeg():
 def mock_yt_dlp():
     """Mock yt-dlp to avoid real YouTube downloads."""
     with patch("src.pipeline.download.yt_dlp") as mock_ydl:
-        mock_ydl.YoutubeDL.return_value.__enter__ = MagicMock(
-            return_value=mock_ydl.YoutubeDL.return_value
-        )
+        mock_ydl.YoutubeDL.return_value.__enter__ = MagicMock(return_value=mock_ydl.YoutubeDL.return_value)
         mock_ydl.YoutubeDL.return_value.__exit__ = MagicMock(return_value=False)
         mock_ydl.YoutubeDL.return_value.download = MagicMock()
         yield mock_ydl
@@ -79,4 +78,6 @@ def mock_analyze():
     with patch("src.services.video_service.analyze_transcript") as mock_at:
         mock_at.return_value = segments
         yield mock_at
+
+
 # end tests/integration/conftest.py

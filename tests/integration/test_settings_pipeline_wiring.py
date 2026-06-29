@@ -114,9 +114,7 @@ async def test_home_request_carries_subtitle_style(test_db: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_video_service_forwards_style_to_write_ass_file(
-    test_db: None, tmp_path: object
-) -> None:
+async def test_video_service_forwards_style_to_write_ass_file(test_db: None, tmp_path: object) -> None:
     """video_service hands the request's style down to write_ass_file.
 
     Locks the downstream half of the seam: even if S1 wires the request, this
@@ -127,9 +125,8 @@ async def test_video_service_forwards_style_to_write_ass_file(
     from pathlib import Path
 
     import src.pipeline.clip as clip_mod
-    from src.pipeline.clip import ClipOptions
+    from src.pipeline.clip import ClipOptions, generate_clip
     from src.pipeline.clip import TranscriptSegment as ClipSegment
-    from src.pipeline.clip import generate_clip
     from src.pipeline.subtitles import SubtitleStyle
 
     style = SubtitleStyle(font_family="Bangers", font_color="#FF0000")
@@ -142,9 +139,7 @@ async def test_video_service_forwards_style_to_write_ass_file(
     with patch.object(clip_mod, "_run_ffmpeg") as mock_ff:
         mock_ff.return_value = type("R", (), {"returncode": 0, "stderr": b""})()
         with patch.object(clip_mod, "write_ass_file") as mock_write:
-            mock_write.side_effect = lambda w, p, style=None: captured.__setitem__(
-                "style", style
-            )
+            mock_write.side_effect = lambda w, p, style=None: captured.__setitem__("style", style)
             await generate_clip(
                 source_video=Path("tests/fixtures/sample_video.mp4"),
                 segment=seg,

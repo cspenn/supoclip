@@ -1,5 +1,6 @@
 # start tests/unit/test_history.py
 """Unit tests for src/pages/history.py."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -341,9 +342,7 @@ class TestRenderErrorHandling:
 
         mock_ui.notify.assert_called_once()
         call_kwargs = mock_ui.notify.call_args
-        assert call_kwargs.kwargs.get("type") == "negative" or (
-            len(call_kwargs.args) > 1 and call_kwargs.args[1] == "negative"
-        )
+        assert call_kwargs.kwargs.get("type") == "negative" or (len(call_kwargs.args) > 1 and call_kwargs.args[1] == "negative")
         mock_row.assert_not_called()
         mock_empty.assert_not_called()
 
@@ -504,9 +503,7 @@ class TestRenderTaskRow:
             mock_ui.badge.side_effect = capture_badge
             mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
             mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
-            mock_ui.button.return_value = MagicMock(
-                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
-            )
+            mock_ui.button.return_value = MagicMock(props=MagicMock(return_value=MagicMock(tooltip=MagicMock())))
 
             _render_task_row(task, clip_count=1)
 
@@ -531,9 +528,7 @@ class TestRenderTaskRow:
             mock_ui.badge.side_effect = capture_badge
             mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
             mock_ui.label.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
-            mock_ui.button.return_value = MagicMock(
-                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
-            )
+            mock_ui.button.return_value = MagicMock(props=MagicMock(return_value=MagicMock(tooltip=MagicMock())))
 
             _render_task_row(task, clip_count=0)
 
@@ -557,9 +552,7 @@ class TestRenderTaskRow:
             mock_ui.badge.return_value = MagicMock()
             mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
             mock_ui.label.side_effect = capture_label
-            mock_ui.button.return_value = MagicMock(
-                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
-            )
+            mock_ui.button.return_value = MagicMock(props=MagicMock(return_value=MagicMock(tooltip=MagicMock())))
 
             _render_task_row(task, clip_count=1)
 
@@ -583,9 +576,7 @@ class TestRenderTaskRow:
             mock_ui.badge.return_value = MagicMock()
             mock_ui.link.return_value = MagicMock(classes=MagicMock(return_value=MagicMock()))
             mock_ui.label.side_effect = capture_label
-            mock_ui.button.return_value = MagicMock(
-                props=MagicMock(return_value=MagicMock(tooltip=MagicMock()))
-            )
+            mock_ui.button.return_value = MagicMock(props=MagicMock(return_value=MagicMock(tooltip=MagicMock())))
 
             _render_task_row(task, clip_count=3)
 
@@ -640,4 +631,6 @@ class TestRenderEmptyStateDirect:
             _render_empty_state()
 
         assert "/" in link_targets
+
+
 # end tests/unit/test_history.py

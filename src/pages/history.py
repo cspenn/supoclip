@@ -4,6 +4,7 @@
 Displays all video processing tasks ordered by creation date, with status
 badges, clip counts, per-row navigation links, and delete controls.
 """
+
 from datetime import datetime
 
 import structlog
@@ -59,16 +60,10 @@ async def _load_tasks() -> tuple[list[Task], dict[str, int]]:
         ``created_at DESC`` and *clip_counts* maps ``task_id -> count``.
     """
     async with get_session() as session:
-        task_result = await session.execute(
-            select(Task).order_by(Task.created_at.desc())
-        )
+        task_result = await session.execute(select(Task).order_by(Task.created_at.desc()))
         tasks = list(task_result.scalars().all())
 
-        count_result = await session.execute(
-            select(GeneratedClip.task_id, func.count().label("n")).group_by(
-                GeneratedClip.task_id
-            )
-        )
+        count_result = await session.execute(select(GeneratedClip.task_id, func.count().label("n")).group_by(GeneratedClip.task_id))
         clip_counts: dict[str, int] = {row[0]: row[1] for row in count_result.all()}
 
     log.debug("history.tasks_loaded", count=len(tasks))
@@ -116,9 +111,7 @@ def _render_task_row(task: Task, clip_count: int) -> None:
 
     with ui.card().classes("w-full p-4 mb-2"):  # noqa: SIM117
         with ui.row().classes("w-full items-center gap-4 flex-wrap"):
-            ui.link(display_url, f"/task/{task.id}").classes(
-                "text-blue-600 hover:underline flex-1 min-w-0 truncate"
-            )
+            ui.link(display_url, f"/task/{task.id}").classes("text-blue-600 hover:underline flex-1 min-w-0 truncate")
             ui.badge(task.status, color=color)
             ui.label(formatted_date).classes("text-sm text-gray-500")
             ui.label(clip_label).classes("text-sm text-gray-600")
@@ -132,12 +125,8 @@ def _render_empty_state() -> None:
     """Render the empty-state message when no tasks exist."""
     with ui.column().classes("w-full items-center mt-16 gap-4"):
         ui.icon("video_library", size="4rem").classes("text-gray-300")
-        ui.label("No clips yet — start by processing a video").classes(
-            "text-lg text-gray-500"
-        )
-        ui.link("Process a video now", "/").classes(
-            "text-blue-600 hover:underline text-base"
-        )
+        ui.label("No clips yet — start by processing a video").classes("text-lg text-gray-500")
+        ui.link("Process a video now", "/").classes("text-blue-600 hover:underline text-base")
 
 
 async def render() -> None:
@@ -173,4 +162,6 @@ async def render() -> None:
         for task in tasks:
             count = clip_counts.get(task.id, 0)
             _render_task_row(task, count)
+
+
 # end src/pages/history.py

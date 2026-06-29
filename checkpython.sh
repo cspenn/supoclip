@@ -39,7 +39,7 @@ run "mypy"              uv run mypy src
 run "pyright"           uv run pyright src
 
 # --- Security ------------------------------------------------------------
-run "bandit"            uv run bandit -r src -q
+run "bandit"            uv run bandit -r src -q -c pyproject.toml
 
 # --- Complexity ----------------------------------------------------------
 # radon: fail if ANY function is grade C or worse.

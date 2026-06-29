@@ -10,9 +10,12 @@ Module: src/pipeline/transcribe.py
 """
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 import structlog
+
+from src.exceptions import TranscriptionError as BaseTranscriptionError
 
 logger = structlog.get_logger(__name__)
 
@@ -26,12 +29,13 @@ _DEFAULT_MODEL_ID: str = "mlx-community/parakeet-tdt-0.6b-v2"
 
 try:
     import parakeet_mlx  # type: ignore[import-untyped]  # noqa: F401
+
     PARAKEET_AVAILABLE: bool = True
 except ImportError:
     PARAKEET_AVAILABLE = False
 
 
-class TranscriptionError(Exception):
+class TranscriptionError(BaseTranscriptionError):
     """Raised when video transcription fails."""
 
 
@@ -192,6 +196,44 @@ def save_transcript_cache(video_path: str | Path, words: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _token_to_dict(token: object) -> dict | None:
+    """Convert a single parakeet token object to a raw dict.
+
+    Args:
+        token: Token object exposing ``text``, ``start``, and ``end``
+            attributes.
+
+    Returns:
+        A dict with ``text``, ``start``, ``end`` keys, or ``None`` if the
+        token has empty/whitespace text or a non-positive duration.
+    """
+    text = getattr(token, "text", "")
+    if not text or not text.strip():
+        return None
+    start = getattr(token, "start", 0.0)
+    end = getattr(token, "end", 0.0)
+    if start >= end:
+        return None
+    return {"text": text, "start": start, "end": end}
+
+
+def _collect_valid_tokens(tokens: Iterable[object]) -> list[dict]:
+    """Convert and filter a sequence of token objects to raw dicts.
+
+    Args:
+        tokens: Iterable of token objects.
+
+    Returns:
+        List of valid raw token dicts; invalid tokens are dropped.
+    """
+    collected: list[dict] = []
+    for token in tokens:
+        converted = _token_to_dict(token)
+        if converted is not None:
+            collected.append(converted)
+    return collected
+
+
 def _tokens_from_result(result: object) -> list[dict]:
     """Extract raw token dicts from a parakeet-mlx AlignedResult.
 
@@ -204,38 +246,19 @@ def _tokens_from_result(result: object) -> list[dict]:
     Returns:
         List of raw token dicts with ``text``, ``start``, and ``end`` keys.
     """
-    raw: list[dict] = []
-
     # Prefer sentence-level tokens — these are already word-level in parakeet.
+    raw: list[dict] = []
     sentences = getattr(result, "sentences", None)
     if sentences:
         for sentence in sentences:
             tokens = getattr(sentence, "tokens", None) or []
-            for token in tokens:
-                text = getattr(token, "text", "")
-                if not text or not text.strip():
-                    continue
-                start = getattr(token, "start", 0.0)
-                end = getattr(token, "end", 0.0)
-                if start >= end:
-                    continue
-                raw.append({"text": text, "start": start, "end": end})
+            raw.extend(_collect_valid_tokens(tokens))
         if raw:
             return raw
 
     # Fall back to top-level flattened tokens (BPE sub-words).
     top_tokens = getattr(result, "tokens", None) or []
-    for token in top_tokens:
-        text = getattr(token, "text", "")
-        if not text or not text.strip():
-            continue
-        start = getattr(token, "start", 0.0)
-        end = getattr(token, "end", 0.0)
-        if start >= end:
-            continue
-        raw.append({"text": text, "start": start, "end": end})
-
-    return raw
+    return _collect_valid_tokens(top_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +290,7 @@ def transcribe_video(video_path: str | Path) -> list[dict]:
         return cached
 
     if not PARAKEET_AVAILABLE:
-        raise TranscriptionError(
-            "parakeet-mlx is not installed. "
-            "Install with: uv pip install parakeet-mlx"
-        )
+        raise TranscriptionError("parakeet-mlx is not installed. Install with: uv pip install parakeet-mlx")
 
     logger.info("transcribe.start", path=str(p), model=_DEFAULT_MODEL_ID)
 

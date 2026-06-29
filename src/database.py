@@ -4,6 +4,7 @@
 The engine is initialized lazily on first use or via init_db().
 This avoids module-level side effects that break tests and imports.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -15,7 +16,9 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
+
+# Re-exported so existing `from src.database import Base` callers keep working.
+from src.db_base import Base
 
 log = structlog.get_logger()
 
@@ -23,9 +26,7 @@ log = structlog.get_logger()
 _engine = None
 _session_factory = None
 
-
-class Base(DeclarativeBase):
-    """Base class for all ORM models."""
+__all__ = ["Base", "close_db", "get_engine", "get_session", "init_db"]
 
 
 def get_engine():
@@ -93,12 +94,10 @@ async def init_db(database_url: str) -> None:
         class_=AsyncSession,
     )
 
-    # Import models here to ensure they're registered with Base.
-    # This is optional: if models haven't been written yet, skip gracefully.
-    try:
-        import src.models  # noqa: F401
-    except ModuleNotFoundError:
-        log.debug("database.models_not_found", note="Skipping model registration")
+    # Import models here to ensure they're registered with Base before
+    # create_all runs. A failure to import models is a real bug — let it
+    # propagate rather than silently creating an empty schema.
+    import src.models  # noqa: F401
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -118,4 +117,6 @@ async def close_db() -> None:
         _engine = None
         _session_factory = None
         log.info("database.closed")
+
+
 # end src/database.py

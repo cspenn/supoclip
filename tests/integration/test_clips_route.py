@@ -27,9 +27,7 @@ from src.config import get_config
 
 
 @pytest.mark.asyncio
-async def test_startup_mounts_clips_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_startup_mounts_clips_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """_startup registers /clips against temp/clips and creates the directory."""
     monkeypatch.setenv("TEMP_DIR", str(tmp_path))
     get_config.cache_clear()

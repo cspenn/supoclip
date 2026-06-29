@@ -1,5 +1,6 @@
 # start tests/unit/test_main.py
 """Unit tests for src/main.py — application entry point."""
+
 from __future__ import annotations
 
 import importlib
@@ -17,8 +18,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 def _passthrough_page_decorator(path: str):  # noqa: ANN001
     """Return a decorator that passes the function through unchanged."""
+
     def decorator(fn):  # noqa: ANN001, ANN202
         return fn
+
     return decorator
 
 
@@ -150,6 +153,23 @@ class TestStartup:
             await _main._startup()
         mock_init_db.assert_awaited_once_with("sqlite+aiosqlite:///./test.db")
 
+    async def test_skips_clips_mount_when_already_registered(self) -> None:
+        """_startup does not double-register /clips on repeated startup (reload)."""
+        import nicegui
+
+        fake_cfg = MagicMock()
+        fake_cfg.database_url = "sqlite+aiosqlite:///./test.db"
+        existing_route = MagicMock()
+        existing_route.path = "/clips/{filename:path}"
+        with (
+            patch.object(_main, "get_config", return_value=fake_cfg),
+            patch.object(_main, "init_db", AsyncMock()),
+            patch.object(nicegui.app, "routes", [existing_route]),
+            patch.object(nicegui.app, "add_media_files") as mock_add,
+        ):
+            await _main._startup()
+        mock_add.assert_not_called()
+
 
 class TestShutdown:
     """Tests for _shutdown()."""
@@ -179,9 +199,7 @@ class TestMain:
 
         nicegui.app.on_startup.assert_called_once()
         nicegui.app.on_shutdown.assert_called_once()
-        nicegui.ui.run.assert_called_once_with(
-            title="SupoClip", port=8008, show=False, reload=False
-        )
+        nicegui.ui.run.assert_called_once_with(title="SupoClip", port=8008, show=False, reload=False)
 
 
 class TestModuleLevelGuard:
@@ -233,7 +251,7 @@ class TestModuleLevelGuard:
                     sys.modules[name] = original_stubs[name]
 
         # main() was invoked by the guard, which calls ui.run
-        nicegui.ui.run.assert_called_once_with(
-            title="SupoClip", port=8008, show=False, reload=False
-        )
+        nicegui.ui.run.assert_called_once_with(title="SupoClip", port=8008, show=False, reload=False)
+
+
 # end tests/unit/test_main.py

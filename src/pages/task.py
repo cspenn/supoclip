@@ -5,6 +5,7 @@ Displays real-time processing progress while a task is running, then shows
 a grid of generated clips once processing is complete.  Error states are
 surfaced with a red banner.
 """
+
 import structlog
 from nicegui import ui
 from sqlalchemy import select
@@ -84,20 +85,14 @@ def _render_clip_card(clip: GeneratedClip) -> None:
                 clip_title = clip.title or clip.filename
                 ui.label(clip_title).classes("text-base font-semibold flex-1")
 
-                score_pct = (
-                    f"{clip.score * 100:.0f}%" if clip.score is not None else "N/A"
-                )
+                score_pct = f"{clip.score * 100:.0f}%" if clip.score is not None else "N/A"
                 colour = _score_color(clip.score)
-                ui.badge(f"Score: {score_pct}").classes(
-                    f"text-xs px-2 py-0.5 rounded-full {colour}"
-                )
+                ui.badge(f"Score: {score_pct}").classes(f"text-xs px-2 py-0.5 rounded-full {colour}")
 
             # timing
             start_fmt = _format_seconds(clip.start_time)
             end_fmt = _format_seconds(clip.end_time)
-            ui.label(f"{start_fmt} – {end_fmt}  ({clip.duration:.1f}s)").classes(
-                "text-xs text-gray-500"
-            )
+            ui.label(f"{start_fmt} – {end_fmt}  ({clip.duration:.1f}s)").classes("text-xs text-gray-500")
 
             # download
             ui.button(
@@ -109,9 +104,7 @@ def _render_clip_card(clip: GeneratedClip) -> None:
             # collapsible transcript
             if clip.transcript_text:
                 with ui.expansion("Transcript", icon="article").classes("w-full"):
-                    ui.label(clip.transcript_text).classes(
-                        "text-sm text-gray-600 whitespace-pre-wrap"
-                    )
+                    ui.label(clip.transcript_text).classes("text-sm text-gray-600 whitespace-pre-wrap")
 
 
 async def render(task_id: str) -> None:
@@ -142,12 +135,8 @@ async def render(task_id: str) -> None:
         if task is None:
             log.warning("task_page.not_found", task_id=task_id)
             with ui.card().classes("m-4 p-4 bg-yellow-50 border border-yellow-300"):
-                ui.label(f"Task '{task_id}' not found.").classes(
-                    "text-yellow-800 font-semibold"
-                )
-                ui.label(
-                    "The task may have been deleted or the URL is incorrect."
-                ).classes("text-yellow-700 text-sm")
+                ui.label(f"Task '{task_id}' not found.").classes("text-yellow-800 font-semibold")
+                ui.label("The task may have been deleted or the URL is incorrect.").classes("text-yellow-700 text-sm")
             return
 
         source_display = _truncate(task.source_url)
@@ -159,11 +148,7 @@ async def render(task_id: str) -> None:
         # prefetch clips if already completed
         initial_clips: list[GeneratedClip] = []
         if initial_status == "completed":
-            result = await session.execute(
-                select(GeneratedClip)
-                .where(GeneratedClip.task_id == task_id)
-                .order_by(GeneratedClip.created_at)
-            )
+            result = await session.execute(select(GeneratedClip).where(GeneratedClip.task_id == task_id).order_by(GeneratedClip.created_at))
             initial_clips = list(result.scalars().all())
 
     # --- page title ---
@@ -175,24 +160,16 @@ async def render(task_id: str) -> None:
     # --- progress section ---
     with ui.column().classes("w-full px-4 py-3 gap-2") as progress_section:
         status_label = ui.label(initial_message).classes("text-sm text-gray-700")
-        progress_bar = ui.linear_progress(
-            value=initial_progress / 100.0
-        ).classes("w-full")
+        progress_bar = ui.linear_progress(value=initial_progress / 100.0).classes("w-full")
 
     # --- error banner (hidden initially unless already failed) ---
-    with ui.card().classes(
-        "w-full mx-4 mt-2 p-3 bg-red-50 border border-red-300"
-    ) as error_card:
-        error_label = ui.label(initial_error or "").classes(
-            "text-red-800 text-sm font-medium"
-        )
+    with ui.card().classes("w-full mx-4 mt-2 p-3 bg-red-50 border border-red-300") as error_card:
+        error_label = ui.label(initial_error or "").classes("text-red-800 text-sm font-medium")
 
     error_card.set_visibility(initial_status == "failed" and bool(initial_error))
 
     # --- clips container ---
-    clips_heading = ui.label("Generated Clips").classes(
-        "text-lg font-semibold px-4 pt-4"
-    )
+    clips_heading = ui.label("Generated Clips").classes("text-lg font-semibold px-4 pt-4")
     clips_heading.set_visibility(initial_status == "completed")
 
     with ui.grid(columns=2).classes("w-full px-4 gap-4") as clips_grid:
@@ -203,11 +180,7 @@ async def render(task_id: str) -> None:
     async def _show_clips() -> None:
         """Fetch completed clips from DB and populate the clips grid."""
         async with get_session() as session:
-            result = await session.execute(
-                select(GeneratedClip)
-                .where(GeneratedClip.task_id == task_id)
-                .order_by(GeneratedClip.created_at)
-            )
+            result = await session.execute(select(GeneratedClip).where(GeneratedClip.task_id == task_id).order_by(GeneratedClip.created_at))
             clips = list(result.scalars().all())
 
         clips_grid.clear()

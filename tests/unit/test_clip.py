@@ -1,19 +1,20 @@
 # start tests/unit/test_clip.py
 """Unit tests for src/pipeline/clip.py."""
 
+import shutil
 import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.exceptions import ClipGenerationError
 from src.pipeline.clip import (
-    ClipGenerationError,
     ClipOptions,
     TranscriptSegment,
     _find_fonts_dir,
     _get_video_dimensions,
+    _parse_ffprobe_dimensions,
     _run_ffmpeg,
     build_ffmpeg_command,
     filter_words_for_segment,
@@ -28,14 +29,15 @@ from src.pipeline.subtitles import SubtitleStyle
 _SAMPLE_WORDS: list[dict] = [
     {"text": "Hello", "start_ms": 10000, "end_ms": 10400},
     {"text": "world", "start_ms": 10400, "end_ms": 10900},
-    {"text": "foo",   "start_ms": 20000, "end_ms": 20500},
-    {"text": "bar",   "start_ms": 30000, "end_ms": 30500},
+    {"text": "foo", "start_ms": 20000, "end_ms": 20500},
+    {"text": "bar", "start_ms": 30000, "end_ms": 30500},
 ]
 
 
 # ---------------------------------------------------------------------------
 # filter_words_for_segment
 # ---------------------------------------------------------------------------
+
 
 class TestFilterWordsForSegment:
     """Tests for filter_words_for_segment."""
@@ -103,6 +105,7 @@ class TestFilterWordsForSegment:
 # ---------------------------------------------------------------------------
 # build_ffmpeg_command
 # ---------------------------------------------------------------------------
+
 
 class TestBuildFfmpegCommand:
     """Tests for build_ffmpeg_command."""
@@ -226,12 +229,11 @@ class TestBuildFfmpegCommand:
 # generate_clip — mocked ffmpeg
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateClip:
     """Tests for generate_clip using mocked subprocess."""
 
-    def _make_segment(
-        self, start_s: float = 10.0, end_s: float = 40.0
-    ) -> TranscriptSegment:
+    def _make_segment(self, start_s: float = 10.0, end_s: float = 40.0) -> TranscriptSegment:
         return TranscriptSegment(start_s=start_s, end_s=end_s, text="test segment")
 
     def _success_proc(self) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
@@ -361,6 +363,31 @@ class TestGenerateClip:
         mock_write_ass.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_no_ass_when_style_set_but_no_words_in_segment(self, tmp_path: Path) -> None:
+        """With a style but zero words overlapping the segment, no .ass is written."""
+        out = tmp_path / "clip.mp4"
+        segment = self._make_segment(start_s=10.0, end_s=15.0)
+        # Word sits far outside the segment window, so filtering yields nothing.
+        words = [{"text": "later", "start_ms": 90000, "end_ms": 90500}]
+
+        with (
+            patch("src.pipeline.clip.get_representative_frame", return_value=None),
+            patch("src.pipeline.clip._get_video_dimensions", return_value=(1920, 1080)),
+            patch("src.pipeline.clip._find_fonts_dir", return_value=None),
+            patch("src.pipeline.clip.write_ass_file") as mock_write_ass,
+            patch("src.pipeline.clip._run_ffmpeg", return_value=self._success_proc()),
+        ):
+            await generate_clip(
+                source_video="/fake/video.mp4",
+                segment=segment,
+                words=words,
+                output_path=out,
+                options=ClipOptions(subtitle_style=SubtitleStyle()),
+            )
+
+        mock_write_ass.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_nonzero_exit_code_raises(self, tmp_path: Path) -> None:
         """Any non-zero return code (e.g. 2, 127) raises ClipGenerationError."""
         out = tmp_path / "clip.mp4"
@@ -409,6 +436,7 @@ class TestGenerateClip:
 # ---------------------------------------------------------------------------
 # TranscriptSegment dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestTranscriptSegment:
     """Sanity tests for the TranscriptSegment dataclass."""
@@ -460,75 +488,91 @@ class TestRunFfmpeg:
 
 
 # ---------------------------------------------------------------------------
-# _get_video_dimensions — lines 392-410
+# _parse_ffprobe_dimensions
+# ---------------------------------------------------------------------------
+
+
+class TestParseFfprobeDimensions:
+    """Tests for parsing ffprobe JSON into (width, height)."""
+
+    def test_parses_valid_json(self) -> None:
+        """Well-formed ffprobe JSON yields the integer dimensions."""
+        out = b'{"streams":[{"width":1280,"height":720}]}'
+        assert _parse_ffprobe_dimensions(out) == (1280, 720)
+
+    def test_raises_on_malformed_json(self) -> None:
+        """Non-JSON output fails loudly with ClipGenerationError."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b"not json at all")
+
+    def test_raises_on_empty_streams(self) -> None:
+        """An empty streams array (no video stream) fails loudly."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[]}')
+
+    def test_raises_on_missing_keys(self) -> None:
+        """Missing width/height keys fail loudly."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[{"width":1280}]}')
+
+    def test_raises_on_zero_dimensions(self) -> None:
+        """Zero dimensions are rejected (no silent bad crop)."""
+        with pytest.raises(ClipGenerationError):
+            _parse_ffprobe_dimensions(b'{"streams":[{"width":0,"height":0}]}')
+
+
+# ---------------------------------------------------------------------------
+# _get_video_dimensions — ffprobe-backed
 # ---------------------------------------------------------------------------
 
 
 class TestGetVideoDimensions:
-    """Tests for _get_video_dimensions private helper."""
+    """Tests for the ffprobe-backed _get_video_dimensions helper."""
 
-    def test_returns_fallback_when_cv2_not_installed(self, tmp_path: Path) -> None:
-        """Returns (1920, 1080) when cv2 cannot be imported."""
+    def _proc(self, returncode: int, stdout: bytes = b"", stderr: bytes = b"") -> MagicMock:
+        proc = MagicMock(spec=subprocess.CompletedProcess)
+        proc.returncode = returncode
+        proc.stdout = stdout
+        proc.stderr = stderr
+        return proc
+
+    def test_returns_dimensions_from_ffprobe(self, tmp_path: Path) -> None:
+        """Parses (width, height) from a successful ffprobe call."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+        proc = self._proc(0, stdout=b'{"streams":[{"width":640,"height":480}]}')
+
+        with patch("subprocess.run", return_value=proc):
+            assert _get_video_dimensions(video) == (640, 480)
+
+    def test_raises_when_ffprobe_nonzero(self, tmp_path: Path) -> None:
+        """A non-zero ffprobe exit raises ClipGenerationError (no fallback)."""
+        video = tmp_path / "video.mp4"
+        video.touch()
+        proc = self._proc(1, stderr=b"corrupt file")
+
+        with (
+            patch("subprocess.run", return_value=proc),
+            pytest.raises(ClipGenerationError, match="ffprobe failed"),
+        ):
+            _get_video_dimensions(video)
+
+    def test_raises_when_ffprobe_not_installed(self, tmp_path: Path) -> None:
+        """A missing ffprobe binary raises ClipGenerationError."""
         video = tmp_path / "video.mp4"
         video.touch()
 
-        # Simulate cv2 not being importable
-        with patch.dict(sys.modules, {"cv2": None}):
-            result = _get_video_dimensions(video)
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("no ffprobe")),
+            pytest.raises(ClipGenerationError, match="could not be executed"),
+        ):
+            _get_video_dimensions(video)
 
-        assert result == (1920, 1080)
-
-    def test_returns_dimensions_from_cv2_when_available(self, tmp_path: Path) -> None:
-        """Returns (width, height) from cv2.VideoCapture when cv2 is present."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.side_effect = lambda prop: (
-            1280.0 if prop == mock_cv2.CAP_PROP_FRAME_WIDTH else 720.0
-        )
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1280, 720)
-        mock_cap.release.assert_called_once()
-
-    def test_returns_fallback_when_cv2_returns_zero_dimensions(
-        self, tmp_path: Path
-    ) -> None:
-        """Returns (1920, 1080) when cv2 reports width=0 or height=0."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.return_value = 0.0  # Both width and height are zero
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1920, 1080)
-        mock_cap.release.assert_called_once()
-
-    def test_returns_fallback_on_cv2_exception(self, tmp_path: Path) -> None:
-        """Returns (1920, 1080) when cv2.VideoCapture.get raises an exception."""
-        video = tmp_path / "video.mp4"
-        video.touch()
-
-        mock_cv2 = MagicMock()
-        mock_cap = MagicMock()
-        mock_cv2.VideoCapture.return_value = mock_cap
-        mock_cap.get.side_effect = RuntimeError("cv2 internal error")
-
-        with patch.dict(sys.modules, {"cv2": mock_cv2}):
-            result = _get_video_dimensions(video)
-
-        assert result == (1920, 1080)
-        mock_cap.release.assert_called_once()
+    @pytest.mark.skipif(not shutil.which("ffprobe"), reason="ffprobe not installed")
+    def test_real_sample_video_dimensions(self) -> None:
+        """The committed fixture is a real 720x1280 portrait clip."""
+        fixture = Path(__file__).parent.parent / "fixtures" / "sample_video.mp4"
+        assert _get_video_dimensions(fixture) == (720, 1280)
 
 
 # ---------------------------------------------------------------------------

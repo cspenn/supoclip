@@ -5,6 +5,7 @@ Presents the video input section (YouTube URL or file upload), processing
 settings sliders/dropdowns, and a Start button that creates a Task in the
 database and launches the pipeline as a background asyncio task.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from pathlib import Path
 import structlog
 from nicegui import ui
 
+from src.config import get_config
 from src.database import get_session
 from src.models import Task
 from src.pages.settings import load_prefs, subtitle_style_from_prefs
@@ -188,16 +190,16 @@ async def render() -> None:
             if content is None:
                 ui.notify("Upload failed: no content received.", color="negative")
                 return
-            save_path = Path("/tmp") / name
+            uploads_dir = get_config().temp_dir / "uploads"
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            save_path = uploads_dir / name
             save_path.write_bytes(content.read() if hasattr(content, "read") else content)
             uploaded_path.clear()
             uploaded_path.append(str(save_path))
             ui.notify(f"File ready: {name}", color="positive")
             log.info("home.file_uploaded", path=str(save_path))
 
-        ui.upload(on_upload=handle_upload, label="Drop or click to upload a video file").classes(
-            "w-full"
-        )
+        ui.upload(on_upload=handle_upload, label="Drop or click to upload a video file").classes("w-full")
 
         ui.separator()
 
@@ -206,14 +208,8 @@ async def render() -> None:
 
         # Min clip length
         with ui.column().classes("w-full gap-1"):
-            min_label = ui.label(f"Min clip length: {_MIN_CLIP_DEFAULT}s").classes(
-                "text-sm text-gray-700"
-            )
-            min_slider = (
-                ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MIN_CLIP_DEFAULT)
-                .props("label-always")
-                .classes("w-full")
-            )
+            min_label = ui.label(f"Min clip length: {_MIN_CLIP_DEFAULT}s").classes("text-sm text-gray-700")
+            min_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MIN_CLIP_DEFAULT).props("label-always").classes("w-full")
             min_slider.on(
                 "update:model-value",
                 lambda e: min_label.set_text(f"Min clip length: {int(e.args)}s"),
@@ -221,14 +217,8 @@ async def render() -> None:
 
         # Max clip length
         with ui.column().classes("w-full gap-1"):
-            max_label = ui.label(f"Max clip length: {_MAX_CLIP_DEFAULT}s").classes(
-                "text-sm text-gray-700"
-            )
-            max_slider = (
-                ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MAX_CLIP_DEFAULT)
-                .props("label-always")
-                .classes("w-full")
-            )
+            max_label = ui.label(f"Max clip length: {_MAX_CLIP_DEFAULT}s").classes("text-sm text-gray-700")
+            max_slider = ui.slider(min=_SLIDER_MIN, max=_SLIDER_MAX, value=_MAX_CLIP_DEFAULT).props("label-always").classes("w-full")
             max_slider.on(
                 "update:model-value",
                 lambda e: max_label.set_text(f"Max clip length: {int(e.args)}s"),
@@ -237,9 +227,7 @@ async def render() -> None:
         # Resolution
         with ui.row().classes("w-full items-center gap-4"):
             ui.label("Output resolution").classes("text-sm text-gray-700")
-            resolution_select = ui.select(
-                _RESOLUTIONS, value=_DEFAULT_RESOLUTION
-            ).classes("w-32")
+            resolution_select = ui.select(_RESOLUTIONS, value=_DEFAULT_RESOLUTION).classes("w-32")
 
         ui.separator()
 
@@ -288,15 +276,15 @@ async def render() -> None:
                 return
 
             # Fire-and-forget background pipeline
-            asyncio.create_task(
-                _start_processing(task_id, source, min_len, max_len, resolution)
-            )
+            asyncio.create_task(_start_processing(task_id, source, min_len, max_len, resolution))
 
             ui.notify("Processing started!", color="positive")
             log.info("home.processing_started", task_id=task_id)
             ui.navigate.to(f"/task/{task_id}")
 
-        ui.button("Start Processing", on_click=on_start).classes(
-            "w-full bg-blue-600 text-white font-semibold py-3 rounded"
-        ).props("size=lg")
+        ui.button("Start Processing", on_click=on_start).classes("w-full bg-blue-600 text-white font-semibold py-3 rounded").props(
+            "size=lg"
+        )
+
+
 # end src/pages/home.py

@@ -16,13 +16,15 @@ import json
 import logging
 from contextlib import suppress
 
+import stamina
 from groq import AsyncGroq
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from src.config import Config
+from src.config import get_config
+from src.exceptions import AnalysisError, InsufficientSegmentsError
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +59,19 @@ class TranscriptSegment(BaseModel):
     title: str = Field(default="", description="Suggested clip title")
 
 
-class AnalysisError(Exception):
-    """Raised when transcript analysis fails."""
+# ``AnalysisError`` and ``InsufficientSegmentsError`` are re-exported from the
+# centralized hierarchy in ``src.exceptions`` so callers (and tests) can keep
+# importing them from this module. They are aliases (not subclasses) on purpose:
+# ``InsufficientSegmentsError`` must remain a subclass of this ``AnalysisError``
+# so an un-owned ``except AnalysisError`` site (video_service) still catches it.
+__all__ = [
+    "AnalysisError",
+    "InsufficientSegmentsError",
+    "TranscriptSegment",
+    "analyze_transcript",
+    "build_system_prompt",
+    "validate_segments",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -248,10 +261,58 @@ def _build_user_prompt(
 # ---------------------------------------------------------------------------
 
 
+# Tolerance (seconds) allowed when comparing a segment end against the derived
+# transcript upper bound, to avoid nuking a legitimate end-of-video clip whose
+# end_ms rounds slightly past the last word.
+_BOUNDS_TOLERANCE_S = 1.0
+
+
+def _derive_transcript_bound(words: list[dict]) -> float | None:
+    """Derive an upper time bound (seconds) from word-level timing data.
+
+    Uses the maximum ``end_ms`` across all words so segments with hallucinated
+    timestamps beyond the actual media duration can be rejected.
+
+    Args:
+        words: Word-level timing data [{"text", "start_ms", "end_ms"}, ...].
+
+    Returns:
+        The maximum word end time in seconds, or None when no usable
+        ``end_ms`` values are present (bounds check then skipped).
+    """
+    end_values = [w["end_ms"] for w in words if isinstance(w, dict) and isinstance(w.get("end_ms"), (int, float))]
+    if not end_values:
+        return None
+    return max(end_values) / 1000.0
+
+
+def _exceeds_bounds(
+    seg: TranscriptSegment,
+    max_time_s: float | None,
+) -> bool:
+    """Check whether a segment falls outside the transcript time bound.
+
+    Args:
+        seg: The candidate segment.
+        max_time_s: Upper bound derived from the transcript (seconds), or None
+            to skip the bounds check entirely.
+
+    Returns:
+        True if the segment starts at/after the bound or ends beyond it
+        (plus a small tolerance), indicating hallucinated timestamps.
+    """
+    if max_time_s is None:
+        return False
+    if seg.start_time >= max_time_s:
+        return True
+    return seg.end_time > max_time_s + _BOUNDS_TOLERANCE_S
+
+
 def validate_segments(
     segments: list[TranscriptSegment],
     min_length_s: float,
     max_length_s: float,
+    max_time_s: float | None = None,
 ) -> list[TranscriptSegment]:
     """Filter and validate LLM-returned segments.
 
@@ -259,12 +320,16 @@ def validate_segments(
     - Have start_time == end_time (zero duration).
     - Are shorter than min_length_s.
     - Are longer than max_length_s.
+    - Start/end beyond the transcript time bound (hallucinated timestamps).
     - Start with filler words ('And', 'But', 'So', 'Um', 'Uh', 'Like', 'You know').
 
     Args:
         segments: Raw segments from LLM.
         min_length_s: Minimum acceptable duration.
         max_length_s: Maximum acceptable duration.
+        max_time_s: Optional upper time bound derived from the transcript
+            (max word end_ms / 1000). Segments whose start/end exceed this are
+            rejected as hallucinations. When None, the bounds check is skipped.
 
     Returns:
         Filtered list of valid segments.
@@ -275,8 +340,7 @@ def validate_segments(
 
         if duration <= 0:
             logger.warning(
-                "Skipping segment: zero or negative duration "
-                "(start=%.3f end=%.3f): %.50s",
+                "Skipping segment: zero or negative duration (start=%.3f end=%.3f): %.50s",
                 seg.start_time,
                 seg.end_time,
                 seg.text,
@@ -301,10 +365,18 @@ def validate_segments(
             )
             continue
 
+        if _exceeds_bounds(seg, max_time_s):
+            logger.warning(
+                "Skipping segment: timestamps exceed transcript bound (start=%.3f end=%.3f bound=%.3f): %.50s",
+                seg.start_time,
+                seg.end_time,
+                max_time_s,
+                seg.text,
+            )
+            continue
+
         text_lower = seg.text.lower().strip()
-        filler_match = next(
-            (f for f in _FILLER_STARTS if text_lower.startswith(f)), None
-        )
+        filler_match = next((f for f in _FILLER_STARTS if text_lower.startswith(f)), None)
         if filler_match:
             logger.warning(
                 "Skipping segment: starts with filler %r: %.50s",
@@ -343,6 +415,7 @@ def _should_use_structured_output(model_string: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+@stamina.retry(on=Exception, attempts=3, wait_initial=2.0, wait_max=10.0)
 async def _analyze_with_groq_structured(
     user_prompt: str,
     system_prompt: str,
@@ -361,7 +434,7 @@ async def _analyze_with_groq_structured(
     Raises:
         AnalysisError: If the API key is missing, response is empty, or JSON is invalid.
     """
-    cfg = Config()
+    cfg = get_config()
     if not cfg.groq_api_key:
         raise AnalysisError("GROQ_API_KEY not configured in environment")
 
@@ -369,7 +442,6 @@ async def _analyze_with_groq_structured(
     bare_model = model_string.split("groq:", 1)[-1]
 
     client = AsyncGroq(api_key=cfg.groq_api_key)
-    response_content = ""
 
     try:
         logger.info("Calling Groq structured outputs API with model: %s", bare_model)
@@ -408,6 +480,7 @@ async def _analyze_with_groq_structured(
     return _raw_segments_to_transcript_segments(raw_analysis.most_relevant_segments)
 
 
+@stamina.retry(on=Exception, attempts=3, wait_initial=2.0, wait_max=10.0)
 async def _analyze_with_pydantic_ai(
     user_prompt: str,
     system_prompt: str,
@@ -424,7 +497,7 @@ async def _analyze_with_pydantic_ai(
     Raises:
         AnalysisError: If the agent call fails or returns no data.
     """
-    cfg = Config()
+    cfg = get_config()
     if cfg.local_llm_enabled:
         llm_model: str | OpenAIModel = OpenAIModel(
             cfg.local_llm_model,
@@ -519,14 +592,9 @@ async def analyze_transcript(
         AnalysisError: If LLM call fails or returns no valid segments.
     """
     if not transcript_text or not transcript_text.strip():
-        raise AnalysisError(
-            "Cannot analyze empty transcript — transcription may have failed"
-        )
+        raise AnalysisError("Cannot analyze empty transcript — transcription may have failed")
     if len(transcript_text.strip()) < 50:
-        raise AnalysisError(
-            f"Transcript too short ({len(transcript_text)} chars) — "
-            "minimum 50 characters required"
-        )
+        raise AnalysisError(f"Transcript too short ({len(transcript_text)} chars) — minimum 50 characters required")
 
     logger.info(
         "Starting AI analysis of transcript (%d chars), min=%.1fs max=%.1fs",
@@ -535,20 +603,18 @@ async def analyze_transcript(
         max_length_s,
     )
 
-    cfg = Config()
+    cfg = get_config()
     model_string = cfg.llm_model if not cfg.local_llm_enabled else ""
 
+    max_time_s = _derive_transcript_bound(words)
+
     system_prompt = build_system_prompt(min_length_s, max_length_s, custom_prompt)
-    user_prompt = _build_user_prompt(transcript_text, min_length_s, max_length_s)
+    user_prompt = _build_user_prompt(transcript_text, min_length_s, max_length_s, custom_prompt)
 
     try:
         if _should_use_structured_output(model_string):
-            logger.info(
-                "Using Groq structured outputs for model: %s", model_string
-            )
-            raw_segments = await _analyze_with_groq_structured(
-                user_prompt, system_prompt, model_string
-            )
+            logger.info("Using Groq structured outputs for model: %s", model_string)
+            raw_segments = await _analyze_with_groq_structured(user_prompt, system_prompt, model_string)
         else:
             logger.info("Using Pydantic AI agent for model: %s", model_string or "local")
             raw_segments = await _analyze_with_pydantic_ai(user_prompt, system_prompt)
@@ -558,10 +624,10 @@ async def analyze_transcript(
         logger.error("LLM call failed: %s", exc, exc_info=True)
         raise AnalysisError(f"LLM call failed: {exc}") from exc
 
-    validated = validate_segments(raw_segments, min_length_s, max_length_s)
+    validated = validate_segments(raw_segments, min_length_s, max_length_s, max_time_s)
 
     if not validated:
-        raise AnalysisError(
+        raise InsufficientSegmentsError(
             f"No valid segments found after validation. "
             f"All {len(raw_segments)} segments were rejected. "
             f"Requested {min_length_s}-{max_length_s}s clips. "

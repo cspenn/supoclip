@@ -35,9 +35,7 @@ _HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _HAVE_FFMPEG, reason="ffmpeg/ffprobe not installed (must run in CI/gate)"
-    ),
+    pytest.mark.skipif(not _HAVE_FFMPEG, reason="ffmpeg/ffprobe not installed (must run in CI/gate)"),
 ]
 
 
@@ -165,15 +163,9 @@ async def test_real_clip_burns_in_captions(tmp_path: Path) -> None:
     diff_pixels = sum(
         1
         for i in range(0, len(bytes_a), 3)
-        if abs(bytes_a[i] - bytes_b[i])
-        + abs(bytes_a[i + 1] - bytes_b[i + 1])
-        + abs(bytes_a[i + 2] - bytes_b[i + 2])
-        > 40
+        if abs(bytes_a[i] - bytes_b[i]) + abs(bytes_a[i + 1] - bytes_b[i + 1]) + abs(bytes_a[i + 2] - bytes_b[i + 2]) > 40
     )
-    assert diff_pixels > 500, (
-        f"captioned frame differs from plain frame in only {diff_pixels} pixels — "
-        "subtitles were not burned in"
-    )
+    assert diff_pixels > 500, f"captioned frame differs from plain frame in only {diff_pixels} pixels — subtitles were not burned in"
 
 
 @pytest.mark.asyncio
@@ -198,9 +190,7 @@ async def test_caption_event_timings_match_word_timestamps(tmp_path: Path) -> No
         segment=segment,
         words=words,
         output_path=out,
-        options=ClipOptions(
-            output_resolution="720p", subtitle_style=SubtitleStyle()
-        ),
+        options=ClipOptions(output_resolution="720p", subtitle_style=SubtitleStyle()),
     )
 
     ass_path = out.with_suffix(".ass")
@@ -210,19 +200,13 @@ async def test_caption_event_timings_match_word_timestamps(tmp_path: Path) -> No
     events = sorted(subs.events, key=lambda e: e.start)
 
     texts = [e.text for e in events]
-    assert texts == ["alpha", "bravo", "charlie"], (
-        f"expected re-based, in-segment words only; got {texts}"
-    )
+    assert texts == ["alpha", "bravo", "charlie"], f"expected re-based, in-segment words only; got {texts}"
 
     expected = [(100, 500), (600, 1100), (1200, 1700)]
     tol_ms = 15
     for event, (exp_start, exp_end) in zip(events, expected, strict=True):
-        assert abs(event.start - exp_start) <= tol_ms, (
-            f"{event.text}: start {event.start}ms drifted from {exp_start}ms"
-        )
-        assert abs(event.end - exp_end) <= tol_ms, (
-            f"{event.text}: end {event.end}ms drifted from {exp_end}ms"
-        )
+        assert abs(event.start - exp_start) <= tol_ms, f"{event.text}: start {event.start}ms drifted from {exp_start}ms"
+        assert abs(event.end - exp_end) <= tol_ms, f"{event.text}: end {event.end}ms drifted from {exp_end}ms"
 
 
 # end tests/integration/test_pipeline_real_output.py

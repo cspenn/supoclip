@@ -15,6 +15,7 @@ Covers:
 - Handler callbacks: save() max<min error, invalid font color, invalid stroke color,
   success path; reset(); clear_logo(); handle_logo_upload None-content path.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Generator
@@ -181,6 +182,31 @@ class TestDiscoverFonts:
 
         assert result == ["Arial"]
 
+    def test_font_without_family_record_falls_back(self, tmp_path: Path) -> None:
+        """A TTF whose name table has no nameID 1/4 record yields no family name.
+
+        Exercises _extract_font_family's 'no usable record' return path: the
+        font parses, but every record has a non-family nameID, so the function
+        returns None and the font contributes no name (Arial fallback).
+        """
+        from src.pages.settings import _discover_fonts
+
+        (tmp_path / "nameless.ttf").write_bytes(b"fake")
+
+        def _mock_ttfont(path: str) -> MagicMock:
+            font = MagicMock()
+            name_table = MagicMock()
+            record = MagicMock()
+            record.nameID = 6  # PostScript name — not family (1) or full (4)
+            name_table.names = [record]
+            font.__getitem__ = lambda _self, _key: name_table
+            return font
+
+        with patch("src.pages.settings.TTFont", side_effect=_mock_ttfont):
+            result = _discover_fonts(fonts_dir=tmp_path)
+
+        assert result == ["Arial"]
+
     def test_current_value_not_in_list_is_prepended(self, tmp_path: Path) -> None:
         """current_value is prepended when not in the discovered list."""
         from src.pages.settings import _discover_fonts
@@ -189,9 +215,7 @@ class TestDiscoverFonts:
         # tmp_path is empty → fallback ["Arial"], "MyCustomFont" prepended
         assert result == ["MyCustomFont", "Arial"]
 
-    def test_current_value_already_in_list_not_duplicated(
-        self, tmp_path: Path
-    ) -> None:
+    def test_current_value_already_in_list_not_duplicated(self, tmp_path: Path) -> None:
         """current_value is not added when already present in the list."""
         from src.pages.settings import _discover_fonts
 
@@ -216,6 +240,34 @@ class TestDiscoverFonts:
             result = _discover_fonts(fonts_dir=tmp_path)
 
         assert result == ["Full Name Font"]
+
+    def test_extract_font_family_returns_none_on_parse_error(self, tmp_path: Path) -> None:
+        """_extract_font_family returns None when the TTF cannot be parsed."""
+        from src.pages.settings import _extract_font_family
+
+        bad = tmp_path / "bad.ttf"
+        bad.write_bytes(b"garbage")
+
+        with patch("src.pages.settings.TTFont", side_effect=Exception("parse error")):
+            assert _extract_font_family(bad) is None
+
+    def test_extract_font_family_returns_name(self, tmp_path: Path) -> None:
+        """_extract_font_family returns the nameID-1 family string."""
+        from src.pages.settings import _extract_font_family
+
+        good = tmp_path / "good.ttf"
+        good.write_bytes(b"fake")
+
+        font = MagicMock()
+        name_table = MagicMock()
+        record = MagicMock()
+        record.nameID = 1
+        record.toUnicode.return_value = "Heading Pro"
+        name_table.names = [record]
+        font.__getitem__ = lambda _self, _key: name_table
+
+        with patch("src.pages.settings.TTFont", return_value=font):
+            assert _extract_font_family(good) == "Heading Pro"
 
     def test_tounicode_error_falls_back_to_next_record(self, tmp_path: Path) -> None:
         """When toUnicode() raises, the next matching record is tried."""
@@ -505,9 +557,7 @@ class TestSavePrefs:
         base.update(overrides)
         return base
 
-    async def test_creates_new_row_when_none_exists(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_creates_new_row_when_none_exists(self, session: AsyncSession) -> None:
         """save_prefs inserts a new row when no row with id=1 exists."""
         with patch(
             "src.pages.settings.get_session",
@@ -555,9 +605,7 @@ class TestSavePrefs:
         assert prefs.font_size == 32
         assert prefs.output_resolution == "720p"
 
-    async def test_blank_ai_prompt_stored_as_none(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_blank_ai_prompt_stored_as_none(self, session: AsyncSession) -> None:
         """An empty string ai_prompt is coerced to None."""
         with patch(
             "src.pages.settings.get_session",
@@ -569,9 +617,7 @@ class TestSavePrefs:
         assert saved is not None
         assert saved.ai_prompt is None
 
-    async def test_logo_path_stored_as_none_when_not_supplied(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_logo_path_stored_as_none_when_not_supplied(self, session: AsyncSession) -> None:
         """logo_path is None when not included in the data dict."""
         with patch(
             "src.pages.settings.get_session",
@@ -583,9 +629,7 @@ class TestSavePrefs:
         assert saved is not None
         assert saved.logo_path is None
 
-    async def test_logo_path_persisted_when_provided(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_logo_path_persisted_when_provided(self, session: AsyncSession) -> None:
         """logo_path is persisted when a non-empty path is given."""
         with patch(
             "src.pages.settings.get_session",
@@ -697,9 +741,7 @@ class TestRender:
 class TestLogoUpload:
     """Tests for the logo upload handler inside render()."""
 
-    async def test_upload_writes_file_and_updates_state(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_upload_writes_file_and_updates_state(self, tmp_path: Path) -> None:
         """handle_logo_upload writes bytes to disk under config.temp_dir/logo/."""
         file_content = b"fake-png-data"
         upload_event = MagicMock()
@@ -711,9 +753,7 @@ class TestLogoUpload:
 
         captured_state: dict[str, str | None] = {"path": None}
 
-        def make_handler(
-            state: dict[str, str | None], cfg: object
-        ):  # type: ignore[return]
+        def make_handler(state: dict[str, str | None], cfg: object):  # type: ignore[return]
             def handle_logo_upload(e: object) -> None:
                 name: str = getattr(e, "name", "logo")
                 content = getattr(e, "content", None)
@@ -898,9 +938,7 @@ class TestHandlerCallbacks:
         with patch("src.pages.settings._discover_fonts", return_value=["Arial"]):
             yield
 
-    async def test_save_max_less_than_min_shows_error(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_max_less_than_min_shows_error(self, tmp_path: Path) -> None:
         """save() notifies an error when max_clip < min_clip (lines 252-257).
 
         Slider creation order: 1=font_size, 2=stroke_width, 3=shadow_offset,
@@ -925,19 +963,13 @@ class TestHandlerCallbacks:
             patch("src.pages.settings.ui", new=mock_ui),
         ):
             await settings_mod.render()
-            save_cb = next(
-                (v for k, v in captured.items() if "Save Settings" in k), None
-            )
+            save_cb = next((v for k, v in captured.items() if "Save Settings" in k), None)
             assert save_cb is not None, f"Save callback missing; keys={list(captured)}"
             await save_cb()  # type: ignore[operator]
 
-        assert any(
-            "max" in str(a).lower() for a, _kw in notify_calls
-        ), f"Expected max-clip error notify; got: {notify_calls}"
+        assert any("max" in str(a).lower() for a, _kw in notify_calls), f"Expected max-clip error notify; got: {notify_calls}"
 
-    async def test_save_invalid_font_color_shows_error(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_invalid_font_color_shows_error(self, tmp_path: Path) -> None:
         """save() notifies an error for an invalid font color hex (lines 262-267)."""
         import src.pages.settings as settings_mod
 
@@ -958,19 +990,13 @@ class TestHandlerCallbacks:
             patch("src.pages.settings.ui", new=mock_ui),
         ):
             await settings_mod.render()
-            save_cb = next(
-                (v for k, v in captured.items() if "Save Settings" in k), None
-            )
+            save_cb = next((v for k, v in captured.items() if "Save Settings" in k), None)
             assert save_cb is not None
             await save_cb()  # type: ignore[operator]
 
-        assert any(
-            "font color" in str(a).lower() for a, _kw in notify_calls
-        ), f"Expected font-color error notify; got: {notify_calls}"
+        assert any("font color" in str(a).lower() for a, _kw in notify_calls), f"Expected font-color error notify; got: {notify_calls}"
 
-    async def test_save_invalid_stroke_color_shows_error(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_invalid_stroke_color_shows_error(self, tmp_path: Path) -> None:
         """save() notifies an error for an invalid stroke color hex (lines 269-273)."""
         import src.pages.settings as settings_mod
 
@@ -991,19 +1017,13 @@ class TestHandlerCallbacks:
             patch("src.pages.settings.ui", new=mock_ui),
         ):
             await settings_mod.render()
-            save_cb = next(
-                (v for k, v in captured.items() if "Save Settings" in k), None
-            )
+            save_cb = next((v for k, v in captured.items() if "Save Settings" in k), None)
             assert save_cb is not None
             await save_cb()  # type: ignore[operator]
 
-        assert any(
-            "stroke" in str(a).lower() for a, _kw in notify_calls
-        ), f"Expected stroke-color error notify; got: {notify_calls}"
+        assert any("stroke" in str(a).lower() for a, _kw in notify_calls), f"Expected stroke-color error notify; got: {notify_calls}"
 
-    async def test_save_success_calls_save_prefs_and_notifies(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_success_calls_save_prefs_and_notifies(self, tmp_path: Path) -> None:
         """save() calls save_prefs and notifies success (lines 276-292)."""
         import src.pages.settings as settings_mod
 
@@ -1023,20 +1043,14 @@ class TestHandlerCallbacks:
             patch("src.pages.settings.save_prefs", new=mock_save),
         ):
             await settings_mod.render()
-            save_cb = next(
-                (v for k, v in captured.items() if "Save Settings" in k), None
-            )
+            save_cb = next((v for k, v in captured.items() if "Save Settings" in k), None)
             assert save_cb is not None
             await save_cb()  # type: ignore[operator]
 
         mock_save.assert_awaited_once()
-        assert any(
-            "saved" in str(a).lower() for a, _kw in notify_calls
-        ), f"Expected saved notify; got: {notify_calls}"
+        assert any("saved" in str(a).lower() for a, _kw in notify_calls), f"Expected saved notify; got: {notify_calls}"
 
-    async def test_reset_restores_defaults_and_notifies(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_reset_restores_defaults_and_notifies(self, tmp_path: Path) -> None:
         """reset() sets widget values back to defaults (lines 296-309)."""
         import src.pages.settings as settings_mod
 
@@ -1054,18 +1068,13 @@ class TestHandlerCallbacks:
             patch("src.pages.settings.ui", new=mock_ui),
         ):
             await settings_mod.render()
-            reset_cb = next(
-                (v for k, v in captured.items() if "Reset" in k), None
-            )
-            assert reset_cb is not None, (
-                f"Reset callback missing; keys={list(captured)}"
-            )
+            reset_cb = next((v for k, v in captured.items() if "Reset" in k), None)
+            assert reset_cb is not None, f"Reset callback missing; keys={list(captured)}"
             reset_cb()  # type: ignore[operator]
 
-        assert any(
-            "reset" in str(a).lower() or "default" in str(a).lower()
-            for a, _kw in notify_calls
-        ), f"Expected reset notify; got: {notify_calls}"
+        assert any("reset" in str(a).lower() or "default" in str(a).lower() for a, _kw in notify_calls), (
+            f"Expected reset notify; got: {notify_calls}"
+        )
 
     async def test_clear_logo_resets_state(self, tmp_path: Path) -> None:
         """clear_logo() clears logo_state and updates logo_display (lines 235-237)."""
@@ -1078,24 +1087,16 @@ class TestHandlerCallbacks:
         mock_ui, captured = _build_capturing_ui_mock()
 
         with (
-            patch(
-                "src.pages.settings.load_prefs", new=AsyncMock(return_value=prefs)
-            ),
+            patch("src.pages.settings.load_prefs", new=AsyncMock(return_value=prefs)),
             patch("src.pages.settings.get_config", return_value=cfg_mock),
             patch("src.pages.settings.ui", new=mock_ui),
         ):
             await settings_mod.render()
-            clear_cb = next(
-                (v for k, v in captured.items() if "Clear Logo" in k), None
-            )
-            assert clear_cb is not None, (
-                f"Clear Logo callback missing; keys={list(captured)}"
-            )
+            clear_cb = next((v for k, v in captured.items() if "Clear Logo" in k), None)
+            assert clear_cb is not None, f"Clear Logo callback missing; keys={list(captured)}"
             clear_cb()  # type: ignore[operator]
 
-    async def test_handle_logo_upload_none_content_notifies(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_handle_logo_upload_none_content_notifies(self, tmp_path: Path) -> None:
         """handle_logo_upload with None content calls ui.notify (lines 216-218)."""
         import src.pages.settings as settings_mod
 
@@ -1121,14 +1122,11 @@ class TestHandlerCallbacks:
             bad_event.content = None
             upload_cb(bad_event)  # type: ignore[operator]
 
-        assert any(
-            "failed" in str(a).lower() or "no content" in str(a).lower()
-            for a, _kw in notify_calls
-        ), f"Expected upload-failed notify; got: {notify_calls}"
+        assert any("failed" in str(a).lower() or "no content" in str(a).lower() for a, _kw in notify_calls), (
+            f"Expected upload-failed notify; got: {notify_calls}"
+        )
 
-    async def test_handle_logo_upload_success_writes_file(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_handle_logo_upload_success_writes_file(self, tmp_path: Path) -> None:
         """handle_logo_upload writes bytes to temp_dir/logo/ (lines 220-226)."""
         import src.pages.settings as settings_mod
 
@@ -1157,9 +1155,7 @@ class TestHandlerCallbacks:
         assert expected.exists()
         assert expected.read_bytes() == b"fake-image-bytes"
 
-    async def test_font_family_uses_select_not_input(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_font_family_uses_select_not_input(self, tmp_path: Path) -> None:
         """font_family widget is a ui.select, not a ui.input."""
         import src.pages.settings as settings_mod
 
@@ -1180,21 +1176,13 @@ class TestHandlerCallbacks:
 
         # ui.select must have been called with label="Font Family"
         select_calls = mock_ui.select.call_args_list
-        font_family_select = any(
-            "Font Family" in str(call) for call in select_calls
-        )
-        assert font_family_select, (
-            f"ui.select not called with Font Family; calls={select_calls}"
-        )
+        font_family_select = any("Font Family" in str(call) for call in select_calls)
+        assert font_family_select, f"ui.select not called with Font Family; calls={select_calls}"
 
         # ui.input must NOT have been called with label="Font Family"
         input_calls = mock_ui.input.call_args_list
-        font_family_input = any(
-            "Font Family" in str(call) for call in input_calls
-        )
-        assert not font_family_input, (
-            f"ui.input was incorrectly called with Font Family; calls={input_calls}"
-        )
+        font_family_input = any("Font Family" in str(call) for call in input_calls)
+        assert not font_family_input, f"ui.input was incorrectly called with Font Family; calls={input_calls}"
 
     async def test_reset_calls_update_preview(self, tmp_path: Path) -> None:
         """reset() triggers _update_preview(), updating both html preview elements."""
@@ -1215,12 +1203,8 @@ class TestHandlerCallbacks:
             patch("src.pages.settings._discover_fonts", return_value=["Arial"]),
         ):
             await settings_mod.render()
-            reset_cb = next(
-                (v for k, v in captured.items() if "Reset" in k), None
-            )
-            assert reset_cb is not None, (
-                f"Reset callback missing; keys={list(captured)}"
-            )
+            reset_cb = next((v for k, v in captured.items() if "Reset" in k), None)
+            assert reset_cb is not None, f"Reset callback missing; keys={list(captured)}"
             # Clear call counts from the initial _update_preview() call at render time
             html_elements: list[MagicMock] = captured["html_elements"]  # type: ignore[assignment]
             for elem in html_elements:
@@ -1229,9 +1213,7 @@ class TestHandlerCallbacks:
             reset_cb()  # type: ignore[operator]
 
         # After reset, _update_preview() must have been called — both html elements updated
-        assert len(html_elements) >= 2, (
-            f"Expected ≥2 html elements (typo + phone); got {len(html_elements)}"
-        )
+        assert len(html_elements) >= 2, f"Expected ≥2 html elements (typo + phone); got {len(html_elements)}"
         assert html_elements[0].set_content.called, "typo_preview.set_content not called after reset"
         assert html_elements[1].set_content.called, "phone_preview.set_content not called after reset"
 
@@ -1289,28 +1271,16 @@ class TestUpdatePreview:
                 if call.args:
                     set_text_args.append(str(call.args[0]))
 
-        assert any("Font Size: 32pt" in s for s in set_text_args), (
-            f"Expected 'Font Size: 32pt'; got set_text calls: {set_text_args}"
-        )
-        assert any("Stroke Width: 3.5" in s for s in set_text_args), (
-            f"Expected 'Stroke Width: 3.5'; got: {set_text_args}"
-        )
-        assert any("Shadow Offset: 2px" in s for s in set_text_args), (
-            f"Expected 'Shadow Offset: 2px'; got: {set_text_args}"
-        )
+        assert any("Font Size: 32pt" in s for s in set_text_args), f"Expected 'Font Size: 32pt'; got set_text calls: {set_text_args}"
+        assert any("Stroke Width: 3.5" in s for s in set_text_args), f"Expected 'Stroke Width: 3.5'; got: {set_text_args}"
+        assert any("Shadow Offset: 2px" in s for s in set_text_args), f"Expected 'Shadow Offset: 2px'; got: {set_text_args}"
         assert any("Subtitle Y Position: 80% from top" in s for s in set_text_args), (
             f"Expected 'Subtitle Y Position: 80% from top'; got: {set_text_args}"
         )
-        assert any("Min Clip Length: 20s" in s for s in set_text_args), (
-            f"Expected 'Min Clip Length: 20s'; got: {set_text_args}"
-        )
-        assert any("Max Clip Length: 50s" in s for s in set_text_args), (
-            f"Expected 'Max Clip Length: 50s'; got: {set_text_args}"
-        )
+        assert any("Min Clip Length: 20s" in s for s in set_text_args), f"Expected 'Min Clip Length: 20s'; got: {set_text_args}"
+        assert any("Max Clip Length: 50s" in s for s in set_text_args), f"Expected 'Max Clip Length: 50s'; got: {set_text_args}"
 
-    async def test_update_preview_calls_set_content_on_both_html_elements(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_update_preview_calls_set_content_on_both_html_elements(self, tmp_path: Path) -> None:
         """_update_preview() calls set_content() on both typo and phone html elements."""
         import src.pages.settings as settings_mod
 
@@ -1330,19 +1300,11 @@ class TestUpdatePreview:
             await settings_mod.render()
 
         html_elements: list[MagicMock] = captured["html_elements"]  # type: ignore[assignment]
-        assert len(html_elements) >= 2, (
-            f"Expected ≥2 html elements (typo + phone frame); got {len(html_elements)}"
-        )
-        assert html_elements[0].set_content.called, (
-            "typo_preview.set_content() was not called by _update_preview()"
-        )
-        assert html_elements[1].set_content.called, (
-            "phone_preview.set_content() was not called by _update_preview()"
-        )
+        assert len(html_elements) >= 2, f"Expected ≥2 html elements (typo + phone frame); got {len(html_elements)}"
+        assert html_elements[0].set_content.called, "typo_preview.set_content() was not called by _update_preview()"
+        assert html_elements[1].set_content.called, "phone_preview.set_content() was not called by _update_preview()"
 
-    async def test_update_preview_preview_html_contains_font_settings(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_update_preview_preview_html_contains_font_settings(self, tmp_path: Path) -> None:
         """The HTML passed to typo_preview.set_content() contains color, size, and stroke."""
         import src.pages.settings as settings_mod
 
@@ -1415,6 +1377,7 @@ def _build_ui_mock() -> MagicMock:
     __enter__/__exit__ context manager methods all return mocks so
     that with ui.column(): blocks execute without error.
     """
+
     def _element(*_args: object, **_kwargs: object) -> MagicMock:
         elem = MagicMock()
         elem.__enter__ = MagicMock(return_value=elem)
@@ -1443,4 +1406,6 @@ def _build_ui_mock() -> MagicMock:
         getattr(mock_ui, name).side_effect = _element
 
     return mock_ui
+
+
 # end tests/unit/test_settings.py

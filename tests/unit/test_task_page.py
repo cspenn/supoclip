@@ -7,6 +7,7 @@ without a real event loop, browser, or database.
 The ``nicegui`` stub is registered by ``tests/unit/conftest.py`` before
 collection so that ``src.pages.task`` can be imported.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -213,6 +214,7 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count == 0
@@ -226,9 +228,26 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.video.call_count == len(clips)
+
+    @pytest.mark.asyncio
+    async def test_clip_without_transcript_skips_expansion(self, ui_stub: MagicMock) -> None:
+        """A clip with no transcript_text renders without the transcript expansion."""
+        task = _make_task(status="completed", progress=100)
+        clip = _make_clip(task.id, index=1)
+        clip.transcript_text = ""
+        session_ctx = _mock_session(task, [clip])
+
+        with patch("src.pages.task.get_session", return_value=session_ctx):
+            from src.pages.task import render
+
+            await render(task.id)
+
+        # Still renders the clip's video; just no transcript expansion branch.
+        assert ui_stub.video.call_count == 1
 
     @pytest.mark.asyncio
     async def test_progress_section_hidden(self, ui_stub: MagicMock) -> None:
@@ -256,12 +275,11 @@ class TestRenderCompleted:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         # At least one column must have had set_visibility called on it.
-        set_vis_calls_found = any(
-            m.set_visibility.called for m in column_instances
-        )
+        set_vis_calls_found = any(m.set_visibility.called for m in column_instances)
         assert set_vis_calls_found
 
 
@@ -285,6 +303,7 @@ class TestRenderProcessing:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count >= 1
@@ -299,6 +318,7 @@ class TestRenderProcessing:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count >= 1
@@ -324,6 +344,7 @@ class TestRenderFailed:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         assert ui_stub.timer.call_count == 0
@@ -358,12 +379,11 @@ class TestRenderFailed:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render(task.id)
 
         # At least one card must have had set_visibility called on it.
-        set_vis_calls_found = any(
-            m.set_visibility.called for m in card_instances
-        )
+        set_vis_calls_found = any(m.set_visibility.called for m in card_instances)
         assert set_vis_calls_found
 
 
@@ -382,6 +402,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             # Must complete without raising
             await render("nonexistent-task-id-0000")
 
@@ -392,6 +413,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render("missing-task-id")
 
         assert ui_stub.timer.call_count == 0
@@ -403,6 +425,7 @@ class TestRenderNotFound:
 
         with patch("src.pages.task.get_session", return_value=session_ctx):
             from src.pages.task import render
+
             await render("missing-task-id-2")
 
         assert ui_stub.card.call_count >= 1
@@ -507,7 +530,6 @@ class TestScoreColor:
         assert "red" in _score_color(0.0)
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers for timer-callback and _show_clips tests
 # ---------------------------------------------------------------------------
@@ -605,9 +627,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_failed_none_error_message(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_failed_none_error_message(self, ui_stub: MagicMock) -> None:
         """Fallback error message is used when error_message is None."""
         processing_task = _make_task(status="processing", progress=50)
         failed_task = _make_task(status="failed", progress=50, error_message=None)
@@ -630,9 +650,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_task_missing_stops_timer(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_task_missing_stops_timer(self, ui_stub: MagicMock) -> None:
         """Timer deactivates when the task record disappears mid-poll."""
         processing_task = _make_task(status="processing", progress=50)
 
@@ -654,9 +672,7 @@ class TestRefreshCallback:
         assert poll_timer.active is False
 
     @pytest.mark.asyncio
-    async def test_refresh_still_processing_keeps_timer_active(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_refresh_still_processing_keeps_timer_active(self, ui_stub: MagicMock) -> None:
         """Timer stays active when the task is still processing."""
         processing_task = _make_task(
             status="processing",
@@ -689,9 +705,7 @@ class TestRefreshCallback:
 
 class TestShowClips:
     @pytest.mark.asyncio
-    async def test_show_clips_renders_correct_video_count(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_renders_correct_video_count(self, ui_stub: MagicMock) -> None:
         """_show_clips calls ui.video once per clip from the DB."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -716,9 +730,7 @@ class TestShowClips:
         assert ui_stub.video.call_count == len(clips)
 
     @pytest.mark.asyncio
-    async def test_show_clips_sets_status_label_with_clip_word(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_sets_status_label_with_clip_word(self, ui_stub: MagicMock) -> None:
         """_show_clips sets status label text containing the word clip."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -750,20 +762,11 @@ class TestShowClips:
 
             await poll_timer._callback()
 
-        texts_with_clip = [
-            m.text
-            for m in label_instances
-            if isinstance(m.text, str) and "clip" in m.text
-        ]
-        assert texts_with_clip, (
-            "Expected at least one label with clip in text after _show_clips. "
-            f"Got: {[m.text for m in label_instances]}"
-        )
+        texts_with_clip = [m.text for m in label_instances if isinstance(m.text, str) and "clip" in m.text]
+        assert texts_with_clip, f"Expected at least one label with clip in text after _show_clips. Got: {[m.text for m in label_instances]}"
 
     @pytest.mark.asyncio
-    async def test_show_clips_uses_plural_for_multiple_clips(
-        self, ui_stub: MagicMock
-    ) -> None:
+    async def test_show_clips_uses_plural_for_multiple_clips(self, ui_stub: MagicMock) -> None:
         """_show_clips uses clips plural when count is not 1."""
         processing_task = _make_task(status="processing", progress=50)
         completed_task = _make_task(status="completed", progress=100)
@@ -795,12 +798,8 @@ class TestShowClips:
 
             await poll_timer._callback()
 
-        texts_with_clips = [
-            m.text
-            for m in label_instances
-            if isinstance(m.text, str) and "clips" in m.text
-        ]
-        assert texts_with_clips, (
-            "Expected clips plural in at least one label text after _show_clips"
-        )
+        texts_with_clips = [m.text for m in label_instances if isinstance(m.text, str) and "clips" in m.text]
+        assert texts_with_clips, "Expected clips plural in at least one label text after _show_clips"
+
+
 # end tests/unit/test_task_page.py
